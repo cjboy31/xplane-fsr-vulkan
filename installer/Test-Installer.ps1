@@ -31,6 +31,13 @@ Set-Content -LiteralPath (Join-Path $unrelated 'keep.txt') -Value 'Do not overwr
 $code = Run-Setup ('/S /TEST=1 /XPLANE= /D='+$unrelated)
 if($code -ne 4){throw "Unrelated folder was not rejected with code 4: $code"}
 if(@(Get-ChildItem -LiteralPath $unrelated).Count -ne 1){throw 'Unrelated directory changed'}
+$regular = Join-Path $testRoot 'regular-channel-install'
+New-Item -ItemType Directory -Path $regular | Out-Null
+[IO.File]::WriteAllText((Join-Path $regular 'XPFSR24-Installation.ini'),"[Installation]`r`nProduct=XPFSR24-community-alpha`r`n")
+[IO.File]::WriteAllText((Join-Path $regular 'keep.txt'),'Regular installation must remain available.')
+$regularBefore = (Get-FileHash -LiteralPath (Join-Path $regular 'XPFSR24-Installation.ini')).Hash
+$code = Run-Setup ('/S /TEST=1 /XPLANE= /D='+$regular)
+if($code -ne 4 -or @(Get-ChildItem -LiteralPath $regular).Count -ne 2 -or (Get-FileHash -LiteralPath (Join-Path $regular 'XPFSR24-Installation.ini')).Hash -ne $regularBefore){throw 'Experimental setup did not preserve/refuse the regular installation'}
 $code = Run-Setup ('/S /TEST=1 /XPLANE="'+(Join-Path $testRoot 'no-simulator')+'" /D='+$invalid)
 if($code -ne 3){throw "Invalid simulator path was not rejected with code 3: $code"}
 if(Test-Path -LiteralPath $invalid){throw 'Invalid-path installation created files'}
@@ -55,7 +62,7 @@ New-Item -ItemType Directory -Path (Join-Path $installed 'logs'),(Join-Path $ins
 Set-Content -LiteralPath (Join-Path $installed 'logs\keep.txt') -Value 'Test user log'
 Set-Content -LiteralPath (Join-Path $installed 'plugin-backups\keep.txt') -Value 'Test user backup'
 Set-Content -LiteralPath (Join-Path $installed 'user-file.txt') -Value 'Test unrelated user file'
-Add-Content -LiteralPath (Join-Path $installed 'settings.ini') -Value "`r`n[Launcher]`r`nPreset=fsr4-4k-quality`r`nMode=4`r`nFrameGeneration=2`r`nCockpitRestore=0`r`nEnabled=1`r`nGhostReduction=0`r`nAlignmentTint=0"
+Add-Content -LiteralPath (Join-Path $installed 'settings.ini') -Value "`r`n[Launcher]`r`nPreset=fsr4-4k-quality`r`nMode=4`r`nMotionSource=1`r`nFrameGeneration=2`r`nCockpitRestore=0`r`nEnabled=1`r`nGhostReduction=0`r`nAlignmentTint=0"
 $savedChoiceBlock = (Get-Content -LiteralPath (Join-Path $installed 'settings.ini') -Raw) -split '\[Launcher\]',2 | Select-Object -Last 1
 $code = Run-Setup ('/S /TEST=1 /XPLANE="'+$simulator+'" /D='+$installed)
 if($code -ne 0){throw "Recognized update failed: $code"}
@@ -98,6 +105,7 @@ if($prefsBefore -and (Get-FileHash -LiteralPath $prefs).Hash -ne $prefsBefore){t
 $result = [ordered]@{status='PASS';testedAt=(Get-Date -Format o);archiveSha256=(Get-FileHash -LiteralPath $archive).Hash.ToLowerInvariant();archiveBytes=(Get-Item -LiteralPath $archive).Length;payloadHashesVerified=$manifest.files.Count;rarIntegrity='PASS';roundTripExtraction='PASS';invalidSimulatorRejected='PASS';unrelatedFolderRejected='PASS';silentInstall='PASS';recognizedUpdate='PASS';savedChoicesPreservedOnUpdate='PASS';userFilesPreservedOnUninstall='PASS';simulatorCameraUnchanged='PASS';simulatorPreferencesUnchanged='PASS';testMode='Per-user registry and shortcuts skipped; all test files confined to workspace';testFolder=$testRoot}
 $result.setupSha256=(Get-FileHash -LiteralPath $setup).Hash.ToLowerInvariant()
 $result.setupBytes=(Get-Item -LiteralPath $setup).Length
+$result.regularInstallationPreservedAndRejected='PASS'
 $result.automaticUpdate='PASS'
 $result.automaticUpdateSettingsPreserved='PASS'
 $result.parentWait='PASS'

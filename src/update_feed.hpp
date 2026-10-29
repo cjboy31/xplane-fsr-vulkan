@@ -9,7 +9,7 @@
 #include <tuple>
 #include <vector>
 namespace updates {
-inline constexpr char currentVersion[] = "0.5.8-alpha";
+inline constexpr char currentVersion[] = "0.5.9-experimental.1";
 inline constexpr char repository[] = "https://github.com/cjboy31/xplane-fsr-vulkan";
 inline void require(bool ok, const char *why) {
     if (!ok)
@@ -214,6 +214,7 @@ class Parser {
 };
 struct Version {
     int major{}, minor{}, patch{}, stage{3}, revision{};
+    bool experimental{};
     auto key() const { return std::make_tuple(major, minor, patch, stage, revision); }
 };
 inline Version version(std::string s) {
@@ -241,7 +242,11 @@ inline Version version(std::string s) {
         while (i < s.size() && s[i] != '.')
             ++i;
         auto stage = s.substr(b, i - b);
-        v.stage = stage == "alpha" ? 0 : stage == "beta" ? 1 : stage == "rc" ? 2 : -1;
+        v.experimental = stage == "experimental";
+        v.stage = stage == "alpha" || v.experimental ? 0
+                  : stage == "beta"                  ? 1
+                  : stage == "rc"                    ? 2
+                                                     : -1;
         require(v.stage >= 0, "Unsupported update channel");
         if (i < s.size()) {
             ++i;
@@ -260,6 +265,7 @@ inline Release select(const std::string &feed, const std::string &current, bool 
     auto root = Parser(feed).parse();
     require(root.type == Json::array, "GitHub did not return a release list");
     auto best = version(current);
+    const bool experimental = best.experimental;
     Release chosen;
     for (const auto &r : root.items) {
         if (r.at("draft").yes())
@@ -272,6 +278,8 @@ inline Release select(const std::string &feed, const std::string &current, bool 
             continue;
         }
         if (tag.empty() || tag[0] != 'v' || v.key() <= best.key())
+            continue;
+        if (v.experimental != experimental)
             continue;
         bool preview = r.at("prerelease").yes();
         if (preview != (v.stage < 3) || (preview && !previews))

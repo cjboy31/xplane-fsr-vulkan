@@ -98,7 +98,19 @@ static constexpr SettingHelp settingHelp[] = {
      L"The final fullscreen resolution shown by X-Plane. Keep current leaves window/output "
      L"settings untouched. The launcher changes only supported single-monitor preferences and does "
      L"not change Windows desktop modes or drivers.\n\nBest use: 3840 x 2160 output with Quality "
-     L"scale for 2560 x 1440 input to 4K. Your primary display must advertise the output mode."}};
+     L"scale for 2560 x 1440 input to 4K. Your primary display must advertise the output mode."},
+    {214, L"Motion source - experimental comparison",
+     L"Camera-derived is the existing default. Native renderer motion reads scene SSR depth, "
+     L"own-aircraft flags and reprojection matrices at the rendering pass, with GPU projection "
+     L"history for zoom. This is an opt-in experiment.\n\n"
+     L"Best use: an A/B flight test with MSAA Off, FXAA Off, frame generation Off and "
+     L"cockpit-screen fix Off. Restart X-Plane after changing this choice. Both FSR 3 and FSR 4 "
+     L"can be tested. The current build requires a supported scene SSR shader and matching depth "
+     L"in the same primary command buffer. If unavailable, native rendering stays active and "
+     L"status explains the bypass. It never switches to camera-derived motion silently.\n\n"
+     L"It does not add exact motion for independently moving traffic, props, clouds, rain or "
+     L"glass. This experiment has not been validated in a live flight. Return to Camera-derived to "
+     L"use the existing MSAA/FG/screen-fix features."}};
 static const SettingHelp *helpById(int id) {
     for (auto &h : settingHelp)
         if (h.id == id)
@@ -131,15 +143,26 @@ static void collectChoices() {
     preferences.arguments = text(argsBox);
     preferences.mode = int(SendMessageW(modeBox, CB_GETCURSEL, 0, 0));
     preferences.frameGeneration = int(SendMessageW(fgBox, CB_GETCURSEL, 0, 0));
+    preferences.motionSource = int(SendMessageW(motionBox, CB_GETCURSEL, 0, 0));
     preferences.enabled = SendMessageW(toggle, BM_GETCHECK, 0, 0) == BST_CHECKED;
     preferences.ghostReduction = SendMessageW(ghostBox, BM_GETCHECK, 0, 0) == BST_CHECKED;
     preferences.cockpitRestore = SendMessageW(cockpitBox, BM_GETCHECK, 0, 0) == BST_CHECKED;
     preferences.alignmentTint = SendMessageW(tintBox, BM_GETCHECK, 0, 0) == BST_CHECKED;
 }
+static const wchar_t *motionSetupText() {
+    return preferences.motionSource == 1
+               ? L"Native motion: MSAA, FXAA, FG and cockpit-screen fix Off. Restart "
+                 L"X-Plane.\r\nMissing SSR inputs keep native rendering; check live status."
+               : L"Camera motion: FXAA Off; MSAA optional (experimental). Native AA = "
+                 L"Full.\r\nUpscaling = below Full. Choose a preset with X-Plane closed; see Sim "
+                 L"setup.";
+}
 static void saveChoices() {
     if (!controlsReady)
         return;
     collectChoices();
+    if (motionSetupNote)
+        SetWindowTextW(motionSetupNote, motionSetupText());
     try {
         launcher::save(appDirectory / L"settings.ini", preferences);
         SetWindowTextW(savedLabel, L"Choices saved automatically");
@@ -177,7 +200,7 @@ static void runtimeBanner(launcher::RuntimeState state, const app::Telemetry &st
     InvalidateRect(injectionBanner, nullptr, TRUE);
     SetWindowTextW(window, state == launcher::RuntimeState::active
                                ? L"FSR ACTIVE - FSR 3/4 + Frame Gen for X-Plane"
-                               : L"FSR 3/4 + Frame Gen for X-Plane - Community Preview");
+                               : L"FSR 3/4 + Frame Gen for X-Plane - Native Motion EXPERIMENTAL");
     if (state == launcher::RuntimeState::active && !activeNotificationSent) {
         NOTIFYICONDATAW info{sizeof(info)};
         info.hWnd = window;
@@ -205,7 +228,7 @@ static void createMainControls(HWND hwnd) {
                             CLEARTYPE_QUALITY, 0, L"Segoe UI");
     auto title = control(L"STATIC", L"FSR 3/4 + Frame Gen for X-Plane", 0, 28, 18, 610, 38);
     SendMessageW(title, WM_SETFONT, reinterpret_cast<WPARAM>(titleFont), TRUE);
-    control(L"STATIC", L"Vulkan community preview 0.5.8  |  Hover or click ? for help", 0, 30, 59,
+    control(L"STATIC", L"0.5.9 experimental.1 | Separate native-motion test channel", 0, 30, 59,
             620, 25);
     updatesButton =
         control(L"BUTTON", L"Updates...", BS_PUSHBUTTON | WS_TABSTOP, 675, 59, 313, 30, 39);
@@ -241,32 +264,35 @@ static void createMainControls(HWND hwnd) {
         SendMessageW(fgBox, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(label));
     SendMessageW(fgBox, CB_SETCURSEL, preferences.frameGeneration, 0);
     helpIcon(hwnd, 204, 625, 399);
+    control(L"STATIC", L"Motion", 0, 30, 449, 95, 24);
+    motionBox = control(L"COMBOBOX", L"", CBS_DROPDOWNLIST | WS_TABSTOP, 130, 443, 485, 160, 45);
+    for (auto *label :
+         {L"Camera-derived - current default", L"Native renderer motion - EXPERIMENTAL"})
+        SendMessageW(motionBox, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(label));
+    SendMessageW(motionBox, CB_SETCURSEL, preferences.motionSource, 0);
+    helpIcon(hwnd, 214, 625, 443);
     auto checkbox = [&](const wchar_t *label, int y, int id, bool checked, int help) {
         auto c = control(L"BUTTON", label, BS_AUTOCHECKBOX | WS_TABSTOP, 30, y, 585, 26, id);
         SendMessageW(c, BM_SETCHECK, checked ? BST_CHECKED : BST_UNCHECKED, 0);
         helpIcon(hwnd, help, 625, y);
         return c;
     };
-    toggle = checkbox(L"Enable FSR processing (can be toggled during flight)", 449, 22,
+    toggle = checkbox(L"Enable FSR processing (can be toggled during flight)", 493, 22,
                       preferences.enabled, 205);
-    ghostBox = checkbox(L"FSR 3 history tuning - reduce trails (restart to apply)", 485, 42,
+    ghostBox = checkbox(L"FSR 3 history tuning - reduce trails (restart to apply)", 529, 42,
                         preferences.ghostReduction, 206);
-    cockpitBox = checkbox(L"FSR Ghosting Fix - cockpit screens (preview; FG Off)", 521, 43,
+    cockpitBox = checkbox(L"FSR Ghosting Fix - cockpit screens (preview; FG Off)", 565, 43,
                           preferences.cockpitRestore, 207);
-    tintBox = checkbox(L"Green screen-alignment tint (restart to apply)", 557, 44,
+    tintBox = checkbox(L"Green screen-alignment tint (restart to apply)", 601, 44,
                        preferences.alignmentTint, 208);
-    control(L"BUTTON", L"Launch X-Plane with FSR", BS_DEFPUSHBUTTON | WS_TABSTOP, 30, 610, 285, 44,
+    control(L"BUTTON", L"Launch X-Plane with FSR", BS_DEFPUSHBUTTON | WS_TABSTOP, 30, 654, 285, 44,
             20);
-    control(L"BUTTON", L"Launch native for comparison", BS_PUSHBUTTON | WS_TABSTOP, 330, 610, 285,
+    control(L"BUTTON", L"Launch native for comparison", BS_PUSHBUTTON | WS_TABSTOP, 330, 654, 285,
             44, 21);
-    control(L"BUTTON", L"Restore last graphics change", BS_PUSHBUTTON | WS_TABSTOP, 30, 675, 370,
+    control(L"BUTTON", L"Restore last graphics change", BS_PUSHBUTTON | WS_TABSTOP, 30, 719, 370,
             34, 107);
-    control(L"BUTTON", L"Sim setup...", BS_PUSHBUTTON | WS_TABSTOP, 415, 675, 200, 34, 33);
-    control(L"STATIC",
-            L"FSR: FXAA Off. MSAA optional (experimental). Native AA = Full; upscaling = below "
-            L"Full.\r\n"
-            L"Choose a preset with X-Plane closed. See Sim setup for the full checklist.",
-            0, 30, 767, 610, 44);
+    control(L"BUTTON", L"Sim setup...", BS_PUSHBUTTON | WS_TABSTOP, 415, 719, 200, 34, 33);
+    motionSetupNote = control(L"STATIC", motionSetupText(), 0, 30, 811, 610, 44);
     control(L"STATIC", L"Live simulator status", 0, 675, 96, 280, 24);
     helpIcon(hwnd, 209, 963, 91);
     injectionBanner = control(L"STATIC", L"", SS_CENTER, 675, 129, 313, 72);
@@ -284,7 +310,7 @@ static void createMainControls(HWND hwnd) {
     control(L"BUTTON", L"Ghosting check", BS_PUSHBUTTON | WS_TABSTOP, 675, 699, 150, 34, 37);
     control(L"BUTTON", L"View comparison", BS_PUSHBUTTON | WS_TABSTOP, 838, 699, 150, 34, 38);
     control(L"BUTTON", L"Open renderer log", BS_PUSHBUTTON | WS_TABSTOP, 675, 741, 313, 34, 31);
-    control(L"BUTTON", L"Remove camera plugin", BS_PUSHBUTTON | WS_TABSTOP, 30, 719, 585, 34, 32);
+    control(L"BUTTON", L"Remove camera plugin", BS_PUSHBUTTON | WS_TABSTOP, 30, 763, 585, 34, 32);
     control(L"STATIC", L"GPU checks do not validate live-flight quality.", 0, 675, 787, 320, 24);
     controlsReady = true;
     NOTIFYICONDATAW tray{sizeof(tray)};
@@ -398,6 +424,14 @@ static LRESULT CALLBACK procedure(HWND hwnd, UINT message, WPARAM w, LPARAM l) {
                             << (selected ? '1' : '0');
                     lastFGSelection = selected;
                     saveChoices();
+                }
+                break;
+            case 45:
+                if (event == CBN_SELCHANGE) {
+                    saveChoices();
+                    if (running())
+                        SetWindowTextW(statusBox,
+                                       L"Motion choice saved; restart X-Plane to apply it.");
                 }
                 break;
             case 42:

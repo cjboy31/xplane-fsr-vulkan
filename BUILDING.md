@@ -1,3 +1,23 @@
+# Native-motion experimental branch
+
+Build.ps1 also compiles/embeds the native renderer input and projection-history
+kernels. Run Test-NativeMotion.ps1 with Compiler, Glslang, VulkanHeaders and
+FsrSdk after building. It exercises production hook/capture code for 2D and
+array inputs, compares GPU vectors to separately projected points, and checks
+interface tampering, bad input and resource/state handling. The layer test accepts
+an optional final `native-2d` or `native-array` argument (after mode, sample count
+and resolve kind) to exercise the full loader -> SSR capture -> FSR path.
+Run the existing tests too: Camera-derived is still the default.
+
+This branch packages version 0.5.9-experimental.1, with a distinct per-user setup
+identity and directory. Preserve licenses/xplane-fsr3-MIT.txt in source and
+binary packages; native_motion/shader_classify.* and native_motion.comp include
+MIT code adapted from JonathanOrr/xplane-fsr3 at the commit recorded in
+docs/NATIVE-MOTION-EXPERIMENT.md. No simulator shaders are a build dependency or
+part of the source/binary release. Local shader-interface inspection can remain
+inside ignored build directories.
+
+
 # Building on Windows x64
 
 Use PowerShell 7 with these dependencies installed locally:

@@ -20,8 +20,8 @@ namespace fs = std::filesystem;
 static fs::path appDirectory, simulator;
 static std::wstring launcherWindowClass;
 static HWND window{}, pathBox{}, argsBox{}, statusBox{}, toggle{}, modeBox{}, fgBox{}, ghostBox{},
-    cockpitBox{}, tintBox{};
-static HWND presetBox{}, presetNote{}, savedLabel{}, injectionBanner{};
+    cockpitBox{}, tintBox{}, motionBox{};
+static HWND presetBox{}, presetNote{}, savedLabel{}, injectionBanner{}, motionSetupNote{};
 static launcher::Preferences preferences;
 static launcher::RuntimeMonitor runtimeMonitor;
 static launcher::RuntimeState bannerState{};
@@ -181,11 +181,12 @@ static void detach() {
 struct EnvironmentScope {
     std::vector<std::pair<std::wstring, std::wstring>> values;
     EnvironmentScope() {
-        for (auto *name : {L"XPFSR24_COCKPIT_RESTORE", L"XPFSR24_GHOST_REDUCTION", L"VK_LAYER_PATH",
-                           L"VK_INSTANCE_LAYERS", L"VK_LOADER_LAYERS_ENABLE", L"VK_LOADER_DEBUG",
-                           L"DISABLE_VULKAN_OBS_CAPTURE", L"XPFSR24_FG_CONTROL", L"XPFSR24_MODE",
-                           L"XPFSR24_PROVIDER", L"XPFSR24_FG", L"XPFSR24_RUNTIME", L"XPFSR24_LOG",
-                           L"XPFSR24_STATUS", L"XPFSR24_CONTROL"}) {
+        for (auto *name :
+             {L"XPFSR24_COCKPIT_RESTORE", L"XPFSR24_GHOST_REDUCTION", L"VK_LAYER_PATH",
+              L"VK_INSTANCE_LAYERS", L"VK_LOADER_LAYERS_ENABLE", L"VK_LOADER_DEBUG",
+              L"DISABLE_VULKAN_OBS_CAPTURE", L"XPFSR24_FG_CONTROL", L"XPFSR24_MODE",
+              L"XPFSR24_PROVIDER", L"XPFSR24_MOTION", L"XPFSR24_FG", L"XPFSR24_RUNTIME",
+              L"XPFSR24_LOG", L"XPFSR24_STATUS", L"XPFSR24_CONTROL"}) {
             wchar_t value[32768]{};
             GetEnvironmentVariableW(name, value, 32768);
             values.emplace_back(name, value);
@@ -211,6 +212,16 @@ static void launch(const fs::path &root, const std::wstring &arguments, bool nat
             ensure((selected == 1 || selected == 3) ? graphics.scale == 0 : graphics.scale > 0,
                    "Choose a matching preset: Native AA needs Full scale; upscaling needs a lower "
                    "rendering scale");
+        }
+        if (SendMessageW(motionBox, CB_GETCURSEL, 0, 0) == 1 && selected > 0) {
+            ensure(graphics.msaa == 0, "Native renderer motion needs MSAA Off. Turn it Off and "
+                                       "Apply graphics, or choose Camera-derived motion.");
+            ensure(SendMessageW(fgBox, CB_GETCURSEL, 0, 0) == 0,
+                   "This native-motion experiment needs frame generation Off. Your selections have "
+                   "been kept.");
+            ensure(SendMessageW(cockpitBox, BM_GETCHECK, 0, 0) != BST_CHECKED,
+                   "Turn the cockpit-screen fix Off for this native-motion experiment, or choose "
+                   "Camera-derived motion.");
         }
         install(root);
     }
@@ -241,6 +252,9 @@ static void launch(const fs::path &root, const std::wstring &arguments, bool nat
                                              : (mode == 2 || mode == 4) ? L"upscale"
                                                                         : L"observe");
     SetEnvironmentVariableW(L"XPFSR24_PROVIDER", mode >= 3 ? L"4.1.2" : L"3.1.6");
+    SetEnvironmentVariableW(
+        L"XPFSR24_MOTION",
+        !native && SendMessageW(motionBox, CB_GETCURSEL, 0, 0) == 1 ? L"native-renderer" : nullptr);
     for (auto *name : {L"renderer.log", L"renderer-status.txt"}) {
         auto file = appDirectory / L"logs" / name;
         if (fs::exists(file))
@@ -569,10 +583,10 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, LPWSTR, int show) {
     c.hIcon = LoadIconW(instance, MAKEINTRESOURCEW(101));
     c.hbrBackground = reinterpret_cast<HBRUSH>(COLOR_WINDOW + 1);
     RegisterClassW(&c);
-    auto hwnd =
-        CreateWindowExW(0, c.lpszClassName, L"FSR 3/4 + Frame Gen for X-Plane - Community Preview",
-                        WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX, CW_USEDEFAULT,
-                        CW_USEDEFAULT, 1040, 860, nullptr, nullptr, instance, nullptr);
+    auto hwnd = CreateWindowExW(
+        0, c.lpszClassName, L"FSR 3/4 + Frame Gen for X-Plane - Native Motion EXPERIMENTAL",
+        WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX, CW_USEDEFAULT, CW_USEDEFAULT,
+        1040, 910, nullptr, nullptr, instance, nullptr);
     ShowWindow(hwnd, show);
     UpdateWindow(hwnd);
     MSG message{};

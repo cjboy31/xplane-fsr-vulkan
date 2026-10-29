@@ -34,6 +34,13 @@ int wmain(int argc, wchar_t **argv) {
         require(!select(feed, "0.6.0-alpha", true), "Downgrade rejected");
         require(!select("[" + release("v0.5.4-alpha") + "]", "0.5.4-alpha", true),
                 "Equal version rejected");
+        auto mixed = "[" + release("v0.5.8-alpha") + "," + release("v0.5.9-experimental.1") + "," +
+                     release("v0.5.10-alpha") + "," + release("v0.5.9-experimental.2") + "]";
+        require(select(mixed, "0.5.7-alpha", true).tag == "v0.5.10-alpha",
+                "Regular preview must never select experimental builds");
+        require(select(mixed, "0.5.8-experimental.1", true).tag == "v0.5.9-experimental.2",
+                "Experimental channel must never select regular builds");
+        require(!select(mixed, "0.5.8-experimental.1", false), "Experimental preview opt-out");
         auto legacy = release("v0.5.5-alpha", true, "XPlane-FSR-Ghosting-Fix-");
         auto branded = release("v0.5.5-alpha");
         auto legacyJson = Parser(legacy).parse();

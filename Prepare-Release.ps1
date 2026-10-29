@@ -26,6 +26,7 @@ $changelog = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'CHANGELOG.md') -
 $entry = [regex]::Match($changelog, ('(?ms)^##\s+'+[regex]::Escape($Version)+'\r?\n(.*?)(?=^##\s|\z)'))
 if (-not $entry.Success) { throw 'Add this version to CHANGELOG.md before preparing a release' }
 $changes = $entry.Groups[1].Value.Trim()
+$experimental = $Version -match '-experimental\.'
 $output = Join-Path (Join-Path $PSScriptRoot 'dist') $Version
 if (Test-Path -LiteralPath $output) { throw 'Release staging already exists; keep versioned artifacts intact' }
 New-Item -ItemType Directory -Path $output -Force | Out-Null
@@ -86,4 +87,12 @@ data are excluded. Keep all supplied license notices with the installation.
 Installer SHA-256: $hash
 "@
 [IO.File]::WriteAllText((Join-Path $output 'RELEASE-NOTES.md'), $notes, $utf8)
+if($experimental){
+    $notes=$notes.Replace('Experimental Windows Vulkan community preview.','Separate Native Motion Experimental Windows Vulkan prerelease from branch experimental/native-motion-vectors. Camera-derived remains the default; the new renderer-native source is opt-in and has not been validated in a live flight.')
+    $notes=$notes.Replace('existing app folder; saved launcher choices are preserved.','existing EXPERIMENTAL app folder; saved choices are preserved. Install the first experimental build in its separate default folder or an empty folder. This installer refuses to overwrite a regular installation.')
+    $notes=$notes.Replace('built-in Updates can select Check now. Users on older versions install this','an experimental installation can select Updates > Check now for later experimental builds. Regular updaters do not offer this channel. Download/install this')
+    $notes=$notes.Replace('it installs the newly named app. Ghosting Fix remains the cockpit feature''s name.','it installs this same isolated experimental app. Regular 0.5.4 clients ignore the experimental version suffix. Ghosting Fix remains the cockpit feature''s name.')
+    $notes=$notes.Replace('### Validation and limits',"### Testing the second motion option`n`nSelect Native renderer motion - EXPERIMENTAL under Motion. Turn MSAA, FXAA, frame generation and cockpit-screen restoration Off; Apply graphics and restart X-Plane. Check FSR ACTIVE and the SSR native-motion status. Unsupported or missing same-buffer SSR inputs leave native rendering active with an explanation; no silent fallback to camera vectors. Return to Camera-derived and restart for the existing path.`n`n### Validation and limits")
+    [IO.File]::WriteAllText((Join-Path $output 'RELEASE-NOTES.md'), $notes, $utf8)
+}
 Get-ChildItem -LiteralPath $output -File | Select-Object Name,Length

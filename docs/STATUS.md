@@ -1,4 +1,14 @@
-# 0.5.8 motion optimization
+# 0.5.9-experimental.1: separate native renderer option
+
+This branch adds an opt-in SSR-native motion implementation, separate from the
+unchanged default camera-derived path. The experimental installer and updater
+channel are isolated from regular releases. Read
+[setup, implementation and limits](NATIVE-MOTION-EXPERIMENT.md). Active native
+capture requires MSAA/FG/cockpit-screen restoration Off and matching same-buffer
+SSR inputs. A bypass leaves X-Plane's native rendering active with an explanation.
+GPU fixtures do not establish live-flight quality; flight validation is pending.
+
+## 0.5.8 motion optimization (regular path)
 
 Motion packing and camera algebra are optimized without changing camera/control
 ownership or ABI 4. Projection inverses are cached; affine view/body inversion
@@ -9,7 +19,8 @@ reconstruction and per-pixel square roots. Invalid eye transforms reject history
 See [motion-vector research and measurements](MOTION-VECTORS.md). The current
 source is still camera-derived with a distance-based cockpit heuristic, not
 renderer-native per-object motion. Native SSR inputs are a researched future
-backend; they are not integrated or claimed active in this release.
+backend in that release. This separate experimental branch now implements the
+limited opt-in backend described above; it does not replace the default path.
 
 ## 0.5.7 custom graphics and MSAA preview
 

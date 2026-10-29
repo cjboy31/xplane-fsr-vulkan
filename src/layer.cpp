@@ -12,6 +12,8 @@
 #include "shared.hpp"
 #include "temporal_spv.hpp"
 #include "temporal_msaa_spv.hpp"
+#include "native_motion_spv.hpp"
+#include "native_motion/shader_classify.cpp"
 #include <algorithm>
 #include <array>
 #include <bcrypt.h>
@@ -75,6 +77,7 @@ struct Instance {
 struct Descriptor {
     VkDescriptorType type{};
     VkDescriptorImageInfo image{};
+    VkDescriptorBufferInfo buffer{};
 };
 using Bindings = std::map<std::pair<uint32_t, uint32_t>, Descriptor>;
 struct Template {
@@ -118,6 +121,7 @@ struct GraphicsViewport {
     std::vector<VkViewport> viewports;
     bool known{}, modified{};
 };
+struct NativeMotionFrame;
 struct FrameResources;
 struct DepthProbe;
 struct DepthCapture;
@@ -138,7 +142,8 @@ struct Command {
     bool activeCaptureEligible{};
     std::map<VkImage, std::shared_ptr<DepthCapture>> capturedDepths;
     uint64_t fgFrame{}, sceneFrame{};
-    bool oneTime{}, rendering{}, secondary{}, processed{}, failed{}, submitted{}, dynamicOffsets{};
+    bool oneTime{}, rendering{}, secondary{}, processed{}, failed{}, submitted{}, dynamicOffsets{},
+        nativeHistoryWritten{};
     uint64_t epoch{};
     struct Push {
         VkPipelineLayout layout{};
@@ -155,6 +160,7 @@ struct Command {
     std::vector<VkCommandBuffer> executedChildren;
     float appliedJitterX{}, appliedJitterY{};
     std::unique_ptr<FrameResources> resources;
+    std::unique_ptr<NativeMotionFrame> nativeMotion;
 };
 struct Device {
     const uint64_t dispatchIdentity = xpfsr::nextDispatchIdentity();
@@ -204,6 +210,16 @@ struct Device {
     VkPipelineLayout packPipelineLayout{};
     VkPipeline packPipeline{}, packMsaaPipeline{};
     VkSampler sampler{};
+    bool nativeMotionRequested{}, nativeHistorySubmitted{};
+    uint64_t nativeMotionCaptures{};
+    std::map<VkShaderModule, ShaderRole> nativeMotionShaders;
+    std::map<VkPipeline, ShaderRole> nativeMotionPipelines;
+    std::map<std::vector<uint8_t>, ShaderRole> nativeMotionIdentifiers;
+    VkDescriptorSetLayout nativeMotionLayout{};
+    VkPipelineLayout nativeMotionPipelineLayout{};
+    VkPipeline nativeMotion2D{}, nativeMotionArray{}, nativeMotionHistoryPipeline{};
+    VkBuffer nativeMotionHistory{};
+    VkDeviceMemory nativeMotionHistoryMemory{};
     Mode mode = Mode::Observe;
     std::array<uint32_t, 6> activeContext{};
     uint64_t jitterFrame{};
@@ -578,6 +594,8 @@ void submittedProbes(Device &d, VkQueue queue, const std::vector<VkCommandBuffer
         pending.insert(pending.end(), command.executedChildren.begin(),
                        command.executedChildren.end());
         command.submitted = true;
+        if (command.nativeHistoryWritten)
+            d.nativeHistorySubmitted = true;
         for (auto *job : command.probes)
             if (job->phase == 0) {
                 VkSubmitInfo empty{VK_STRUCTURE_TYPE_SUBMIT_INFO};
@@ -788,6 +806,14 @@ BindingUse stageUse(Device &d, const VkPipelineShaderStageCreateInfo &stage) {
 void writeDescriptors(Bindings &destination, uint32_t count, const VkWriteDescriptorSet *writes) {
     for (uint32_t i = 0; i < count; ++i) {
         auto &w = writes[i];
+        if (w.descriptorType == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER ||
+            w.descriptorType == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC) {
+            if (w.pBufferInfo)
+                for (uint32_t n = 0; n < w.descriptorCount; ++n)
+                    destination[{w.dstBinding, w.dstArrayElement + n}] = {
+                        w.descriptorType, {}, w.pBufferInfo[n]};
+            continue;
+        }
         if (!w.pImageInfo)
             continue;
         if (w.descriptorType != VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE &&
@@ -806,6 +832,17 @@ void templateDescriptors(Device &d, Bindings &destination, VkDescriptorUpdateTem
     if (it == d.templates.end())
         return;
     for (auto &entry : it->second.entries) {
+        if (entry.descriptorType == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER ||
+            entry.descriptorType == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC) {
+            for (uint32_t n = 0; n < entry.descriptorCount; ++n) {
+                VkDescriptorBufferInfo info{};
+                memcpy(&info, static_cast<const char *>(data) + entry.offset + entry.stride * n,
+                       sizeof(info));
+                destination[{entry.dstBinding, entry.dstArrayElement + n}] = {
+                    entry.descriptorType, {}, info};
+            }
+            continue;
+        }
         if (entry.descriptorType != VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE &&
             entry.descriptorType != VK_DESCRIPTOR_TYPE_STORAGE_IMAGE &&
             entry.descriptorType != VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER &&
@@ -1008,10 +1045,14 @@ void setupFrame(Device &d, FrameResources &f, uint32_t rw, uint32_t rh, uint32_t
     f.nativeDepthGeneration = f.depthOwner->generation;
     f.depthLayer = nativeDepth.create.subresourceRange.baseArrayLayer;
     f.color.create(d, rw, rh, colorFormat);
-    f.depth.create(d, rw, rh, VK_FORMAT_R32_SFLOAT);
-    f.motion.create(d, rw, rh, VK_FORMAT_R16G16_SFLOAT);
-    f.reactive.create(d, rw, rh, VK_FORMAT_R8_UNORM);
+    if (!d.nativeMotionRequested) {
+        f.depth.create(d, rw, rh, VK_FORMAT_R32_SFLOAT);
+        f.motion.create(d, rw, rh, VK_FORMAT_R16G16_SFLOAT);
+        f.reactive.create(d, rw, rh, VK_FORMAT_R8_UNORM);
+    }
     f.output.create(d, ow, oh, outputFormat);
+    if (d.nativeMotionRequested)
+        return;
     auto view = nativeDepth.create;
     view.pNext = nullptr;
     view.viewType = VK_IMAGE_VIEW_TYPE_2D_ARRAY;
@@ -1079,6 +1120,7 @@ void setupFrame(Device &d, FrameResources &f, uint32_t rw, uint32_t rh, uint32_t
     }
     d.fn<PFN_vkUpdateDescriptorSets>("vkUpdateDescriptorSets")(d.handle, 5, writes, 0, nullptr);
 }
+#include "native_motion.inc"
 void restoreCockpit(Device &d, VkCommandBuffer cb, FrameResources &f, uint32_t rw, uint32_t rh,
                     uint32_t ow, uint32_t oh, float jitterX, float jitterY, float ySign) {
     d.status.cockpitActive = 0;
@@ -1359,6 +1401,17 @@ bool replace(Device &d, VkCommandBuffer cb, Command &command) {
         d.bypass("Scene depth layout is unknown");
         return false;
     }
+    NativeMotionFrame *native = nullptr;
+    if (d.nativeMotionRequested) {
+        auto *n = command.nativeMotion.get();
+        if (!n || !n->captured || n->frame != d.camera.frame || n->width != rw || n->height != rh ||
+            n->source != depth.image || n->generation != d.images.at(depth.image).generation) {
+            d.bypass("Native renderer motion unavailable: needs matching SSR in this command "
+                     "buffer, MSAA/FG/screen fix Off");
+            return false;
+        }
+        native = n;
+    }
     LARGE_INTEGER now{}, frequency{};
     QueryPerformanceCounter(&now);
     QueryPerformanceFrequency(&frequency);
@@ -1423,7 +1476,8 @@ bool replace(Device &d, VkCommandBuffer cb, Command &command) {
         uniform.planes[0] = float(d.camera.reverseZ);
         uniform.planes[1] = float(d.camera.bodyValid);
         uniform.planes[2] = d.reduceGhosting ? 1.f : 0.f;
-        memcpy(f.mapped, &uniform, sizeof(uniform));
+        if (f.mapped)
+            memcpy(f.mapped, &uniform, sizeof(uniform));
         recordingStarted = true;
         // Global dependency also orders the shared FSR history against prior work on this queue.
         VkMemoryBarrier memory{VK_STRUCTURE_TYPE_MEMORY_BARRIER};
@@ -1457,32 +1511,34 @@ bool replace(Device &d, VkCommandBuffer cb, Command &command) {
         barrier(d, cb, inView->second.create.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
                 input->second.image.imageLayout, inputRange);
         transition(d, cb, f.color, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-        barrier(d, cb, captured->image, depthLayout, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-                depthRange);
-        for (auto *target : {&f.depth, &f.motion, &f.reactive})
-            transition(d, cb, *target, VK_IMAGE_LAYOUT_GENERAL);
-        auto bindPipeline = d.fn<PFN_vkCmdBindPipeline>("vkCmdBindPipeline");
-        auto bindSets = d.fn<PFN_vkCmdBindDescriptorSets>("vkCmdBindDescriptorSets");
-        bindPipeline(cb, VK_PIPELINE_BIND_POINT_COMPUTE,
-                     d.images.at(depth.image).create.samples == VK_SAMPLE_COUNT_1_BIT
-                         ? d.packPipeline
-                         : d.packMsaaPipeline);
-        bindSets(cb, VK_PIPELINE_BIND_POINT_COMPUTE, d.packPipelineLayout, 0, 1, &f.set, 0,
-                 nullptr);
-        d.fn<PFN_vkCmdDispatch>("vkCmdDispatch")(cb, (rw + 7) / 8, (rh + 7) / 8, 1);
-        for (auto *target : {&f.depth, &f.motion, &f.reactive})
-            transition(d, cb, *target, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-        barrier(d, cb, captured->image, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, depthLayout,
-                depthRange);
+        if (!native) {
+            barrier(d, cb, captured->image, depthLayout, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                    depthRange);
+            for (auto *target : {&f.depth, &f.motion, &f.reactive})
+                transition(d, cb, *target, VK_IMAGE_LAYOUT_GENERAL);
+            auto bindPipeline = d.fn<PFN_vkCmdBindPipeline>("vkCmdBindPipeline");
+            auto bindSets = d.fn<PFN_vkCmdBindDescriptorSets>("vkCmdBindDescriptorSets");
+            bindPipeline(cb, VK_PIPELINE_BIND_POINT_COMPUTE,
+                         d.images.at(depth.image).create.samples == VK_SAMPLE_COUNT_1_BIT
+                             ? d.packPipeline
+                             : d.packMsaaPipeline);
+            bindSets(cb, VK_PIPELINE_BIND_POINT_COMPUTE, d.packPipelineLayout, 0, 1, &f.set, 0,
+                     nullptr);
+            d.fn<PFN_vkCmdDispatch>("vkCmdDispatch")(cb, (rw + 7) / 8, (rh + 7) / 8, 1);
+            for (auto *target : {&f.depth, &f.motion, &f.reactive})
+                transition(d, cb, *target, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+            barrier(d, cb, captured->image, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, depthLayout,
+                    depthRange);
+        }
         transition(d, cb, f.output, VK_IMAGE_LAYOUT_GENERAL);
         xpfsr::Frame frame{};
         frame.commands = cb;
         frame.color = f.color.value;
-        frame.depth = f.depth.value;
-        frame.motion = f.motion.value;
-        frame.reactive = f.reactive.value;
+        frame.depth = native ? native->depth.value : f.depth.value;
+        frame.motion = native ? native->motion.value : f.motion.value;
+        frame.reactive = native ? native->reactive.value : f.reactive.value;
         if (d.reduceGhosting)
-            frame.composition = f.reactive.value;
+            frame.composition = frame.reactive;
         frame.output = f.output.value;
         frame.jitterX = depth.jitterX;
         frame.jitterY = depth.jitterY;
@@ -1494,7 +1550,7 @@ bool replace(Device &d, VkCommandBuffer cb, Command &command) {
         frame.sequence = d.camera.frame;
         frame.reset = d.camera.reset || !d.pathReady || d.lastDepth != depth.image ||
                       d.lastDepthGeneration != d.images.at(depth.image).generation;
-        if (!findProbe(d, depth.image)) {
+        if (!native && !findProbe(d, depth.image)) {
             if (d.probes.size() >= 16)
                 throw std::runtime_error("Depth probe resize limit reached; restart X-Plane");
             auto &probe = createProbe(d, depth.image);
@@ -1543,43 +1599,7 @@ bool replace(Device &d, VkCommandBuffer cb, Command &command) {
             outView->second.create.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy);
         barrier(d, cb, outView->second.create.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
                 VK_IMAGE_LAYOUT_GENERAL, outputRange);
-        bindPipeline(cb, VK_PIPELINE_BIND_POINT_COMPUTE, command.pipeline);
-        // Native FSR uses set 0. Rebind only the tracked original set; subsequent app
-        // dispatches must rebind their own resources normally after this boundary.
-        if (command.sets.count(0) && command.layout) {
-            auto &values = command.offsets[0];
-            bindSets(cb, VK_PIPELINE_BIND_POINT_COMPUTE, command.layout, 0, 1, &command.sets[0],
-                     uint32_t(values.size()), values.data());
-        }
-        if (command.pushed.count(0) && command.layout) {
-            std::vector<VkWriteDescriptorSet> writes;
-            std::vector<VkDescriptorImageInfo> infos;
-            auto &saved = command.pushed[0];
-            infos.reserve(saved.size());
-            writes.reserve(saved.size());
-            for (auto &[binding, value] : saved) {
-                infos.push_back(value.image);
-                VkWriteDescriptorSet w{VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
-                w.dstBinding = binding.first;
-                w.dstArrayElement = binding.second;
-                w.descriptorCount = 1;
-                w.descriptorType = value.type;
-                w.pImageInfo = &infos.back();
-                writes.push_back(w);
-            }
-            auto push = d.fn<PFN_vkCmdPushDescriptorSetKHR>("vkCmdPushDescriptorSetKHR");
-            if (!push)
-                push = reinterpret_cast<PFN_vkCmdPushDescriptorSetKHR>(
-                    d.next(d.handle, "vkCmdPushDescriptorSet"));
-            if (push)
-                push(cb, VK_PIPELINE_BIND_POINT_COMPUTE, command.layout, 0, uint32_t(writes.size()),
-                     writes.data());
-        }
-        for (auto &saved : command.constants)
-            if (saved.stages & VK_SHADER_STAGE_COMPUTE_BIT)
-                d.fn<PFN_vkCmdPushConstants>("vkCmdPushConstants")(
-                    cb, saved.layout, saved.stages, saved.offset, uint32_t(saved.data.size()),
-                    saved.data.data());
+        restoreCompute(d, cb, command);
         command.processed = true;
         command.sceneFrame = d.camera.frame;
         d.pathReady = true;
@@ -1605,7 +1625,8 @@ bool replace(Device &d, VkCommandBuffer cb, Command &command) {
                 (unsigned long long)d.multiViewportCalls, d.camera.bodyValid, d.camera.internal,
                 frame.reset, d.camera.nearPlane, d.camera.farPlane, d.camera.reverseZ,
                 d.camera.infiniteZ);
-        d.publish(d.mode == Mode::NativeAA
+        d.publish(native ? "FSR recorded; EXPERIMENTAL native renderer motion (SSR)"
+                  : d.mode == Mode::NativeAA
                       ? "Native AA recorded; experimental camera-derived motion"
                       : "Temporal upscaling recorded; experimental camera-derived motion");
         return true;
@@ -1907,6 +1928,12 @@ static VKAPI_ATTR VkResult VKAPI_CALL L_CreateDevice(VkPhysicalDevice physical,
     state->instance = instance;
     state->featuresReady = cloned;
     state->mode = selectedMode();
+    wchar_t motionSetting[32]{};
+    GetEnvironmentVariableW(L"XPFSR24_MOTION", motionSetting, 32);
+    state->nativeMotionRequested = !wcscmp(motionSetting, L"native-renderer");
+    log("Motion source selected: %s", state->nativeMotionRequested
+                                          ? "EXPERIMENTAL native renderer SSR"
+                                          : "camera-derived (default)");
     wchar_t cockpitSetting[8]{};
     if (GetEnvironmentVariableW(L"XPFSR24_COCKPIT_RESTORE", cockpitSetting, 8)) {
         state->cockpitRequested = wcscmp(cockpitSetting, L"0") != 0;
@@ -1994,6 +2021,19 @@ static VKAPI_ATTR void VKAPI_CALL L_DestroyDevice(VkDevice device,
     d->runtime.reset();
     log("Quality preview: native function lookup misses=%llu",
         (unsigned long long)d->dispatchLookups.load());
+    for (auto p : {d->nativeMotion2D, d->nativeMotionArray, d->nativeMotionHistoryPipeline})
+        if (p)
+            d->fn<PFN_vkDestroyPipeline>("vkDestroyPipeline")(device, p, nullptr);
+    if (d->nativeMotionPipelineLayout)
+        d->fn<PFN_vkDestroyPipelineLayout>("vkDestroyPipelineLayout")(
+            device, d->nativeMotionPipelineLayout, nullptr);
+    if (d->nativeMotionLayout)
+        d->fn<PFN_vkDestroyDescriptorSetLayout>("vkDestroyDescriptorSetLayout")(
+            device, d->nativeMotionLayout, nullptr);
+    if (d->nativeMotionHistory)
+        d->fn<PFN_vkDestroyBuffer>("vkDestroyBuffer")(device, d->nativeMotionHistory, nullptr);
+    if (d->nativeMotionHistoryMemory)
+        d->fn<PFN_vkFreeMemory>("vkFreeMemory")(device, d->nativeMotionHistoryMemory, nullptr);
     if (d->packPipeline)
         d->fn<PFN_vkDestroyPipeline>("vkDestroyPipeline")(device, d->packPipeline, nullptr);
     if (d->packMsaaPipeline)
@@ -2108,6 +2148,13 @@ static VKAPI_ATTR VkResult VKAPI_CALL L_CreateShaderModule(VkDevice device,
         uint32_t fsr = fsrShader(c);
         std::lock_guard<std::recursive_mutex> l(d->lock);
         d->shaders[*out] = fsr;
+        if (d->nativeMotionRequested) {
+            auto role = classifyShader(c->pCode, c->codeSize / 4);
+            d->nativeMotionShaders[*out] = role;
+            if (role == ShaderRole::SsrScene2D || role == ShaderRole::SsrSceneArray ||
+                role == ShaderRole::SsrSceneMsaa)
+                log("Native motion: recognized SSR shader role=%s", roleName(role));
+        }
         d->shaderUse[*out] = reflectBindings(c);
         if (fsr)
             log("Recognized native FSR compute shader (%zu bytes)", c->codeSize);
@@ -2125,6 +2172,7 @@ static VKAPI_ATTR void VKAPI_CALL L_DestroyShaderModule(VkDevice device, VkShade
     {
         std::lock_guard<std::recursive_mutex> l(d->lock);
         d->shaders.erase(shader);
+        d->nativeMotionShaders.erase(shader);
         d->shaderUse.erase(shader);
     }
     d->fn<PFN_vkDestroyShaderModule>("vkDestroyShaderModule")(device, shader, a);
@@ -2144,6 +2192,25 @@ static VKAPI_ATTR VkResult VKAPI_CALL L_CreateComputePipelines(
     for (uint32_t i = 0; i < count; ++i)
         if (out[i]) {
             uint32_t known = d->shaders[c[i].stage.module];
+            ShaderRole motion = ShaderRole::None;
+            if (d->nativeMotionRequested) {
+                motion = d->nativeMotionShaders[c[i].stage.module];
+                for (auto *p = static_cast<const VkBaseInStructure *>(c[i].stage.pNext); p;
+                     p = p->pNext) {
+                    if (p->sType == VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO) {
+                        auto *info = reinterpret_cast<const VkShaderModuleCreateInfo *>(p);
+                        motion = classifyShader(info->pCode, info->codeSize / 4);
+                    }
+                    if (p->sType ==
+                        VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_MODULE_IDENTIFIER_CREATE_INFO_EXT) {
+                        auto *id = reinterpret_cast<
+                            const VkPipelineShaderStageModuleIdentifierCreateInfoEXT *>(p);
+                        motion = d->nativeMotionIdentifiers[{id->pIdentifier,
+                                                             id->pIdentifier + id->identifierSize}];
+                    }
+                }
+            }
+            d->nativeMotionPipelines[out[i]] = motion;
             for (auto *p = static_cast<const VkBaseInStructure *>(c[i].stage.pNext); p;
                  p = p->pNext) {
                 if (p->sType == VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO)
@@ -2183,6 +2250,8 @@ static VKAPI_ATTR void VKAPI_CALL L_GetShaderModuleIdentifierEXT(VkDevice device
             d->shaders[shader];
         d->identifierUse[{out->identifier, out->identifier + out->identifierSize}] =
             d->shaderUse[shader];
+        d->nativeMotionIdentifiers[{out->identifier, out->identifier + out->identifierSize}] =
+            d->nativeMotionShaders[shader];
     }
 }
 static VKAPI_ATTR void VKAPI_CALL L_GetShaderModuleCreateInfoIdentifierEXT(
@@ -2202,6 +2271,9 @@ static VKAPI_ATTR void VKAPI_CALL L_GetShaderModuleCreateInfoIdentifierEXT(
             fsrShader(c);
         d->identifierUse[{out->identifier, out->identifier + out->identifierSize}] =
             reflectBindings(c);
+        if (d->nativeMotionRequested)
+            d->nativeMotionIdentifiers[{out->identifier, out->identifier + out->identifierSize}] =
+                classifyShader(c->pCode, c->codeSize / 4);
     }
 }
 static VKAPI_ATTR VkResult VKAPI_CALL L_CreateGraphicsPipelines(
@@ -2277,6 +2349,7 @@ static VKAPI_ATTR void VKAPI_CALL L_DestroyPipeline(VkDevice device, VkPipeline 
     {
         std::lock_guard<std::recursive_mutex> l(d->lock);
         d->pipelines.erase(pipeline);
+        d->nativeMotionPipelines.erase(pipeline);
         d->graphicsViewports.erase(pipeline);
         d->pipelineUse.erase(pipeline);
     }
@@ -2375,6 +2448,9 @@ static VKAPI_ATTR VkResult VKAPI_CALL L_BeginCommandBuffer(VkCommandBuffer cb,
         auto secondary = old.secondary;
         auto resources = std::move(old.resources);
         auto captures = std::move(old.capturedDepths);
+        auto native = std::move(old.nativeMotion);
+        if (native)
+            native->captured = false;
         if (!old.submitted) {
             resources.reset();
             captures.clear();
@@ -2403,6 +2479,7 @@ static VKAPI_ATTR VkResult VKAPI_CALL L_BeginCommandBuffer(VkCommandBuffer cb,
                                         inherited->colorAttachmentCount > 0;
                 }
         old.resources = std::move(resources);
+        old.nativeMotion = std::move(native);
         old.capturedDepths = std::move(captures);
     }
     return result;
@@ -3465,8 +3542,13 @@ static VKAPI_ATTR void VKAPI_CALL L_CmdDispatch(VkCommandBuffer cb, uint32_t x, 
         trackDispatch(*d, d->commands[cb]);
         handled = replace(*d, cb, d->commands[cb]);
     }
-    if (!handled)
+    if (!handled) {
         d->fn<PFN_vkCmdDispatch>("vkCmdDispatch")(cb, x, y, z);
+        if (d->nativeMotionRequested && z == 1) {
+            std::lock_guard<std::recursive_mutex> l(d->lock);
+            captureNativeMotion(*d, cb, d->commands[cb]);
+        }
+    }
 }
 static VKAPI_ATTR void VKAPI_CALL L_CmdDispatchBase(VkCommandBuffer cb, uint32_t bx, uint32_t by,
                                                     uint32_t bz, uint32_t x, uint32_t y,
@@ -3488,6 +3570,10 @@ static VKAPI_ATTR void VKAPI_CALL L_CmdDispatchBase(VkCommandBuffer cb, uint32_t
         if (!fn)
             fn = d->fn<PFN_vkCmdDispatchBase>("vkCmdDispatchBaseKHR");
         fn(cb, bx, by, bz, x, y, z);
+        if (d->nativeMotionRequested && !bx && !by && !bz && z == 1) {
+            std::lock_guard<std::recursive_mutex> l(d->lock);
+            captureNativeMotion(*d, cb, d->commands[cb]);
+        }
     }
 }
 static VKAPI_ATTR void VKAPI_CALL L_CmdDispatchIndirect(VkCommandBuffer cb, VkBuffer buffer,

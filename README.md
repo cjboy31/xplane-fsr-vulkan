@@ -2,6 +2,13 @@
 
 # FSR 3/4 + Frame Gen for X-Plane 12
 
+**This is the separate native-motion experimental branch.**
+`0.5.9-experimental.1` adds an opt-in **Motion** selector; Camera-derived remains
+the default. Native renderer motion needs MSAA/FG/cockpit-screen restoration Off
+and can bypass on unsupported rendering paths. It has a separate installation
+and updater channel. Read the [experiment guide](docs/NATIVE-MOTION-EXPERIMENT.md)
+before testing. The regular 0.5.8-alpha release remains available.
+
 An experimental Windows Vulkan integration for AMD FSR Native AA, upscaling and
 frame generation, with a new current-frame cockpit-screen compositor for the
 default Cirrus SR22. Original project code and artwork are MIT licensed.

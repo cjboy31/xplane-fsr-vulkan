@@ -26,7 +26,7 @@ static HWND updatesButton{}, updateWindow{}, updateText{}, autoCheckBox{}, previ
 static bool autoCheckUpdates{true}, previewUpdates{true};
 static bool ownedInstallation() {
     return launcher::readSetting(appDirectory / L"XPFSR24-Installation.ini", L"Installation",
-                                 L"Product") == L"XPFSR24-community-alpha";
+                                 L"Product") == L"XPFSR24-native-motion-experimental";
 }
 static void refreshUpdateUI() {
     auto j = updateJob;
@@ -254,7 +254,7 @@ static void showUpdates() {
     ensure(updateWindow != nullptr, "Could not open application updates");
     autoCheckBox = control(L"BUTTON", L"Automatically check for updates when the app opens",
                            BS_AUTOCHECKBOX | WS_TABSTOP, 20, 20, 645, 28, 150, updateWindow);
-    previewCheckBox = control(L"BUTTON", L"Include alpha / beta / release-candidate previews",
+    previewCheckBox = control(L"BUTTON", L"Include native-motion experimental prereleases",
                               BS_AUTOCHECKBOX | WS_TABSTOP, 20, 54, 645, 28, 151, updateWindow);
     SendMessageW(autoCheckBox, BM_SETCHECK, autoCheckUpdates ? BST_CHECKED : BST_UNCHECKED, 0);
     SendMessageW(previewCheckBox, BM_SETCHECK, previewUpdates ? BST_CHECKED : BST_UNCHECKED, 0);

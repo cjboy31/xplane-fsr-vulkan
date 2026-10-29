@@ -1,5 +1,13 @@
 FSR for X-Plane experimental alpha
 
+Native renderer motion experiment:
+  src/native_motion/shader_classify.cpp, shader_classify.h and the reconstruction
+  in src/native_motion.comp adapt MIT code from JonathanOrr/xplane-fsr3,
+  commit fa51577c9bc2c3477e64dfdd358796aebb9ca45b.
+  Copyright (c) 2026 JonathanOrr. See xplane-fsr3-MIT.txt for the full preserved
+  notice and license. Windows capture/lifetime integration is original code.
+  No Laminar shader code or shader bytecode is redistributed.
+
 Original launcher, plugin, Vulkan layer, adapter and test source: MIT license
 in the package's LICENSE file. This license does not replace the terms for
 third-party components below.

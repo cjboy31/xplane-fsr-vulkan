@@ -2,12 +2,12 @@
 Unicode true
 RequestExecutionLevel user
 SetCompressor zlib
-Name "FSR 3/4 + Frame Gen for X-Plane 12 (Experimental)"
+Name "FSR 3/4 + Frame Gen for X-Plane 12 - Native Motion Experimental"
 OutFile "${PACKAGE}\XPlane-FSR24-Setup.exe"
-InstallDir "$LOCALAPPDATA\Programs\XPlaneFSR24"
+InstallDir "$LOCALAPPDATA\Programs\XPlaneFSR24-NativeMotion-Experimental"
 BrandingText "Community graphics preview - SDK 2.4.0"
 VIProductVersion "${WINDOWS_VERSION}"
-VIAddVersionKey /LANG=1033 "ProductName" "FSR 3/4 + Frame Gen for X-Plane 12 (Experimental)"
+VIAddVersionKey /LANG=1033 "ProductName" "FSR 3/4 + Frame Gen for X-Plane 12 - Native Motion Experimental"
 VIAddVersionKey /LANG=1033 "FileDescription" "Per-user setup for the experimental FSR mod"
 VIAddVersionKey /LANG=1033 "FileVersion" "${PACKAGE_VERSION}"
 VIAddVersionKey /LANG=1033 "LegalCopyright" "2026 XPlane FSR24 prototype contributors; NSIS Contributors"
@@ -33,7 +33,7 @@ Var InstallLock
 Var ParentProcess
 
 !define MUI_ABORTWARNING
-!define MUI_WELCOMEPAGE_TITLE "FSR 3/4 + Frame Gen for X-Plane 12"
+!define MUI_WELCOMEPAGE_TITLE "FSR 3/4 + Frame Gen - Native Motion Experimental"
 !define MUI_WELCOMEPAGE_TEXT "Install the experimental Native AA, upscaling and optional frame-generation launcher.$\r$\n$\r$\nClose X-Plane and the FSR launcher before continuing. This preview can produce visual artifacts and is not a production-ready graphics upgrade.$\r$\n$\r$\nSetup installs for your Windows account. The camera plugin is installed by the launcher on first use."
 !insertmacro MUI_PAGE_WELCOME
 Page custom SimulatorPage SimulatorLeave
@@ -76,7 +76,7 @@ Function .onInit
     StrCpy $AutoUpdate 1
     ; /D= is parsed by NSIS before .onInit. Never guess an update target.
     ReadINIStr $0 "$INSTDIR\XPFSR24-Installation.ini" "Installation" "Product"
-    ${If} $0 != "XPFSR24-community-alpha"
+    ${If} $0 != "XPFSR24-native-motion-experimental"
       SetErrorLevel 5
       Quit
     ${EndIf}
@@ -97,7 +97,7 @@ Function .onInit
     ${EndIf}
   ${EndIf}
   ReadINIStr $0 "$INSTDIR\XPFSR24-Installation.ini" "Installation" "Product"
-  ${If} $0 == "XPFSR24-community-alpha"
+  ${If} $0 == "XPFSR24-native-motion-experimental"
     ReadINIStr $DesktopWanted "$INSTDIR\XPFSR24-Installation.ini" "Installation" "DesktopShortcut"
   ${EndIf}
   ClearErrors
@@ -172,7 +172,7 @@ Function ValidateDirectory
   ; Updates are allowed only in a folder bearing this installer's marker.
   IfFileExists "$INSTDIR\XPFSR24-Installation.ini" 0 checkEmpty
   ReadINIStr $0 "$INSTDIR\XPFSR24-Installation.ini" "Installation" "Product"
-  ${If} $0 == "XPFSR24-community-alpha"
+  ${If} $0 == "XPFSR24-native-motion-experimental"
     Return
   ${EndIf}
   checkEmpty:
@@ -235,35 +235,35 @@ Section "Application"
   ${If} $XPlaneDir != ""
     WriteINIStr "$INSTDIR\settings.ini" "Application" "Simulator" "$XPlaneDir"
   ${EndIf}
-  WriteINIStr "$INSTDIR\XPFSR24-Installation.ini" "Installation" "Product" "XPFSR24-community-alpha"
+  WriteINIStr "$INSTDIR\XPFSR24-Installation.ini" "Installation" "Product" "XPFSR24-native-motion-experimental"
   WriteINIStr "$INSTDIR\XPFSR24-Installation.ini" "Installation" "Version" "${PACKAGE_VERSION}"
   WriteINIStr "$INSTDIR\XPFSR24-Installation.ini" "Installation" "TestMode" "$TestMode"
   WriteINIStr "$INSTDIR\XPFSR24-Installation.ini" "Installation" "DesktopShortcut" "$DesktopWanted"
   WriteUninstaller "$INSTDIR\Uninstall.exe"
   ${If} $TestMode != 1
     ; Remove only shortcut names created by previous owned installs.
-    Delete "$SMPROGRAMS\FSR for X-Plane 12 (Experimental)\FSR Launcher.lnk"
-    Delete "$SMPROGRAMS\FSR for X-Plane 12 (Experimental)\Instructions.lnk"
-    Delete "$SMPROGRAMS\FSR for X-Plane 12 (Experimental)\Uninstall.lnk"
-    RMDir "$SMPROGRAMS\FSR for X-Plane 12 (Experimental)"
+    Delete "$SMPROGRAMS\FSR Native Motion Legacy (Experimental)\FSR Launcher.lnk"
+    Delete "$SMPROGRAMS\FSR Native Motion Legacy (Experimental)\Instructions.lnk"
+    Delete "$SMPROGRAMS\FSR Native Motion Legacy (Experimental)\Uninstall.lnk"
+    RMDir "$SMPROGRAMS\FSR Native Motion Legacy (Experimental)"
     ${If} $DesktopWanted == 1
-      Delete "$DESKTOP\FSR for X-Plane 12 (Experimental).lnk"
+      Delete "$DESKTOP\FSR Native Motion Legacy (Experimental).lnk"
     ${EndIf}
-    CreateDirectory "$SMPROGRAMS\FSR 3-4 + Frame Gen for X-Plane"
-    CreateShortcut "$SMPROGRAMS\FSR 3-4 + Frame Gen for X-Plane\FSR 3-4 + Frame Gen.lnk" "$INSTDIR\XPlaneFSR24.exe"
-    CreateShortcut "$SMPROGRAMS\FSR 3-4 + Frame Gen for X-Plane\Instructions.lnk" "$INSTDIR\INSTALLATION-AND-USE.txt"
-    CreateShortcut "$SMPROGRAMS\FSR 3-4 + Frame Gen for X-Plane\Uninstall.lnk" "$INSTDIR\Uninstall.exe"
+    CreateDirectory "$SMPROGRAMS\FSR 3-4 + Frame Gen for X-Plane - Native Motion Experimental"
+    CreateShortcut "$SMPROGRAMS\FSR 3-4 + Frame Gen for X-Plane - Native Motion Experimental\FSR 3-4 + Frame Gen.lnk" "$INSTDIR\XPlaneFSR24.exe"
+    CreateShortcut "$SMPROGRAMS\FSR 3-4 + Frame Gen for X-Plane - Native Motion Experimental\Instructions.lnk" "$INSTDIR\INSTALLATION-AND-USE.txt"
+    CreateShortcut "$SMPROGRAMS\FSR 3-4 + Frame Gen for X-Plane - Native Motion Experimental\Uninstall.lnk" "$INSTDIR\Uninstall.exe"
     ${If} $DesktopWanted == 1
-      CreateShortcut "$DESKTOP\FSR 3-4 + Frame Gen for X-Plane.lnk" "$INSTDIR\XPlaneFSR24.exe"
+      CreateShortcut "$DESKTOP\FSR 3-4 + Frame Gen for X-Plane - Native Motion Experimental.lnk" "$INSTDIR\XPlaneFSR24.exe"
     ${EndIf}
-    WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\XPFSR24CommunityAlpha" "DisplayName" "FSR 3/4 + Frame Gen for X-Plane 12 (Experimental)"
-    WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\XPFSR24CommunityAlpha" "DisplayVersion" "${PACKAGE_VERSION}"
-    WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\XPFSR24CommunityAlpha" "UninstallString" '$\"$INSTDIR\Uninstall.exe$\"'
-    WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\XPFSR24CommunityAlpha" "QuietUninstallString" '$\"$INSTDIR\Uninstall.exe$\" /S'
-    WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\XPFSR24CommunityAlpha" "InstallLocation" "$INSTDIR"
-    WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\XPFSR24CommunityAlpha" "DisplayIcon" "$INSTDIR\XPlaneFSR24.exe"
-    WriteRegDWORD HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\XPFSR24CommunityAlpha" "NoModify" 1
-    WriteRegDWORD HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\XPFSR24CommunityAlpha" "NoRepair" 1
+    WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\XPFSR24NativeMotionExperimental" "DisplayName" "FSR 3/4 + Frame Gen for X-Plane 12 - Native Motion Experimental"
+    WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\XPFSR24NativeMotionExperimental" "DisplayVersion" "${PACKAGE_VERSION}"
+    WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\XPFSR24NativeMotionExperimental" "UninstallString" '$\"$INSTDIR\Uninstall.exe$\"'
+    WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\XPFSR24NativeMotionExperimental" "QuietUninstallString" '$\"$INSTDIR\Uninstall.exe$\" /S'
+    WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\XPFSR24NativeMotionExperimental" "InstallLocation" "$INSTDIR"
+    WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\XPFSR24NativeMotionExperimental" "DisplayIcon" "$INSTDIR\XPlaneFSR24.exe"
+    WriteRegDWORD HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\XPFSR24NativeMotionExperimental" "NoModify" 1
+    WriteRegDWORD HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\XPFSR24NativeMotionExperimental" "NoRepair" 1
   ${EndIf}
   System::Call 'kernel32::CloseHandle(p $InstallLock)'
   StrCpy $InstallLock -1
@@ -290,14 +290,14 @@ Section "Uninstall"
   ReadINIStr $TestMode "$INSTDIR\XPFSR24-Installation.ini" "Installation" "TestMode"
   ReadINIStr $DesktopWanted "$INSTDIR\XPFSR24-Installation.ini" "Installation" "DesktopShortcut"
   ${If} $TestMode != 1
-    Delete "$SMPROGRAMS\FSR 3-4 + Frame Gen for X-Plane\FSR 3-4 + Frame Gen.lnk"
-    Delete "$SMPROGRAMS\FSR 3-4 + Frame Gen for X-Plane\Instructions.lnk"
-    Delete "$SMPROGRAMS\FSR 3-4 + Frame Gen for X-Plane\Uninstall.lnk"
-    RMDir "$SMPROGRAMS\FSR 3-4 + Frame Gen for X-Plane"
+    Delete "$SMPROGRAMS\FSR 3-4 + Frame Gen for X-Plane - Native Motion Experimental\FSR 3-4 + Frame Gen.lnk"
+    Delete "$SMPROGRAMS\FSR 3-4 + Frame Gen for X-Plane - Native Motion Experimental\Instructions.lnk"
+    Delete "$SMPROGRAMS\FSR 3-4 + Frame Gen for X-Plane - Native Motion Experimental\Uninstall.lnk"
+    RMDir "$SMPROGRAMS\FSR 3-4 + Frame Gen for X-Plane - Native Motion Experimental"
     ${If} $DesktopWanted == 1
-      Delete "$DESKTOP\FSR 3-4 + Frame Gen for X-Plane.lnk"
+      Delete "$DESKTOP\FSR 3-4 + Frame Gen for X-Plane - Native Motion Experimental.lnk"
     ${EndIf}
-    DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\XPFSR24CommunityAlpha"
+    DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\XPFSR24NativeMotionExperimental"
   ${EndIf}
   !include "${GENERATED}\UninstallFiles.nsh"
   Delete "$INSTDIR\settings.ini"

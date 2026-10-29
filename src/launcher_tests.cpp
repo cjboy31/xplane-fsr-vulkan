@@ -21,7 +21,8 @@ int wmain(int argc, wchar_t **argv) {
         auto file = dir / L"settings.ini";
         auto defaults = launcher::load(file);
         require(defaults.mode == 0 && defaults.enabled && defaults.cockpitRestore &&
-                    defaults.frameGeneration == 0 && defaults.presetId.empty(),
+                    defaults.frameGeneration == 0 && defaults.motionSource == 0 &&
+                    defaults.presetId.empty(),
                 "First-run defaults");
         // Exercise upgrading the ANSI file created by the old launcher/installer.
         graphics::write(file, "[Application]\r\nSimulator=D:\\Simulator "
@@ -34,6 +35,7 @@ int wmain(int argc, wchar_t **argv) {
             p.presetId = preset.id;
             p.mode = preset.launcherMode;
             p.frameGeneration = 2;
+            p.motionSource = 1;
             p.cockpitRestore = false;
             p.alignmentTint = true;
             p.enabled = false;
@@ -46,6 +48,7 @@ int wmain(int argc, wchar_t **argv) {
         }
         launcher::Preferences custom;
         custom.manual = {2, 1, 4, 3840, 2160};
+        custom.motionSource = 1;
         custom.manualApplied = true;
         custom.arguments = L"\"entire argument is quoted\"";
         launcher::save(file, custom);
@@ -60,7 +63,7 @@ int wmain(int argc, wchar_t **argv) {
                     graphics::Options edit{msaa, 0, 2, 2560, 1440};
                     launcher::customGraphics(custom, edit, false);
                     require(custom.mode == mode && custom.frameGeneration == fg &&
-                                custom.presetId.empty(),
+                                custom.motionSource == 1 && custom.presetId.empty(),
                             "Custom edits must never change FSR / FG selections");
                     launcher::save(file, custom);
                     auto pending = launcher::load(file);

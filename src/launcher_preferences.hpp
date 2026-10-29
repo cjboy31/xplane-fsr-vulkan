@@ -6,7 +6,7 @@ namespace launcher {
 struct Preferences {
     std::wstring simulator{L"D:\\X-Plane 12"}, arguments;
     std::string presetId;
-    int mode{}, frameGeneration{};
+    int mode{}, frameGeneration{}, motionSource{};
     bool enabled{true}, ghostReduction{true}, cockpitRestore{true}, alignmentTint{};
     graphics::Options manual{};
     bool manualApplied{}, manualPending{};
@@ -70,6 +70,7 @@ inline Preferences load(const graphics::fs::path &file) {
         readSetting(file, L"Launcher", L"ArgumentsHex", encode(p.arguments).c_str()), p.arguments);
     p.mode = integer(file, L"Mode", 0, 4);
     p.frameGeneration = integer(file, L"FrameGeneration", 0, 2);
+    p.motionSource = integer(file, L"MotionSource", 0, 1);
     p.enabled = integer(file, L"Enabled", 1, 1);
     p.ghostReduction = integer(file, L"GhostReduction", 1, 1);
     p.cockpitRestore = integer(file, L"CockpitRestore", 1, 1);
@@ -108,6 +109,7 @@ inline std::wstring serialized(const Preferences &p) {
     add(L"Preset", std::wstring(p.presetId.begin(), p.presetId.end()));
     add(L"Mode", std::to_wstring(p.mode));
     add(L"FrameGeneration", std::to_wstring(p.frameGeneration));
+    add(L"MotionSource", std::to_wstring(p.motionSource));
     add(L"Enabled", std::to_wstring(p.enabled));
     add(L"GhostReduction", std::to_wstring(p.ghostReduction));
     add(L"CockpitRestore", std::to_wstring(p.cockpitRestore));

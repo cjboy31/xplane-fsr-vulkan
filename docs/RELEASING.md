@@ -1,5 +1,12 @@
 # Publishing application updates
 
+On `experimental/native-motion-vectors`, use tags `v0.5.9-experimental.N`, mark
+the release as a prerelease, and clearly label it Native Motion Experimental.
+Publish from this branch, not the regular source branch. The installer has a
+separate identity/folder/shortcut and refuses a regular installation. Regular
+updaters reject this suffix; this branch's updater accepts experimental versions
+only. Do not label it Latest or promote it into the normal preview channel.
+
 Application updates are also published at
 [GitHub Releases](https://github.com/cjboy31/xplane-fsr-vulkan/releases).
 Source changes alone do not deliver the Windows installer to users.

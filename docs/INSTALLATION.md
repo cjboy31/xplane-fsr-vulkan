@@ -1,3 +1,34 @@
+# Separate native-motion experiment: 0.5.9-experimental.1
+
+This build belongs to experimental/native-motion-vectors. Install in the separate
+default XPlaneFSR24-NativeMotion-Experimental folder or an empty separate folder;
+do not overwrite your regular installation. Keep the regular launcher for return
+and comparison. The experimental setup refuses a regular installation folder.
+
+The main Motion selector defaults to Camera-derived (existing behavior). To test
+Native renderer motion, close X-Plane, choose an FSR 3/4 preset, turn MSAA, FXAA,
+Frame gen and FSR Ghosting Fix - cockpit screens Off, Apply graphics, select
+Native renderer motion - EXPERIMENTAL, and launch here. Choices are saved. Restart
+X-Plane to change motion source. Check live FSR ACTIVE plus the renderer message
+EXPERIMENTAL native renderer motion (SSR). Missing/mismatched SSR capture leaves
+native rendering active and reports why; it never silently uses camera vectors.
+
+Return by selecting Camera-derived and restarting, or open the separately
+installed regular launcher. Close the other launcher before starting a test.
+Regular updaters ignore this experimental version. This build's updater stays on
+the experimental channel; installation requires your click.
+
+Initial native-motion limits: supported scene SSR interface, single graphics
+queue, matching scene depth in the same one-time primary command buffer. No VR,
+MSAA, FG, cross-buffer capture or screen restoration on this second option yet.
+Traffic, propellers, gauges, clouds, rain and glass still lack exact object/effect
+motion. GPU tests are not a live-flight quality/FPS guarantee. See
+docs/NATIVE-MOTION-EXPERIMENT.md in the source repository for details.
+
+The following general setup instructions describe the existing camera-derived
+option; its MSAA/FG/screen-fix capabilities do not extend the native experiment.
+
+
 # Install FSR 3/4 + Frame Gen for X-Plane
 
 0.5.8 optimizes the existing camera/cockpit motion path and adds numerical/GPU

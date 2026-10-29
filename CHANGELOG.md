@@ -1,5 +1,29 @@
 # Changes
 
+## 0.5.9-experimental.1
+
+- Add **Native renderer motion — EXPERIMENTAL** as a second main-screen choice.
+  Keep Camera-derived as the default; save the choice across restarts, presets
+  and custom graphics changes. Restart X-Plane to change the active source.
+- Capture scene SSR depth, own-aircraft flags and renderer reprojection at the
+  dispatch, with previous projection kept on the GPU for zoom. Skip the camera
+  packing pass when this option is active. Reuse owned resources; no per-frame
+  vector readback or new GPU idle wait. Preserve upstream MIT attribution.
+- Require supported SSR inputs and same-primary-buffer scene provenance. Leave
+  native rendering active with an explanatory status when capture is unavailable;
+  do not silently switch motion sources. Native option requires MSAA, FXAA,
+  frame generation and cockpit-screen restoration Off in this first experiment.
+- Use branch `experimental/native-motion-vectors`, an experimental-only update
+  channel, and a separate installer folder/identity that refuses regular installs.
+  Regular-release updaters do not offer this experimental version automatically.
+- Add production-hook GPU vector/depth/history checks, interface tampering,
+  state restoration and optional end-to-end FSR fixtures for both image shapes.
+
+This is a community testing build, not a proven fix for all ghosting or stutter.
+Moving traffic, props, gauges, clouds, rain and transparency still lack exact
+motion. No live-flight visual-quality or FPS improvement is claimed. See
+docs/NATIVE-MOTION-EXPERIMENT.md for setup, limitations and return instructions.
+
 ## 0.5.8-alpha
 
 - Reduce motion packing to one selected world/body reprojection. Reconstruct

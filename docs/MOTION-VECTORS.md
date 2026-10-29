@@ -1,5 +1,9 @@
 # Motion-vector research and 0.5.8 measurements
 
+On branch `experimental/native-motion-vectors`, see the separate
+[native renderer experiment](NATIVE-MOTION-EXPERIMENT.md). The research and
+measurements below describe the regular 0.5.8 camera-derived implementation.
+
 ## Sources examined
 
 - [JonathanOrr/xplane-fsr3](https://github.com/JonathanOrr/xplane-fsr3), MIT:
