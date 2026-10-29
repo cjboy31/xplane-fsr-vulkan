@@ -1,5 +1,13 @@
 # Install FSR 3/4 + Frame Gen for X-Plane
 
+0.6.0 introduces a redesigned charcoal/champagne launcher. Presets, AA, input
+scale and output controls remain on the main screen; resize or scroll when
+needed. Launch actions and live status stay in the footer. Your existing saved
+choices and installer identity are retained. Click **Platform support** for the
+audit: this download is **Windows x64 only**. Linux needs a native port; macOS
+needs a separate Metal renderer. Neither platform is currently confirmed or
+packaged. See docs/PLATFORMS.md in the source repository.
+
 0.5.9 adds fresh session logs, rejects stale camera/depth frames and adds a
 ground-camera safeguard for external views. Close X-Plane before updating and
 start it again from the new launcher so its recognized owned camera publisher

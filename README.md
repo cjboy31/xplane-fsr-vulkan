@@ -16,6 +16,12 @@ Laminar Research product, and is not a complete solution to ghosting or stutter.
 
 ## Features
 
+- Modern charcoal/champagne native launcher with rounded panels, clear focus
+  states, resizing/scrolling, accessible field names and persistent launch/status
+  controls. Presets and MSAA/FXAA remain on the main screen.
+- **Platform support:** current packages are Windows x64 only. Linux requires
+  a native port; macOS requires a separate Metal implementation. See the
+  [platform audit and port requirements](docs/PLATFORMS.md).
 - Fresh logs for every simulator process, stale camera-frame rejection and
   temporary native rendering/FG pause for a grounded external camera near
   terrain in 0.5.9. See [ground-camera behavior and testing](docs/RENDERING-STABILITY.md).

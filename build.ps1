@@ -36,7 +36,7 @@ if($LASTEXITCODE -ne 0){throw 'Layer build failed'}
 & $Compiler '-std=c++17' '-O2' '-static' '-shared' '-Wl,--no-insert-timestamp' '-DWIN32_LEAN_AND_MEAN' '-DNOMINMAX' ('-I'+(Join-Path $XPlaneSdk 'CHeaders\XPLM')) (Join-Path $source 'plugin.cpp') (Join-Path $XPlaneSdk 'Libraries\Win\XPLM_64.lib') '-o' (Join-Path $bin 'plugin\64\win.xpl')
 if($LASTEXITCODE -ne 0){throw 'Plugin build failed'}
 if(Test-Path (Join-Path $source 'launcher.cpp')){
- & $Compiler '-std=c++17' '-O2' '-static' '-municode' '-mwindows' '-Wl,--no-insert-timestamp' '-DWIN32_LEAN_AND_MEAN' '-DNOMINMAX' (Join-Path $source 'launcher.cpp') (Join-Path $build 'app-icon.o') '-lcomctl32' '-lshell32' '-lole32' '-lbcrypt' '-lwinhttp' '-o' (Join-Path $bin 'XPlaneFSR24.exe')
+ & $Compiler '-std=c++17' '-O2' '-static' '-municode' '-mwindows' '-Wl,--no-insert-timestamp' '-DWIN32_LEAN_AND_MEAN' '-DNOMINMAX' (Join-Path $source 'launcher.cpp') (Join-Path $build 'app-icon.o') '-lcomctl32' '-lshell32' '-lole32' '-lbcrypt' '-lwinhttp' '-lgdiplus' '-ldwmapi' '-luxtheme' '-loleacc' '-luuid' '-o' (Join-Path $bin 'XPlaneFSR24.exe')
  if($LASTEXITCODE -ne 0){throw 'Launcher build failed'}
 }
 & $Compiler '-std=c++17' '-O2' '-static' '-municode' '-Wl,--no-insert-timestamp' '-DWIN32_LEAN_AND_MEAN' '-DNOMINMAX' @includes (Join-Path $source 'aa_test.cpp') '-o' (Join-Path $bin 'NativeAACheck.exe')

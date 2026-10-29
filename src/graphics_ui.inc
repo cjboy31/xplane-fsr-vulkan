@@ -3,8 +3,13 @@
 static HWND msaaBox{}, fxaaBox{}, scaleBox{}, outputBox{}, graphicsStatus{};
 static std::vector<const graphics::Preset *> visiblePresets;
 static void graphicsMessage(const std::wstring &text, const wchar_t *compact = nullptr) {
-    if (graphicsStatus)
-        SetWindowTextW(graphicsStatus, compact ? compact : text.c_str());
+    if (graphicsStatus) {
+        auto summary = compact ? std::wstring(compact) : text;
+        auto at = summary.find(L"\r\n");
+        if (at != std::wstring::npos)
+            summary.replace(at, 2, L" · ");
+        SetWindowTextW(graphicsStatus, summary.c_str());
+    }
     if (!running())
         SetWindowTextW(statusBox, text.c_str());
 }
@@ -164,23 +169,19 @@ static void applyCustomGraphics() {
                     L"Graphics saved. FSR / FG unchanged.\r\nFXAA Off for FSR; MSAA preview.");
 }
 static void createGraphicsControls(HWND parent) {
-    control(L"STATIC", L"Graphics - apply with X-Plane closed", 0, 675, 368, 313, 24);
-    control(L"STATIC", L"MSAA", 0, 675, 408, 85, 24);
-    msaaBox = control(L"COMBOBOX", L"", CBS_DROPDOWNLIST | WS_TABSTOP, 770, 402, 185, 160, 110);
+    msaaBox = control(L"COMBOBOX", L"", CBS_DROPDOWNLIST | WS_TABSTOP, 0, 0, 200, 180, 110);
     for (auto *v :
-         {L"Off (recommended)", L"2x MSAA (preview)", L"4x MSAA (preview)", L"8x MSAA (preview)"})
-        SendMessageW(msaaBox, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(v));
-    fxaaBox = control(L"BUTTON", L"FXAA (native renderer only)", BS_AUTOCHECKBOX | WS_TABSTOP, 675,
-                      442, 280, 26, 111);
-    control(L"STATIC", L"Input scale", 0, 675, 484, 90, 24);
-    scaleBox = control(L"COMBOBOX", L"", CBS_DROPDOWNLIST | WS_TABSTOP, 770, 478, 185, 160, 112);
-    for (auto *v : {L"Full - Native AA", L"Ultra quality", L"Quality - 1.5x", L"Balanced",
-                    L"Performance - 2x"})
-        SendMessageW(scaleBox, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(v));
-    control(L"STATIC", L"Output", 0, 675, 522, 90, 24);
-    outputBox = control(L"COMBOBOX", L"", CBS_DROPDOWNLIST | WS_TABSTOP, 770, 516, 185, 180, 113);
+         {L"Off · Recommended", L"2x MSAA · Preview", L"4x MSAA · Preview", L"8x MSAA · Preview"})
+        SendMessageW(msaaBox, CB_ADDSTRING, 0, LPARAM(v));
+    fxaaBox =
+        control(L"BUTTON", L"FXAA · Native only", BS_AUTOCHECKBOX | WS_TABSTOP, 0, 0, 200, 32, 111);
+    scaleBox = control(L"COMBOBOX", L"", CBS_DROPDOWNLIST | WS_TABSTOP, 0, 0, 200, 180, 112);
+    for (auto *v : {L"Full · Native AA", L"Ultra quality", L"Quality · 1.5x", L"Balanced",
+                    L"Performance · 2x"})
+        SendMessageW(scaleBox, CB_ADDSTRING, 0, LPARAM(v));
+    outputBox = control(L"COMBOBOX", L"", CBS_DROPDOWNLIST | WS_TABSTOP, 0, 0, 200, 180, 113);
     for (auto &choice : graphics::outputChoices)
-        SendMessageW(outputBox, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(choice.label));
+        SendMessageW(outputBox, CB_ADDSTRING, 0, LPARAM(choice.label));
     graphics::Options options{};
     if (!preferences.presetId.empty())
         options = graphics::presetById(preferences.presetId).settings;
@@ -193,15 +194,10 @@ static void createGraphicsControls(HWND parent) {
         }
     }
     showGraphicsOptions(options);
-    helpIcon(parent, 210, 963, 402);
-    helpIcon(parent, 211, 963, 442);
-    helpIcon(parent, 212, 963, 478);
-    helpIcon(parent, 213, 963, 516);
-    control(L"BUTTON", L"Apply graphics", BS_PUSHBUTTON | WS_TABSTOP, 675, 558, 313, 34, 106);
-    graphicsStatus =
-        control(L"STATIC",
-                preferences.manualPending
-                    ? L"Edits remembered; apply before launch.\r\nFSR / FG unchanged."
-                    : L"Custom edits preserve FSR / FG.\r\nMSAA preview; FXAA native only.",
-                0, 675, 600, 313, 46);
+    control(L"BUTTON", L"Apply graphics", BS_PUSHBUTTON | WS_TABSTOP, 0, 0, 200, 34, 106);
+    graphicsStatus = control(L"STATIC",
+                             preferences.manualPending
+                                 ? L"Edits saved · Apply graphics before launch"
+                                 : L"Custom edits retain FSR and frame generation selections",
+                             0, 0, 0, 600, 22, 538);
 }

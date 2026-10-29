@@ -1,5 +1,11 @@
 # Building on Windows x64
 
+The launcher links the Windows system GDI+, DWM and accessibility libraries for
+native styling, DPI handling and field annotations. No browser runtime, bundled
+font or third-party UI framework is added. These are launcher-only dependencies;
+the rendering layer and publisher do not initialize the UI. Other operating
+systems require a port; see [the platform audit](docs/PLATFORMS.md).
+
 Use PowerShell 7 with these dependencies installed locally:
 
 - LLVM-MinGW (UCRT x86_64). Validated compiler: llvm-mingw-20261020, LLVM 23.
