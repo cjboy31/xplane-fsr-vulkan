@@ -1,6 +1,6 @@
 <img src="assets/app-icon.png" width="96" alt="Original aircraft and temporal-pixel icon">
 
-# FSR Vulkan for X-Plane 12
+# FSR 3/4 + Frame Gen for X-Plane 12
 
 An experimental Windows Vulkan integration for AMD FSR Native AA, upscaling and
 frame generation, with a new current-frame cockpit-screen compositor for the
@@ -10,6 +10,20 @@ default Cirrus SR22. Original project code and artwork are MIT licensed.
 GPU fixtures pass on a Radeon AI PRO R9700; the new SR22 screen projection and
 visual quality still need live-flight validation. It is not an official AMD or
 Laminar Research product, and is not a complete solution to ghosting or stutter.
+
+## Downloads and current source
+
+- **Windows:** [0.6.1-alpha installer and instructions](https://github.com/cjboy31/xplane-fsr-vulkan/releases/tag/v0.6.1-alpha). Built-in frame generation is suspended in regular releases.
+- **Linux:** [Native FSR 3.1 preview downloads](https://github.com/cjboy31/xplane-fsr-vulkan/releases/tag/native-preview-2026.10.29.1) — requires MSAA off and FSR supersampling enabled; real-flight validation is pending.
+- **Mac:** [Universal compatibility-probe download](https://github.com/cjboy31/xplane-fsr-vulkan/releases/tag/native-preview-2026.10.29.1) — diagnostics only; **Mac FSR/Metal rendering is not implemented**.
+- **Combined Linux/Mac RAR:** [Download the native preview package](https://github.com/cjboy31/xplane-fsr-vulkan/releases/download/native-preview-2026.10.29.1/XPlane-FSR-Native-0.6.2-platform-preview.1.rar). Includes installation instructions and validation notes.
+
+**Source matching these releases:** [Windows release source](https://github.com/cjboy31/xplane-fsr-vulkan/tree/codex/saved-presets-and-status) · [Linux/Mac preview source](https://github.com/cjboy31/xplane-fsr-vulkan/tree/experimental/native-platforms/platform) · [All releases](https://github.com/cjboy31/xplane-fsr-vulkan/releases).
+
+The repository opens on `main`, which contains the original implementation snapshot.
+Current release development is on the branches linked above; the native preview is
+also labeled **Pre-release** in Releases. Its FSR 4, frame-generation, VR and Native AA
+features are unavailable. Read the selected release's instructions and limitations.
 
 ## Features
 
