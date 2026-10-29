@@ -14,7 +14,8 @@ import zipfile
 
 def main(archive):
     with tempfile.TemporaryDirectory() as temporary:
-        destination = Path(temporary)
+        # macOS exposes /var through /private/var; compare canonical paths.
+        destination = Path(temporary).resolve()
         if archive.name.endswith(".tar.gz"):
             with tarfile.open(archive) as source:
                 for member in source.getmembers():

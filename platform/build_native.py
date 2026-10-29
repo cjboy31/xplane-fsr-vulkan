@@ -91,12 +91,6 @@ def package(output, system, layer, probe, sdk, upstream):
     hashes = [f"{sha(p)}  {p.relative_to(target).as_posix()}" for p in sorted(target.rglob("*")) if p.is_file()]
     (target / "PAYLOAD-SHA256SUMS.txt").write_text("\n".join(hashes) + "\n")
     if system == "Linux":
-        headers = work / "Vulkan-Headers"
-        if not headers.exists():
-            run("git", "clone", "--filter=blob:none", "--no-checkout", "https://github.com/KhronosGroup/Vulkan-Headers.git", headers)
-            run("git", "checkout", "--detach", VULKAN_HEADERS, cwd=headers)
-        if subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=headers, text=True).strip() != VULKAN_HEADERS:
-            raise RuntimeError("Vulkan headers are not the reviewed pinned commit")
         archive = output / (target.name + ".tar.gz")
         with tarfile.open(archive, "w:gz") as out:
             out.add(target, arcname=target.name)
@@ -132,6 +126,12 @@ def main():
         run("codesign", "--verify", "--strict", probe)
     layer, upstream = None, None
     if system == "Linux":
+        headers = work / "Vulkan-Headers"
+        if not headers.exists():
+            run("git", "clone", "--filter=blob:none", "--no-checkout", "https://github.com/KhronosGroup/Vulkan-Headers.git", headers)
+            run("git", "checkout", "--detach", VULKAN_HEADERS, cwd=headers)
+        if subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=headers, text=True).strip() != VULKAN_HEADERS:
+            raise RuntimeError("Vulkan headers are not the reviewed pinned commit")
         upstream = work / "xplane-fsr3"
         if not upstream.exists():
             run("git", "clone", "--filter=blob:none", "--no-checkout", "https://github.com/JonathanOrr/xplane-fsr3.git", upstream)

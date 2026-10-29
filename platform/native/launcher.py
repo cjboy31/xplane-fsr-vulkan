@@ -27,6 +27,8 @@ def gui(root, saved):
     style.configure("TFrame", background="#11151c")
     style.configure("TLabel", background="#11151c", foreground="#eee9df", font=("Helvetica", 11))
     style.configure("TButton", background="#303745", foreground="#eee9df", padding=10)
+    style.map("TButton", background=[("pressed", "#4e5768"), ("active", "#3b4556")],
+              foreground=[("active", "#ffffff"), ("pressed", "#ffffff")])
     style.configure("TEntry", fieldbackground="#242b36", foreground="#eee9df", padding=8)
     style.configure("TCombobox", fieldbackground="#242b36", foreground="#eee9df", padding=8)
     style.map("TCombobox", fieldbackground=[("readonly", "#242b36"), ("disabled", "#242b36")],
