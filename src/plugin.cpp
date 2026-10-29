@@ -1,0 +1,261 @@
+// SPDX-License-Identifier: MIT
+// Camera/metadata publisher. Architecture informed by MotionVectors V2;
+// new implementation, no private controls, texture-budget patches or binary hooks.
+#define XPLM200 1
+#define XPLM210 1
+#define XPLM300 1
+#define IBM 1
+#include "cockpit_mesh.hpp"
+#include "shared.hpp"
+#include <XPLMDataAccess.h>
+#include <XPLMMenus.h>
+#include <XPLMPlanes.h>
+#include <XPLMPlugin.h>
+#include <XPLMProcessing.h>
+#include <XPLMUtilities.h>
+#include <algorithm>
+#include <cstdio>
+#include <filesystem>
+#include <fstream>
+static HANDLE mapping{};
+static app::Shared *shared{};
+static XPLMDataRef projection{}, world{}, bodyRef{}, widthRef{}, heightRef{}, viewRef{}, pauseRef{},
+    ownX{}, ownY{}, ownZ{}, externalRef{};
+static XPLMMenuID menu{};
+static bool previousValid{};
+static double previousVP[16]{};
+static double previousBodyVP[16]{};
+static bool previousBodyValid{};
+static int previousView{}, previousPaused{};
+static uint64_t frame{};
+static bool loadScreens = true, previousScreenValid = false;
+static float previousScreenClip[8][4]{};
+static std::vector<cockpit::Quad> displayMesh;
+static void loadDisplayProfile() {
+    loadScreens = false;
+    previousScreenValid = false;
+    displayMesh.clear();
+    wchar_t enabled[8]{};
+    if (!GetEnvironmentVariableW(L"XPFSR24_COCKPIT_RESTORE", enabled, 8) || !wcscmp(enabled, L"0"))
+        return;
+    char model[256]{}, path[2048]{};
+    XPLMGetNthAircraftModel(0, model, path);
+    try {
+        displayMesh = cockpit::loadSr22(std::filesystem::u8path(path));
+        XPLMDebugString(
+            "XPFSR24: SR22 G1000 display mesh loaded from user's aircraft; two screens.\n");
+    } catch (const std::exception &e) {
+        std::string message = "XPFSR24: cockpit restore inactive: ";
+        message += e.what();
+        message += '\n';
+        XPLMDebugString(message.c_str());
+    }
+}
+static float update(float elapsed, float, int, void *) {
+    if (loadScreens)
+        loadDisplayProfile();
+    if (!projection) {
+        projection = XPLMFindDataRef("sim/graphics/view/projection_matrix_3d");
+        if (!projection)
+            projection = XPLMFindDataRef("sim/graphics/view/projection_matrix");
+        world = XPLMFindDataRef("sim/graphics/view/world_matrix");
+        bodyRef = XPLMFindDataRef("sim/graphics/view/acf_matrix");
+        widthRef = XPLMFindDataRef("sim/graphics/view/window_width");
+        heightRef = XPLMFindDataRef("sim/graphics/view/window_height");
+        viewRef = XPLMFindDataRef("sim/graphics/view/view_type");
+        pauseRef = XPLMFindDataRef("sim/time/paused");
+        externalRef = XPLMFindDataRef("sim/graphics/view/view_is_external");
+        ownX = XPLMFindDataRef("sim/flightmodel/position/local_x");
+        ownY = XPLMFindDataRef("sim/flightmodel/position/local_y");
+        ownZ = XPLMFindDataRef("sim/flightmodel/position/local_z");
+    }
+    if (!shared)
+        return -1;
+    app::Camera packet{};
+    packet.frame = ++frame;
+    LARGE_INTEGER now{};
+    QueryPerformanceCounter(&now);
+    packet.ticks = now.QuadPart;
+    float pf[16]{}, vf[16]{};
+    if (projection && world && XPLMGetDatavf(projection, pf, 0, 16) == 16 &&
+        XPLMGetDatavf(world, vf, 0, 16) == 16 && std::abs(pf[11]) > 0.5f) {
+        double p[16], v[16], vp[16], inv[16], invP[16], reproj[16];
+        for (int i = 0; i < 16; ++i) {
+            p[i] = pf[i];
+            v[i] = vf[i];
+        }
+        app::multiply(vp, p, v);
+        if (app::inverse(inv, vp) && app::inverse(invP, p)) {
+            const int view = viewRef ? XPLMGetDatai(viewRef) : 0,
+                      paused = pauseRef ? XPLMGetDatai(pauseRef) : 0;
+            packet.reset = !previousValid || view != previousView || paused != previousPaused ||
+                           elapsed <= 0 || elapsed > 0.25f;
+            if (previousValid)
+                app::multiply(reproj, previousVP, inv);
+            else
+                for (int i = 0; i < 16; ++i)
+                    reproj[i] = (i % 5) == 0;
+            double difference = 0;
+            for (int i = 0; i < 16; ++i)
+                difference = std::max(difference, std::abs(reproj[i] - ((i % 5) == 0)));
+            if (difference > 100)
+                packet.reset = 1;
+            for (int i = 0; i < 16; ++i) {
+                packet.reprojection[i] = float(reproj[i]);
+                packet.inverseProjection[i] = float(invP[i]);
+            }
+            double inverseView[16]{};
+            if (app::inverse(inverseView, v))
+                for (int k = 0; k < 3; ++k) {
+                    packet.position[k] = float(inverseView[12 + k]);
+                    packet.right[k] = float(inverseView[k]);
+                    packet.up[k] = float(inverseView[4 + k]);
+                    packet.forward[k] = float(-inverseView[8 + k]);
+                }
+            auto plane = [&](double z) {
+                double wz = invP[10] * z + invP[14], ww = invP[11] * z + invP[15];
+                return std::abs(ww) < 1e-10 ? INFINITY : float(std::abs(wz / ww));
+            };
+            float zero = plane(0), one = plane(1);
+            packet.reverseZ = one < zero;
+            packet.nearPlane = std::min(zero, one);
+            packet.farPlane = std::max(zero, one);
+            packet.infiniteZ = !std::isfinite(packet.farPlane) || packet.farPlane > 1e8f;
+            packet.verticalFov = float(2 * std::atan(1 / std::abs(p[5])));
+            packet.milliseconds = elapsed * 1000;
+            packet.width = widthRef ? XPLMGetDatai(widthRef) : 0;
+            packet.height = heightRef ? XPLMGetDatai(heightRef) : 0;
+            packet.internal = externalRef ? !XPLMGetDatai(externalRef) : 0;
+            float af[16]{};
+            if (bodyRef && XPLMGetDatavf(bodyRef, af, 0, 16) == 16 &&
+                std::abs(af[12]) + std::abs(af[13]) + std::abs(af[14]) > .05f) {
+                double body[16], bodyVP[16], inverseBody[16], bodyReprojection[16];
+                for (int i = 0; i < 16; ++i)
+                    body[i] = af[i];
+                app::multiply(bodyVP, p, body);
+                if (app::inverse(inverseBody, bodyVP)) {
+                    if (previousBodyValid && previousValid)
+                        app::multiply(bodyReprojection, previousBodyVP, inverseBody);
+                    else
+                        for (int i = 0; i < 16; ++i)
+                            bodyReprojection[i] = (i % 5) == 0;
+                    packet.bodyValid = 1;
+                    for (int i = 0; i < 16; ++i) {
+                        packet.bodyReprojection[i] = float(bodyReprojection[i]);
+                        if (!std::isfinite(packet.bodyReprojection[i]))
+                            packet.bodyValid = 0;
+                    }
+                    if (!displayMesh.empty() && packet.internal &&
+                        cockpit::project(displayMesh, bodyVP, packet.screenClip)) {
+                        packet.screenCount = 2;
+                        packet.screenReady =
+                            previousScreenValid &&
+                            cockpit::stableProjection(packet.screenClip, previousScreenClip,
+                                                      packet.width, packet.height);
+                        memcpy(previousScreenClip, packet.screenClip, sizeof(previousScreenClip));
+                        previousScreenValid = true;
+                    } else
+                        previousScreenValid = false;
+                    memcpy(previousBodyVP, bodyVP, sizeof(bodyVP));
+                }
+            }
+            previousBodyValid = packet.bodyValid;
+            if (ownX && ownY && ownZ) {
+                double position[4] = {XPLMGetDatad(ownX), XPLMGetDatad(ownY), XPLMGetDatad(ownZ),
+                                      1};
+                for (int r = 0; r < 3; ++r) {
+                    double value = 0;
+                    for (int c = 0; c < 4; ++c)
+                        value += v[c * 4 + r] * position[c];
+                    packet.ownSphere[r] = float(value);
+                }
+                packet.ownSphere[3] = 20;
+            }
+            packet.valid = std::isfinite(packet.nearPlane) && packet.nearPlane > 0 &&
+                           packet.verticalFov > 0 && packet.width && packet.height;
+            memcpy(previousVP, vp, sizeof(vp));
+            previousView = view;
+            previousPaused = paused;
+            previousValid = packet.valid;
+        }
+    }
+    if (!packet.valid) {
+        previousValid = false;
+        previousBodyValid = false;
+        previousScreenValid = false;
+        packet.screenReady = 0;
+    }
+    InterlockedIncrement(&shared->cameraSequence);
+    MemoryBarrier();
+    shared->camera = packet;
+    MemoryBarrier();
+    InterlockedIncrement(&shared->cameraSequence);
+    return -1;
+}
+static void command(void *, void *) {
+    if (shared) {
+        bool value = !InterlockedCompareExchange(&shared->enabled, 0, 0);
+        InterlockedExchange(&shared->enabled, value);
+        wchar_t path[32768]{};
+        if (GetEnvironmentVariableW(L"XPFSR24_CONTROL", path, 32768))
+            std::ofstream(std::filesystem::path(path)) << (value ? '1' : '0');
+    }
+}
+PLUGIN_API int XPluginStart(char *name, char *signature, char *description) {
+    strcpy(name, "X-Plane FSR 2.4 Alpha");
+    strcpy(signature, "org.xpfsr24.alpha");
+    strcpy(description, "Experimental FSR Vulkan upscaling camera publisher");
+    auto key = app::mappingName(GetCurrentProcessId());
+    mapping = CreateFileMappingW(INVALID_HANDLE_VALUE, nullptr, PAGE_READWRITE, 0,
+                                 sizeof(app::Shared), key.c_str());
+    if (!mapping)
+        return 0;
+    bool fresh = GetLastError() != ERROR_ALREADY_EXISTS;
+    shared = static_cast<app::Shared *>(
+        MapViewOfFile(mapping, FILE_MAP_ALL_ACCESS, 0, 0, sizeof(app::Shared)));
+    if (!shared) {
+        CloseHandle(mapping);
+        mapping = nullptr;
+        return 0;
+    }
+    if (fresh) {
+        memset(shared, 0, sizeof(*shared));
+        shared->tag = app::magic;
+        shared->version = app::abi;
+        shared->enabled = 1;
+    }
+    int item = XPLMAppendMenuItem(XPLMFindPluginsMenu(), "FSR 2.4 Alpha", nullptr, 0);
+    menu = XPLMCreateMenu("FSR 2.4 Alpha", XPLMFindPluginsMenu(), item, command, nullptr);
+    XPLMAppendMenuItem(menu, "Enable / disable temporal upscaling", nullptr, 0);
+    XPLMDebugString("XPFSR24: alpha camera publisher loaded; Vulkan layer performs upscaling.\n");
+    return 1;
+}
+PLUGIN_API int XPluginEnable() {
+    previousValid = false;
+    loadScreens = true;
+    previousScreenValid = false;
+    XPLMRegisterFlightLoopCallback(update, -1, nullptr);
+    return 1;
+}
+PLUGIN_API void XPluginDisable() {
+    XPLMUnregisterFlightLoopCallback(update, nullptr);
+    if (shared) {
+        InterlockedIncrement(&shared->cameraSequence);
+        shared->camera.valid = 0;
+        InterlockedIncrement(&shared->cameraSequence);
+    }
+}
+PLUGIN_API void XPluginStop() {
+    if (menu)
+        XPLMDestroyMenu(menu);
+    if (shared)
+        UnmapViewOfFile(shared);
+    if (mapping)
+        CloseHandle(mapping);
+    shared = nullptr;
+    mapping = nullptr;
+}
+PLUGIN_API void XPluginReceiveMessage(XPLMPluginID, int message, void *parameter) {
+    if (message == XPLM_MSG_PLANE_LOADED && reinterpret_cast<intptr_t>(parameter) == 0)
+        loadScreens = true;
+}

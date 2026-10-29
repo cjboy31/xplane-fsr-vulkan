@@ -1,0 +1,41 @@
+FSR for X-Plane experimental alpha
+
+Original launcher, plugin, Vulkan layer, adapter and test source: MIT license
+in the package's LICENSE file. This license does not replace the terms for
+third-party components below.
+
+AMD FidelityFX SDK 2.4.0:
+  runtime/amd_fidelityfx_loader_vk.dll
+  runtime/amd_fidelityfx_upscaler_vk.dll
+  runtime/amd_fidelityfx_framegeneration_vk.dll
+These signed binaries are copied unmodified from Kits/FidelityFX/signedbin.
+Copyright Advanced Micro Devices, Inc. Included terms and notices:
+  AMD-SDK-license.md
+  AMD-SDK-third-party-notices.md
+API headers used for compilation have their applicable MIT notice in
+AMD-API-Headers-MIT.txt. The full SDK license lists source-file exceptions.
+No AMD proprietary source or runtime disassembly is included.
+
+Vulkan headers:
+  Vulkan-Headers-LICENSE.md, Vulkan-Headers-Apache-2.0.txt,
+  Vulkan-Headers-MIT.txt. Build used official Vulkan-Headers commit
+  cde2207d8bc426cfd201ffd67031e7b135a01df7.
+
+LLVM-MinGW runtime/toolchain:
+  LLVM-MinGW-LICENSE.TXT. Executables statically link required runtime code.
+Toolchain build: llvm-mingw-20261020-ucrt-x86_64. The compiler is not packaged.
+
+X-Plane Plugin SDK:
+  XPLM-SDK-license.txt. SDK headers/import library used to build win.xpl.
+X-Plane and Laminar Research are not sponsors or endorsers of this project.
+No simulator executable, shader archive or shader bytecode is redistributed.
+
+Architecture references:
+  Motion-Vectors-for-Xplane-12-V2 by Vihaan2012-cmyk (GPL repository)
+  https://github.com/Vihaan2012-cmyk/Motion-Vectors-for-Xplane-12-V2
+  pinned reference commit a63968d5d4c3715d2f0cda7d5beb6753713b36f2
+  LuminaXP supplied binary package/documentation
+These informed the investigation. Their GPL/proprietary renderer source and
+renderer binaries are not incorporated into this independent implementation.
+The separately licensed XPLM SDK bundled in the reference checkout was used
+only as a build dependency.

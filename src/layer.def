@@ -1,0 +1,4 @@
+EXPORTS
+XP_GetInstanceProcAddr
+XP_GetDeviceProcAddr
+vkNegotiateLoaderLayerInterfaceVersion

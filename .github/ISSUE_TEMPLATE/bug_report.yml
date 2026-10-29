@@ -1,0 +1,18 @@
+name: Bug report
+description: Report a reproducible visual, stability or settings problem
+body:
+  - type: textarea
+    attributes:
+      label: What happened and how to reproduce it
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: System and simulator
+      description: X-Plane build, GPU/driver, aircraft, input/output resolution, AA/FG/cockpit options
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Evidence
+      description: Reviewed logs, frame-time observations or screenshots. Exclude personal data and paid aircraft assets.

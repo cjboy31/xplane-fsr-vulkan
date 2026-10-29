@@ -1,0 +1,50 @@
+// SPDX-License-Identifier: MIT
+#version 450
+layout(local_size_x=8,local_size_y=8)in;
+layout(set=0,binding=0,std140)uniform Params{
+    vec4 clip[8];
+    vec4 outputInfo; // width, height, screen count, debug tint
+    vec4 jitter;     // applied input jitter / input extent, viewport Y sign, edge margin
+    vec4 limits;     // relative depth tolerance, minimum tolerance
+}p;
+layout(set=0,binding=1)uniform sampler2D currentScene;
+layout(set=0,binding=2)uniform sampler2D sceneDepth;
+#ifdef OUTPUT_RGBA32
+layout(set=0,binding=3,rgba32f)uniform image2D reconstructed;
+#else
+layout(set=0,binding=3,rgba16f)uniform image2D reconstructed;
+#endif
+float cross2(vec2 a,vec2 b){return a.x*b.y-a.y*b.x;}
+bool triangle(vec2 point,vec3 a,vec3 b,vec3 c,out float depth){
+    float area=cross2(b.xy-a.xy,c.xy-a.xy);if(abs(area)<.01)return false;
+    float u=cross2(b.xy-point,c.xy-point)/area;
+    float v=cross2(c.xy-point,a.xy-point)/area;
+    float w=1-u-v;depth=u*a.z+v*b.z+w*c.z;
+    return min(u,min(v,w))>=-1e-5;
+}
+void main(){
+    ivec2 xy=ivec2(gl_GlobalInvocationID.xy)+ivec2(p.outputInfo.xy),size=imageSize(reconstructed);
+    if(any(greaterThanEqual(xy,size)))return;
+    vec2 point=vec2(xy)+.5;float coverage=0;
+    for(int q=0;q<min(int(p.outputInfo.z),2);++q){
+        vec3 v[4];bool valid=true;
+        for(int i=0;i<4;++i){vec4 c=p.clip[q*4+i];if(c.w<=.0001||any(isnan(c))||any(isinf(c))){valid=false;break;}vec3 ndc=c.xyz/c.w;if(ndc.z<0||ndc.z>1){valid=false;break;}v[i]=vec3((ndc.xy*vec2(1,p.jitter.z)*.5+.5)*vec2(size),ndc.z);}
+        if(!valid)continue;
+        float expected=0;if(!triangle(point,v[0],v[1],v[2],expected)&&!triangle(point,v[0],v[2],v[3],expected))continue;
+        float distanceToEdge=1e9;
+        for(int i=0;i<4;++i){vec2 edge=v[(i+1)%4].xy-v[i].xy;distanceToEdge=min(distanceToEdge,abs(cross2(edge,point-v[i].xy))/max(length(edge),.001));}
+        float edgeCoverage=smoothstep(p.jitter.w,p.jitter.w+1.0,distanceToEdge);if(edgeCoverage<=0)continue;
+        vec2 uv=point/vec2(size)+p.jitter.xy;
+        if(any(lessThan(uv,vec2(0)))||any(greaterThanEqual(uv,vec2(1))))continue;
+        float observed=textureLod(sceneDepth,uv,0).r;
+        if(isnan(observed)||isinf(observed)||abs(observed-expected)>max(p.limits.y,abs(expected)*p.limits.x))continue;
+        coverage=max(coverage,edgeCoverage);
+    }
+    if(coverage<=0)return;
+    vec2 uv=point/vec2(size)+p.jitter.xy;vec4 fresh=textureLod(currentScene,uv,0);
+    if(any(isnan(fresh))||any(isinf(fresh)))return;
+    vec4 old=imageLoad(reconstructed,xy);
+    vec3 restored=fresh.rgb;
+    if(p.outputInfo.w>.5)restored=mix(restored,vec3(0,1,0),.45);
+    imageStore(reconstructed,xy,vec4(mix(old.rgb,restored,coverage),old.a));
+}

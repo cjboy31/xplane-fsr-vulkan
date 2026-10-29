@@ -1,0 +1,12 @@
+name: Feature or aircraft support request
+description: Propose a focused improvement
+body:
+  - type: textarea
+    attributes:
+      label: Requested behavior
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Target aircraft or test case
+      description: Describe the aircraft/version and how a contributor could verify the change without redistributing its assets.
