@@ -53,7 +53,7 @@ static constexpr SettingHelp settingHelp[] = {
      L"native rendering with FSR. The live status explicitly shows paused processing when "
      L"unchecked."},
     {206, L"FSR 3 history tuning",
-     L"Uses more conservative temporal history for FSR 3.1.6. This can reduce trails but can "
+     L"Uses balanced history rejection for FSR 3.1.6. This can reduce trails but can "
      L"increase shimmer. It has no effect on the FSR 4 provider.\n\nBest use: try it for trails in "
      L"compatibility mode. It cannot provide complete motion for clouds, moving aircraft or "
      L"propellers. Restart to apply."},
@@ -201,7 +201,7 @@ static void createMainControls(HWND hwnd) {
                             CLEARTYPE_QUALITY, 0, L"Segoe UI");
     auto title = control(L"STATIC", L"FSR 3/4 + Frame Gen for X-Plane", 0, 28, 18, 610, 38);
     SendMessageW(title, WM_SETFONT, reinterpret_cast<WPARAM>(titleFont), TRUE);
-    control(L"STATIC", L"Vulkan community preview 0.5.5  |  Hover or click ? for help", 0, 30, 59,
+    control(L"STATIC", L"Vulkan community preview 0.5.6  |  Hover or click ? for help", 0, 30, 59,
             620, 25);
     updatesButton = control(L"BUTTON", L"Updates...", BS_PUSHBUTTON | WS_TABSTOP, 675, 59, 313, 30, 39);
     savedLabel = control(L"STATIC", L"Your choices are restored on startup", 0, 665, 25, 330, 40);

@@ -1,11 +1,10 @@
 # Validation status and limitations
 
-Current milestone: 0.5.5-alpha, FSR 3/4 + Frame Gen application branding,
+Current milestone: 0.5.6-alpha, frame-generation synchronization and temporal history corrections,
 with the independent SR22 current-frame Vulkan compositor from 0.5.0.
 
-0.5.5 separates app branding from the FSR Ghosting Fix cockpit feature.
-Renderer/plugin binaries, saved graphics setting keys
-and aircraft coverage are unchanged. The cockpit-screen fix still supports only
+0.5.6 updates the layer and read-only camera publisher; saved graphics settings
+and aircraft coverage remain unchanged. The cockpit-screen fix still supports only
 the default Cirrus SR22. See its help for compatibility and validation limits.
 
 The setup checker reads saved preferences only. It checks known AA/scale/output
@@ -14,6 +13,12 @@ validate every add-on/driver option or establish compatibility with all hardware
 
 ## Completed checks
 
+- Production motion-packing GPU tests cover ground/sky history, pan sign/scale,
+  jitter, invalid depth/projection and excessive motion. CPU tests cover source
+  matching, run-ahead/missed/duplicate frames and camera discontinuities.
+- FG fixtures read back 88 steady generated images per provider/format run,
+  checking for unexpected black output in UNORM and sRGB formats. These fixtures
+  do not reproduce the user's live simulator scene or prove scanout quality.
 - Updater fixtures cover stable/preview selection, numeric version ordering,
   downgrade refusal, strict JSON/Unicode and unsafe asset metadata rejection.
 - The production WinHTTP client reads the public GitHub release feed.
@@ -70,3 +75,8 @@ props, glass and scenery are not fixed by a cockpit-only compositor.
 SDK validation issues from the FG preview remain unresolved. A real-flight
 stutter fix has not been established. Source present-call interval logs are
 CPU diagnostics, not monitor scanout measurements or GPU timings.
+
+The reporter identified FG as the black-flicker trigger. Source fixes address a
+real synchronization gap and unsafe frame matching, but the reporter must still
+confirm the result in a live flight. See RENDERING-STABILITY.md for the findings
+and retest procedure; do not present fixture success as a universal visual fix.

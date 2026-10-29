@@ -117,6 +117,8 @@ static void install(const fs::path &root) {
             return;
         ensure(old == "bf790e7915cd7afd125daf297eac12d36557f69c0a29d66dbb396522995826a0" ||
                    old == "d799da598058143fc99f63180da8a66d4cbe078bd6f105fd66a4a38b81a1d888" ||
+                   old == "5fb87828f94aca906601703d49f0626aeac85e38ebf7b068b00867cd18535720" ||
+                   old == "6b0b17f2d315b5d50018dd167e896cd54a814ad11aa03ad6d94d2a14ed882e3a" ||
                    old == "119db0cae84dc5873c31eb42bb3afddd90c4a34c1fa2a949a1c056d394dc1045",
                "Installed XPFSR24 plugin is not a recognized owned build; no file was replaced");
         auto backups = appDirectory / L"plugin-backups";

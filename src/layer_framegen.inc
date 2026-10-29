@@ -242,6 +242,10 @@ static VkResult presentFrame(Device &d, VkQueue queue, const VkPresentInfoKHR *i
     // SDK presenter-thread traffic is already paced and uses its own native chain.
     if (sdkNesting || (!d.fgRequested.empty() && d.fgQueues[0] && queue != d.fgQueues[0]))
         return native(queue, info);
+    // AMD requires Present (including its generation callback), PrepareV2 and
+    // context destruction to be externally serialized. Keep the device guard
+    // across the SDK call, not just the bookkeeping before/after it.
+    std::lock_guard<std::recursive_mutex> presentationGuard(d.lock);
     LARGE_INTEGER presentStart{}, presentEnd{}, clockFrequency{};
     QueryPerformanceFrequency(&clockFrequency);
     QueryPerformanceCounter(&presentStart);
@@ -269,17 +273,26 @@ static VkResult presentFrame(Device &d, VkQueue queue, const VkPresentInfoKHR *i
                 return VK_ERROR_FEATURE_NOT_PRESENT;
             }
             bool active = d.enabled && d.fgLiveEnabled && !d.fgFailed && d.frameGenerator &&
-                          d.fgPreparedID == d.epoch && d.fgSubmittedID == d.epoch;
-            if (!active && d.frameGenerator) {
+                          d.fgSequence.ready();
+            if (d.frameGenerator) {
                 SdkScope sdk;
-                d.frameGenerator->configure(generation->presentation->handle(), d.epoch, false);
+                d.frameGenerator->configure(generation->presentation->handle(),
+                                            d.fgSequence.prepared, active);
             }
             d.status.fgActive = active;
             if (!active)
                 strncpy(d.status.fgReason,
-                        d.enabled ? "FG waiting for a submitted scene frame"
+                        d.enabled ? "FG bypass: submitted scene and prepared source must match"
                                   : "FG disabled with reconstruction toggle",
                         159);
+            if (!active && d.frameGenerator &&
+                (++d.fgSourceBypasses <= 3 || d.fgSourceBypasses % 300 == 0))
+                log("FG source guard: prepared=%llu submitted=%llu scene=%llu consumed=%llu; "
+                    "native present",
+                    (unsigned long long)d.fgSequence.prepared,
+                    (unsigned long long)d.fgSequence.submitted,
+                    (unsigned long long)d.fgSequence.latestScene,
+                    (unsigned long long)d.fgSequence.presented);
         }
         app::Camera camera{};
         if (app::readCamera(d.shared, camera)) {
@@ -319,6 +332,7 @@ static VkResult presentFrame(Device &d, VkQueue queue, const VkPresentInfoKHR *i
             }
         }
         if (generation) {
+            d.fgSequence.finishPresent();
             d.status.displayedPresents = generation->presentation->displayed();
             if (d.frameGenerator) {
                 d.status.fgGenerated = d.frameGenerator->generated.load();

@@ -1,5 +1,24 @@
 # Changes
 
+## 0.5.6-alpha
+
+- Serialize SDK frame preparation, presentation and game-queue submissions to
+  remove a frame-generation race. Flush generated work before context recreation.
+- Match interpolation to the submitted source scene, skip mismatched/run-ahead
+  frames and prevent one prepared frame from being generated twice.
+- Remove the external-view 20-metre aircraft history mask, which also covered
+  runway and terrain. Retain more cockpit/sky history for temporal antialiasing.
+- Reject invalid depth/motion samples and reset history on camera cuts, abrupt
+  zooms, view/projection changes and teleports. Add periodic view/depth diagnostics.
+- Add GPU packing regressions and generated-frame readback checks for both FG
+  providers in UNORM and sRGB formats, including the format in the reported log.
+- Recognize and back up the previous published camera plugin during upgrade;
+  verify migration without starting or changing a real simulator installation.
+
+These address concrete stability/history defects. The reporter confirmed that
+turning FG Off stops the black flicker; the fixes still require their live-flight
+retest. Complete object/cloud motion and all ghosting/jagged edges are not solved.
+
 ## 0.5.5-alpha
 
 - Name the application FSR 3/4 + Frame Gen for X-Plane. Update launcher titles,

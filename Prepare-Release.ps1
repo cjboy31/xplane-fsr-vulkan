@@ -65,9 +65,9 @@ X-Plane and the previous launcher first. For a recognized update, choose the
 existing app folder; saved launcher choices are preserved. Read the attached
 INSTALLATION-AND-USE.txt before starting the simulator.
 
-The standalone Setup.exe asset is also used by the in-app updater. Existing
-users install 0.5.4 once; future releases can be checked and installed from
-Updates. No archive extractor is needed for that flow.
+The standalone Setup.exe asset is also used by the in-app updater. Users with
+built-in Updates can select Check now. Users on older versions install this
+version once. No archive extractor is needed for in-app installation.
 
 Choose XPlane-FSR3-4-FrameGen-$Version-Setup.exe for a direct download. The
 Ghosting-Fix-named setup is an identical compatibility copy for the 0.5.4 updater;

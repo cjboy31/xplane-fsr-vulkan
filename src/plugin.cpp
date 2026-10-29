@@ -7,6 +7,7 @@
 #define IBM 1
 #include "cockpit_mesh.hpp"
 #include "shared.hpp"
+#include "camera_continuity.hpp"
 #include <XPLMDataAccess.h>
 #include <XPLMMenus.h>
 #include <XPLMPlanes.h>
@@ -23,6 +24,7 @@ static XPLMDataRef projection{}, world{}, bodyRef{}, widthRef{}, heightRef{}, vi
     ownX{}, ownY{}, ownZ{}, externalRef{};
 static XPLMMenuID menu{};
 static bool previousValid{};
+static app::Camera previousCamera{};
 static double previousVP[16]{};
 static double previousBodyVP[16]{};
 static bool previousBodyValid{};
@@ -173,6 +175,10 @@ static float update(float elapsed, float, int, void *) {
             }
             packet.valid = std::isfinite(packet.nearPlane) && packet.nearPlane > 0 &&
                            packet.verticalFov > 0 && packet.width && packet.height;
+            packet.reset |= app::cameraCut(previousCamera, packet);
+            if (packet.reset)
+                packet.screenReady = 0;
+            previousCamera = packet;
             memcpy(previousVP, vp, sizeof(vp));
             previousView = view;
             previousPaused = paused;

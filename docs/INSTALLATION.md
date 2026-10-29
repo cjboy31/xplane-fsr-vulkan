@@ -40,6 +40,18 @@ Release-feed and integrity handling follow the official
 
 ## Required simulator configuration
 
+### Flickering, external-view artifacts or jagged edges
+
+0.5.6 contains frame-generation synchronization/source-frame guards and temporal
+history corrections. Close X-Plane before updating; the launcher updates its
+owned camera publisher on the next FSR launch. If FG produces black flashes,
+turn it Off and retain the renderer log. Confirm stable rendering with FG Off
+before retrying FG 3 and then FG 4. Frame generation does not repair antialiasing.
+For airborne edge shimmer, compare Native AA at Full rendering scale against
+Quality upscaling, with MSAA/FXAA Off. The fixes require live confirmation and do
+not supply complete motion for clouds, propellers or all aircraft.
+See [rendering stability and retest steps](RENDERING-STABILITY.md).
+
 Click **Sim setup...** on the main screen for the checklist and a read-only
 **Check saved settings** report. It highlights mismatched AA, internal scale,
 saved output and monitor configuration. It does not change the simulator.

@@ -34,18 +34,27 @@ Run the relevant scripts with the same dependency path overrides:
 ./Test-Cockpit.ps1 -Compiler ... -VulkanHeaders ... -FsrSdk ...
 ./Test-Launcher.ps1 -Compiler ...
 ./Test-Updater.ps1 -Compiler ...
+./Test-Stability.ps1 -Compiler ... -Glslang ... -VulkanHeaders ... -FsrSdk ...
 ```
 
 `Test-Launcher.ps1` exercises saved presets/provider/checkboxes, quoted/Unicode
 arguments, legacy migration and failed-write reporting, plus injection-status
 transitions and all 14 reversible graphics presets in workspace fixtures. It
 does not start X-Plane or change your simulator preferences.
+With `-PreviousPlugin '<verified 0.5.5 win.xpl>'` it also exercises the real
+publisher upgrade/backup and unknown-file refusal functions in a fresh workspace
+fixture, using the current app payload and an inert simulator executable.
 
 `Test-Updater.ps1` checks release/channel selection and malformed/untrusted
 metadata rejection. `-Live` reads this project's public GitHub feed; optional
 `-DownloadTo '<new file>'` downloads and verifies a newer installer without
 executing it. The launcher links Windows WinHTTP; no third-party updater runtime
 is needed. See installer/README.md for packaging and handoff tests.
+
+`Test-Stability.ps1` checks camera/source-frame continuity and executes the
+production temporal shader with readback assertions. `Test-FrameGeneration.ps1`
+also tests sRGB presentation and checks steady generated frames for black output.
+These checks do not establish live-flight quality or frame pacing.
 
 `Test-Cockpit.ps1 -Aircraft '<your SR22 path>\Cirrus SR22.acf'` additionally checks
 the runtime geometry parser against an installed aircraft without copying its

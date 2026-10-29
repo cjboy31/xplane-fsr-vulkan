@@ -6,6 +6,7 @@
 #include "dispatch_cache.hpp"
 #include "feature_sizes.hpp"
 #include "framegen.hpp"
+#include "frame_sequence.hpp"
 #include "fsr24.hpp"
 #include "pacing.hpp"
 #include "shared.hpp"
@@ -135,7 +136,7 @@ struct Command {
     uint64_t depthOrder{};
     bool activeCaptureEligible{};
     std::map<VkImage, std::shared_ptr<DepthCapture>> capturedDepths;
-    uint64_t fgFrame{};
+    uint64_t fgFrame{}, sceneFrame{};
     bool oneTime{}, rendering{}, secondary{}, processed{}, failed{}, submitted{}, dynamicOffsets{};
     uint64_t epoch{};
     struct Push {
@@ -215,7 +216,8 @@ struct Device {
     std::shared_ptr<SwapchainGeneration> fgCurrent;
     std::unique_ptr<xpfsr::FrameGenerator> frameGenerator;
     std::array<uint32_t, 6> fgKey{};
-    uint64_t fgPreparedID{}, fgSubmittedID{};
+    xpfsr::FrameSequence fgSequence;
+    uint64_t fgPendingSkips{}, fgSourceBypasses{};
     uint64_t viewportCalls{}, secondaryViewportCalls{}, multiViewportCalls{};
     bool runtimeFailed{}, pathReady{}, featuresReady{};
     uint64_t epoch{}, frameSerial{};
@@ -570,8 +572,8 @@ void submittedProbes(Device &d, VkQueue queue, const std::vector<VkCommandBuffer
         if (found == d.commands.end())
             continue;
         auto &command = found->second;
-        if (command.fgFrame && queue == d.fgQueues[0])
-            d.fgSubmittedID = command.fgFrame;
+        if (queue == d.fgQueues[0])
+            d.fgSequence.submit(command.sceneFrame, command.fgFrame);
         pending.insert(pending.end(), command.executedChildren.begin(),
                        command.executedChildren.end());
         command.submitted = true;
@@ -915,15 +917,29 @@ void stopGenerator(Device &d) {
     if (d.frameGenerator) {
         if (d.fgCurrent)
             d.frameGenerator->configure(d.fgCurrent->presentation->handle(), d.epoch + 1, false);
+        // A view/depth convention change can recreate this context while old
+        // generated frames still use it. Flush both SDK presents and GPU work.
+        if (d.fgCurrent)
+            d.fgCurrent->presentation->wait();
+        check(d.fn<PFN_vkDeviceWaitIdle>("vkDeviceWaitIdle")(d.handle),
+              "Flush FG before context destruction");
         d.frameGenerator.reset();
     }
-    d.fgPreparedID = d.fgSubmittedID = 0;
+    d.fgSequence = {};
     d.status.fgActive = 0;
 }
 void prepareGeneration(Device &d, VkCommandBuffer cb, Command &command, const xpfsr::Frame &frame,
                        uint32_t rw, uint32_t rh, uint32_t ow, uint32_t oh) {
     if (d.fgRequested.empty() || d.fgFailed || !d.fgCurrent || !d.fgLiveEnabled)
         return;
+    if (!d.fgSequence.canPrepare()) {
+        strncpy(d.status.fgReason,
+                "FG skipped: previous source frame is still pending presentation", 159);
+        if (++d.fgPendingSkips <= 3 || d.fgPendingSkips % 300 == 0)
+            log("FG prepare guard: pending source=%llu; current source=%llu; keep native frame",
+                (unsigned long long)d.fgSequence.prepared, (unsigned long long)frame.sequence);
+        return;
+    }
     auto target = d.fgCurrent;
     if (target->width != ow || target->height != oh) {
         strncpy(d.status.fgReason, "FG needs scene and presentation extents to match", 159);
@@ -963,8 +979,8 @@ void prepareGeneration(Device &d, VkCommandBuffer cb, Command &command, const xp
         camera.right[0] = 1;
     if (camera.forward[0] == 0 && camera.forward[1] == 0 && camera.forward[2] == 0)
         camera.forward[2] = -1;
-    d.frameGenerator->prepare(target->presentation->handle(), d.epoch + 1, frame, camera);
-    command.fgFrame = d.fgPreparedID = d.epoch + 1;
+    d.frameGenerator->prepare(target->presentation->handle(), frame.sequence, frame, camera, true);
+    command.fgFrame = d.fgSequence.prepared = frame.sequence;
     ++d.status.fgPrepared;
     if (!d.status.fgActive)
         strncpy(d.status.fgReason, "FG prepared; waiting for SDK presentation callback", 159);
@@ -1549,6 +1565,7 @@ bool replace(Device &d, VkCommandBuffer cb, Command &command) {
                     cb, saved.layout, saved.stages, saved.offset, uint32_t(saved.data.size()),
                     saved.data.data());
         command.processed = true;
+        command.sceneFrame = d.camera.frame;
         d.pathReady = true;
         if (d.activeContext != configKey)
             d.jitterFrame = 0;
@@ -1562,13 +1579,16 @@ bool replace(Device &d, VkCommandBuffer cb, Command &command) {
         d.status.outputWidth = ow;
         d.status.outputHeight = oh;
         ++d.status.recordings;
-        if (d.status.recordings <= 4)
+        if (d.status.recordings <= 4 || frame.reset || d.status.recordings % 1000 == 0)
             log("Recorded frame=%llu depth=%p jitter=(%g,%g) trackedStaticViewports=%zu "
-                "candidates=%zu viewports=%llu secondary=%llu multi=%llu body=%u internal=%u",
+                "candidates=%zu viewports=%llu secondary=%llu multi=%llu body=%u internal=%u "
+                "reset=%u near=%g far=%g reverse=%u infinite=%u",
                 (unsigned long long)d.camera.frame, reinterpret_cast<void *>(depth.image),
                 depth.jitterX, depth.jitterY, d.graphicsViewports.size(), depthCandidateCount,
                 (unsigned long long)d.viewportCalls, (unsigned long long)d.secondaryViewportCalls,
-                (unsigned long long)d.multiViewportCalls, d.camera.bodyValid, d.camera.internal);
+                (unsigned long long)d.multiViewportCalls, d.camera.bodyValid, d.camera.internal,
+                frame.reset, d.camera.nearPlane, d.camera.farPlane, d.camera.reverseZ,
+                d.camera.infiniteZ);
         d.publish(d.mode == Mode::NativeAA
                       ? "Native AA recorded; experimental camera-derived motion"
                       : "Temporal upscaling recorded; experimental camera-derived motion");
@@ -3442,9 +3462,13 @@ static VKAPI_ATTR void VKAPI_CALL L_CmdDispatchIndirect(VkCommandBuffer cb, VkBu
 static VKAPI_ATTR VkResult VKAPI_CALL L_QueueSubmit(VkQueue queue, uint32_t count,
                                                     const VkSubmitInfo *submits, VkFence fence) {
     auto d = deviceFor(queue);
-    auto result = d->fn<PFN_vkQueueSubmit>("vkQueueSubmit")(queue, count, submits, fence);
+    auto fn = d->fn<PFN_vkQueueSubmit>("vkQueueSubmit");
     if (sdkNesting || (!d->fgRequested.empty() && d->fgQueues[0] && queue != d->fgQueues[0]))
-        return result;
+        return fn(queue, count, submits, fence);
+    // SDK Present can submit generation to the game queue. Serialize the
+    // application's submission itself, rather than only its tracking data.
+    std::lock_guard<std::recursive_mutex> submissionGuard(d->lock);
+    auto result = fn(queue, count, submits, fence);
     if (result == VK_SUCCESS) {
         std::lock_guard<std::recursive_mutex> l(d->lock);
         std::vector<VkCommandBuffer> commands;
@@ -3461,9 +3485,10 @@ static VKAPI_ATTR VkResult VKAPI_CALL L_QueueSubmit2(VkQueue queue, uint32_t cou
     auto fn = d->fn<PFN_vkQueueSubmit2>("vkQueueSubmit2");
     if (!fn)
         fn = d->fn<PFN_vkQueueSubmit2>("vkQueueSubmit2KHR");
-    auto result = fn(queue, count, submits, fence);
     if (sdkNesting || (!d->fgRequested.empty() && d->fgQueues[0] && queue != d->fgQueues[0]))
-        return result;
+        return fn(queue, count, submits, fence);
+    std::lock_guard<std::recursive_mutex> submissionGuard(d->lock);
+    auto result = fn(queue, count, submits, fence);
     if (result == VK_SUCCESS) {
         std::lock_guard<std::recursive_mutex> l(d->lock);
         std::vector<VkCommandBuffer> commands;

@@ -16,6 +16,8 @@ Laminar Research product, and is not a complete solution to ghosting or stutter.
 
 ## Features
 
+- Frame-generation source matching/synchronization and safer temporal history
+  handling in 0.5.6. See [stability changes and retest steps](docs/RENDERING-STABILITY.md).
 - Automatic startup checks for GitHub Releases, preview-channel selection and
   verified one-click installation from **Updates...**, preserving saved choices.
   Install 0.5.4 or later once to enable this feature.
