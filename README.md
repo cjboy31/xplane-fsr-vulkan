@@ -16,8 +16,12 @@ Laminar Research product, and is not a complete solution to ghosting or stutter.
 - Explicit Vulkan layer enabled only for X-Plane started by the launcher.
 - FSR 3.1.6 compatibility and 4.1.2 ML-preview AA/upscaling providers.
 - Optional FSR frame generation with SDK-controlled presentation.
-- Seven resolution presets configuring output, internal scale and AA settings,
-  with backups and selective restoration.
+- Fourteen presets on the main screen: seven resolution/AA choices each for
+  FSR 3 and FSR 4, with backups and selective restoration.
+- Automatically saved presets, provider, frame generation, checkboxes, simulator
+  folder and arguments; manual AA/output choices are saved when applied.
+- Hover/click help beside settings and a live injection banner. Green FSR ACTIVE
+  requires recent renderer activity; a one-time Windows notification is requested.
 - An independent Vulkan cockpit compositor: replays current-scene screen pixels
   after temporal reconstruction, with jitter correction, depth checks, edge
   erosion and an alignment tint. Initial target: default Cirrus SR22 PFD/MFD.

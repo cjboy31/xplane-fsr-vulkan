@@ -32,7 +32,13 @@ Run the relevant scripts with the same dependency path overrides:
 ./Test.ps1 -Compiler ... -Glslang ... -VulkanHeaders ... -FsrSdk ...
 ./Test-FrameGeneration.ps1 -Compiler ... -VulkanHeaders ... -FsrSdk ...
 ./Test-Cockpit.ps1 -Compiler ... -VulkanHeaders ... -FsrSdk ...
+./Test-Launcher.ps1 -Compiler ...
 ```
+
+`Test-Launcher.ps1` exercises saved presets/provider/checkboxes, quoted/Unicode
+arguments, legacy migration and failed-write reporting, plus injection-status
+transitions and all 14 reversible graphics presets in workspace fixtures. It
+does not start X-Plane or change your simulator preferences.
 
 `Test-Cockpit.ps1 -Aircraft '<your SR22 path>\Cirrus SR22.acf'` additionally checks
 the runtime geometry parser against an installed aircraft without copying its

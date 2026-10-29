@@ -1,10 +1,14 @@
 // SPDX-License-Identifier: MIT
 #include "graphics_settings.hpp"
 #include "shared.hpp"
+#include "launcher_preferences.hpp"
+#include "runtime_status.hpp"
+#include <algorithm>
 #include <bcrypt.h>
 #include <commctrl.h>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <iomanip>
 #include <memory>
 #include <shellapi.h>
@@ -14,8 +18,16 @@
 #include <vector>
 namespace fs = std::filesystem;
 static fs::path appDirectory, simulator;
+static std::wstring launcherWindowClass;
 static HWND window{}, pathBox{}, argsBox{}, statusBox{}, toggle{}, modeBox{}, fgBox{}, ghostBox{},
     cockpitBox{}, tintBox{};
+static HWND presetBox{}, presetNote{}, savedLabel{}, injectionBanner{};
+static launcher::Preferences preferences;
+static launcher::RuntimeMonitor runtimeMonitor;
+static launcher::RuntimeState bannerState{};
+static bool controlsReady{}, launchedNative{}, activeNotificationSent{};
+static void saveChoices();
+static void runtimeBanner(launcher::RuntimeState, const app::Telemetry &);
 static HANDLE child{}, mapping{}, aaChild{};
 static DWORD childId{};
 static int launchedFG{}, lastFGSelection{};
@@ -191,9 +203,9 @@ static void launch(const fs::path &root, const std::wstring &arguments, bool nat
         auto selected = SendMessageW(modeBox, CB_GETCURSEL, 0, 0);
         if (selected > 0) {
             ensure(graphics.msaa == 0 && graphics.fxaa == 0,
-                   "Open Graphics setup and turn MSAA and FXAA Off before using temporal FSR");
+                   "Choose a preset, or open Advanced graphics and turn MSAA and FXAA Off");
             ensure((selected == 1 || selected == 3) ? graphics.scale == 0 : graphics.scale > 0,
-                   "Open Graphics setup: Native AA needs Full scale; upscaling needs a lower "
+                   "Choose a matching preset: Native AA needs Full scale; upscaling needs a lower "
                    "rendering scale");
         }
         install(root);
@@ -258,12 +270,14 @@ static void launch(const fs::path &root, const std::wstring &arguments, bool nat
     detach();
     child = process.hProcess;
     childId = process.dwProcessId;
+    launchedNative = native;
+    runtimeMonitor.reset();
+    activeNotificationSent = false;
+    runtimeBanner(native ? launcher::RuntimeState::native : launcher::RuntimeState::starting, {});
     CloseHandle(process.hThread);
     simulator = root;
     std::ofstream(appDirectory / L"logs/launch.txt")
         << "Launcher PID " << GetCurrentProcessId() << "; X-Plane PID " << childId << '\n';
-    WritePrivateProfileStringW(L"Application", L"Simulator", root.c_str(),
-                               (appDirectory / L"settings.ini").c_str());
 }
 static void checkAA() {
     checkingFG = false;
@@ -392,7 +406,11 @@ static void refresh() {
                           : L"Native AA check passed. Use View AA comparison for the result."));
     }
 
-    if (!running()) {
+    bool activeProcess = running();
+    for (int id : {10, 11, 12, 20, 21, 35, 40, 42, 43, 44, 107, 109})
+        EnableWindow(GetDlgItem(window, id), !activeProcess);
+    if (!activeProcess) {
+        runtimeBanner(launcher::RuntimeState::stopped, {});
         if (child) {
             DWORD exitCode{};
             GetExitCodeProcess(child, &exitCode);
@@ -440,10 +458,19 @@ static void refresh() {
                     std::string fgReason;
                     std::getline(f, fgReason);
                     strncpy(status.fgReason, fgReason.c_str(), 159);
+                    f >> status.cockpitRecordings >> status.cockpitActive >> status.cockpitScreens;
+                    std::getline(f, ignored);
+                    std::string cockpitReason;
+                    std::getline(f, cockpitReason);
+                    strncpy(status.cockpitReason, cockpitReason.c_str(), 159);
                 }
             }
         }
     }
+    auto state = runtimeMonitor.update(true, launchedNative, available, status,
+                                       SendMessageW(toggle, BM_GETCHECK, 0, 0) == BST_CHECKED,
+                                       GetTickCount64());
+    runtimeBanner(state, status);
     if (available) {
         std::wostringstream line;
         line << (status.active ? L"FSR reconstruction recorded" : L"Native rendering / waiting")
@@ -473,209 +500,22 @@ static void refresh() {
     } else {
         std::wostringstream detail;
         detail << L"X-Plane is running (PID " << childId
-               << L"). Waiting for the camera plugin…\r\nMapping status: " << GetLastError();
+               << (launchedNative ? L"). Native launch; FSR injection was not requested."
+                                  : L"). Waiting for renderer telemetry. Load a flight.\r\nA "
+                                    L"running simulator alone does not confirm injection.");
         SetWindowTextW(statusBox, detail.str().c_str());
     }
 }
-static HWND control(const wchar_t *type, const wchar_t *label, DWORD style, int x, int y, int w,
-                    int h, int id = 0) {
-    auto childWindow =
-        CreateWindowExW(type == std::wstring(L"EDIT") ? WS_EX_CLIENTEDGE : 0, type, label,
-                        WS_CHILD | WS_VISIBLE | style, x, y, w, h, window,
-                        reinterpret_cast<HMENU>(INT_PTR(id)), GetModuleHandleW(nullptr), nullptr);
-    SendMessageW(childWindow, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
-    return childWindow;
-}
-static void error(const std::exception &e) {
-    MessageBoxW(window, wide(e.what()).c_str(), L"X-Plane FSR 2.4 Alpha", MB_OK | MB_ICONERROR);
-}
-#include "graphics_ui.inc"
-static LRESULT CALLBACK procedure(HWND hwnd, UINT message, WPARAM w, LPARAM l) {
-    switch (message) {
-    case WM_CREATE: {
-        window = hwnd;
-        font = CreateFontW(-17, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET, 0, 0,
-                           CLEARTYPE_QUALITY, 0, L"Segoe UI");
-        titleFont = CreateFontW(-27, 0, 0, 0, FW_SEMIBOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET, 0,
-                                0, CLEARTYPE_QUALITY, 0, L"Segoe UI");
-        auto title = control(L"STATIC", L"FSR for X-Plane", 0, 28, 22, 650, 40);
-        SendMessageW(title, WM_SETFONT, reinterpret_cast<WPARAM>(titleFont), TRUE);
-        control(L"STATIC", L"SDK 2.4 · Windows Vulkan · Experimental alpha", 0, 30, 66, 650, 28);
-        control(L"STATIC", L"X-Plane folder", 0, 30, 112, 650, 24);
-        pathBox =
-            control(L"EDIT", simulator.c_str(), ES_AUTOHSCROLL | WS_TABSTOP, 30, 140, 570, 31, 10);
-        control(L"BUTTON", L"Browse…", BS_PUSHBUTTON | WS_TABSTOP, 612, 139, 105, 33, 11);
-        control(L"STATIC", L"Optional X-Plane arguments", 0, 30, 187, 650, 24);
-        argsBox = control(L"EDIT", L"", ES_AUTOHSCROLL | WS_TABSTOP, 30, 215, 687, 31, 12);
-        control(L"BUTTON", L"Launch selected mode", BS_DEFPUSHBUTTON | WS_TABSTOP, 30, 270, 210, 42,
-                20);
-        control(L"BUTTON", L"Launch native", BS_PUSHBUTTON | WS_TABSTOP, 254, 270, 174, 42, 21);
-        toggle = control(L"BUTTON", L"Enable selected mode", BS_AUTOCHECKBOX | WS_TABSTOP, 450, 276,
-                         265, 30, 22);
-        SendMessageW(toggle, BM_SETCHECK, BST_CHECKED, 0);
-        control(L"STATIC", L"Mode", 0, 30, 330, 70, 24);
-        modeBox = control(L"COMBOBOX", L"", CBS_DROPDOWNLIST | WS_TABSTOP, 100, 325, 617, 160, 40);
-        for (auto *name : {L"Diagnostics only (default; native GPU commands)",
-                           L"FSR 3.1.6 Native AA - compatibility (experimental)",
-                           L"FSR 3.1.6 upscaling - compatibility (experimental)",
-                           L"FSR 4.1.2 Native AA - preview", L"FSR 4.1.2 upscaling - preview"})
-            SendMessageW(modeBox, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(name));
-        SendMessageW(modeBox, CB_SETCURSEL, 0, 0);
-        control(L"STATIC", L"Frame gen", 0, 30, 373, 125, 24);
-        fgBox = control(L"COMBOBOX", L"", CBS_DROPDOWNLIST | WS_TABSTOP, 165, 368, 552, 130, 41);
-        for (auto *label : {L"Off (default)", L"3.1.6 compatibility - experimental 2x",
-                            L"4.0.2 ML - experimental 2x preview"})
-            SendMessageW(fgBox, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(label));
-        SendMessageW(fgBox, CB_SETCURSEL, 0, 0);
-        control(L"STATIC",
-                L"Start with Native AA 3.1.6, Full resolution, MSAA/FXAA off, FG Off.\r\nUpscaling "
-                L"needs below Full. SR22 cockpit restore needs FG Off; use the tint to check "
-                L"alignment.",
-                0, 30, 417, 685, 48);
-        ghostBox =
-            control(L"BUTTON", L"Reduce ghosting (SR 3.1.6 only; restart; may increase shimmer)",
-                    BS_AUTOCHECKBOX | WS_TABSTOP, 30, 467, 685, 25, 42);
-        SendMessageW(ghostBox, BM_SETCHECK, BST_CHECKED, 0);
-        cockpitBox = control(L"BUTTON", L"Restore SR22 cockpit screens (Vulkan preview; FG Off)",
-                             BS_AUTOCHECKBOX | WS_TABSTOP, 30, 496, 685, 25, 43);
-        SendMessageW(cockpitBox, BM_SETCHECK, BST_CHECKED, 0);
-        tintBox = control(L"BUTTON", L"Show green screen-alignment tint (restart to apply)",
-                          BS_AUTOCHECKBOX | WS_TABSTOP, 30, 525, 685, 25, 44);
-        statusBox =
-            control(L"EDIT",
-                    L"Ready. This alpha uses camera-derived motion.\r\nMoving objects, propellers, "
-                    L"glass and cockpit displays need visual validation.\r\nFrame generation is "
-                    L"off by default. Gauges/UI can show interpolation artifacts.",
-                    ES_MULTILINE | ES_READONLY | WS_VSCROLL, 30, 558, 687, 136, 30);
-        control(L"BUTTON", L"Open renderer log", BS_PUSHBUTTON | WS_TABSTOP, 30, 709, 195, 35, 31);
-        control(L"BUTTON", L"Remove camera plugin", BS_PUSHBUTTON | WS_TABSTOP, 240, 709, 215, 35,
-                32);
-        control(L"BUTTON", L"Read guide", BS_PUSHBUTTON | WS_TABSTOP, 473, 709, 150, 35, 33);
-        control(L"BUTTON", L"Run Native AA check", BS_PUSHBUTTON | WS_TABSTOP, 30, 761, 215, 35,
-                34);
-        control(L"BUTTON", L"Graphics setup...", BS_PUSHBUTTON | WS_TABSTOP, 260, 761, 215, 35, 35);
-        control(L"BUTTON", L"Run FG check", BS_PUSHBUTTON | WS_TABSTOP, 490, 761, 227, 35, 36);
-        control(L"BUTTON", L"Run cockpit check", BS_PUSHBUTTON | WS_TABSTOP, 30, 812, 335, 35, 37);
-        control(L"BUTTON", L"View cockpit comparison", BS_PUSHBUTTON | WS_TABSTOP, 385, 812, 332,
-                35, 38);
-        SetTimer(hwnd, 1, 1000, nullptr);
-        return 0;
-    }
-    case WM_COMMAND:
-        try {
-            switch (LOWORD(w)) {
-            case 11: {
-                BROWSEINFOW info{};
-                info.hwndOwner = window;
-                info.lpszTitle = L"Choose the folder containing X-Plane.exe";
-                info.ulFlags = BIF_RETURNONLYFSDIRS | BIF_NEWDIALOGSTYLE;
-                auto item = SHBrowseForFolderW(&info);
-                if (item) {
-                    wchar_t selected[MAX_PATH]{};
-                    if (SHGetPathFromIDListW(item, selected))
-                        SetWindowTextW(pathBox, selected);
-                    CoTaskMemFree(item);
-                }
-                break;
-            }
-            case 20:
-                ensure(!aaChild, "Wait for the Native AA check to finish");
-                launch(text(pathBox), text(argsBox), false);
-                break;
-            case 21:
-                launch(text(pathBox), text(argsBox), true);
-                break;
-            case 22: {
-                bool enabled = SendMessageW(toggle, BM_GETCHECK, 0, 0) == BST_CHECKED;
-                if (shared)
-                    InterlockedExchange(&shared->enabled, enabled);
-                std::ofstream(appDirectory / L"logs/renderer-control.txt") << (enabled ? '1' : '0');
-                break;
-            }
-            case 31:
-                ShellExecuteW(hwnd, L"open", L"notepad.exe",
-                              quote((appDirectory / L"logs/renderer.log").wstring()).c_str(),
-                              nullptr, SW_SHOWNORMAL);
-                break;
-            case 32:
-                removePlugin(text(pathBox));
-                SetWindowTextW(statusBox, L"This package's camera plugin has been removed.");
-                break;
-            case 33: {
-                auto guide = appDirectory / L"INSTALLATION-AND-USE.txt";
-                if (!fs::exists(guide))
-                    guide = appDirectory / L"README.txt";
-                ShellExecuteW(hwnd, L"open", L"notepad.exe", quote(guide.wstring()).c_str(),
-                              nullptr, SW_SHOWNORMAL);
-                break;
-            }
-            case 41:
-                if (HIWORD(w) == CBN_SELCHANGE && running()) {
-                    int selected = int(SendMessageW(fgBox, CB_GETCURSEL, 0, 0));
-                    if (selected && selected != launchedFG) {
-                        SendMessageW(fgBox, CB_SETCURSEL, lastFGSelection, 0);
-                        throw std::runtime_error(
-                            "Restart X-Plane to change the frame generation provider");
-                    }
-                    std::ofstream(appDirectory / L"logs/renderer-fg-control.txt")
-                        << (selected ? '1' : '0');
-                    lastFGSelection = selected;
-                }
-                break;
-            case 36:
-                checkFG();
-                break;
-            case 37:
-                checkCockpit();
-                break;
-            case 38:
-                ShellExecuteW(hwnd, L"open",
-                              (appDirectory / L"cockpit-check/comparison.html").c_str(), nullptr,
-                              nullptr, SW_SHOWNORMAL);
-                break;
-            case 34:
-                checkAA();
-                break;
-            case 35:
-                showGraphics();
-                break;
-            }
-            refresh();
-        } catch (const std::exception &e) {
-            error(e);
-        }
-        return 0;
-    case WM_TIMER:
-        refresh();
-        return 0;
-    case WM_CLOSE:
-        DestroyWindow(hwnd);
-        return 0;
-    case WM_DESTROY:
-        KillTimer(hwnd, 1);
-        detach();
-        if (child)
-            CloseHandle(child);
-        if (aaChild)
-            CloseHandle(aaChild);
-        if (font)
-            DeleteObject(font);
-        if (titleFont)
-            DeleteObject(titleFont);
-        PostQuitMessage(0);
-        return 0;
-    }
-    return DefWindowProcW(hwnd, message, w, l);
-}
+#include "launcher_ui.inc"
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, LPWSTR, int show) {
     CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
     wchar_t self[32768]{};
     GetModuleFileNameW(nullptr, self, 32768);
     appDirectory = fs::path(self).parent_path();
-    wchar_t saved[32768]{};
-    GetPrivateProfileStringW(L"Application", L"Simulator", L"D:\\X-Plane 12", saved, 32768,
-                             (appDirectory / L"settings.ini").c_str());
-    simulator = saved;
+    launcherWindowClass =
+        L"XPFSR24Launcher_" + std::to_wstring(std::hash<std::wstring>{}(appDirectory.wstring()));
+    preferences = launcher::load(appDirectory / L"settings.ini");
+    simulator = preferences.simulator;
     int argc{};
     auto argv = CommandLineToArgvW(GetCommandLineW(), &argc);
     try {
@@ -704,7 +544,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, LPWSTR, int show) {
         CreateFileW((appDirectory / L"launcher.lock").c_str(), GENERIC_WRITE, 0, nullptr,
                     OPEN_ALWAYS, FILE_ATTRIBUTE_TEMPORARY | FILE_FLAG_DELETE_ON_CLOSE, nullptr);
     if (applicationLock == INVALID_HANDLE_VALUE) {
-        auto existing = FindWindowW(L"XPFSR24Launcher", nullptr);
+        auto existing = FindWindowW(launcherWindowClass.c_str(), nullptr);
         if (existing) {
             ShowWindow(existing, SW_RESTORE);
             SetForegroundWindow(existing);
@@ -721,15 +561,15 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, LPWSTR, int show) {
     WNDCLASSW c{};
     c.lpfnWndProc = procedure;
     c.hInstance = instance;
-    c.lpszClassName = L"XPFSR24Launcher";
+    c.lpszClassName = launcherWindowClass.c_str();
     c.hCursor = LoadCursor(nullptr, IDC_ARROW);
     c.hIcon = LoadIconW(instance, MAKEINTRESOURCEW(101));
     c.hbrBackground = reinterpret_cast<HBRUSH>(COLOR_WINDOW + 1);
     RegisterClassW(&c);
     auto hwnd =
-        CreateWindowExW(0, c.lpszClassName, L"X-Plane FSR - SR22 Vulkan Cockpit Preview",
+        CreateWindowExW(0, c.lpszClassName, L"FSR for X-Plane - Community Preview",
                         WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX, CW_USEDEFAULT,
-                        CW_USEDEFAULT, 765, 925, nullptr, nullptr, instance, nullptr);
+                        CW_USEDEFAULT, 1040, 830, nullptr, nullptr, instance, nullptr);
     ShowWindow(hwnd, show);
     UpdateWindow(hwnd);
     MSG message{};

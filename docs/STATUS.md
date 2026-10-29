@@ -1,6 +1,7 @@
 # Validation status and limitations
 
-Current milestone: 0.5.0-alpha, independent SR22 current-frame Vulkan compositor.
+Current milestone: 0.5.1-alpha, saved main-screen presets and renderer status,
+with the independent SR22 current-frame Vulkan compositor from 0.5.0.
 
 ## Completed checks
 
@@ -12,8 +13,20 @@ Current milestone: 0.5.0-alpha, independent SR22 current-frame Vulkan compositor
   0.00365557 with SR 3.1.6 and 0.00582961 to 0.00365557 with SR 4.1.2.
 - Outside-display and depth-occluded fixture pixels remained byte-identical.
 - Existing camera/IPC, diagnostics, AA/upscaling and disable/re-enable regressions.
-- Prior 0.4.x preferences tests cover backups, seven presets, selective restore,
+- Preferences tests cover backups, all 14 FSR 3/4 presets, selective restore,
   duplicate/missing keys, conflict refusal and rollback after a failed write.
+- Launcher persistence tests cover all presets/providers, checkboxes, custom
+  AA/output, quoted/Unicode arguments, old settings migration, backup metadata,
+  read-only failures and corrupt selectors.
+- Runtime-status tests distinguish a camera mapping, layer activity, fresh FSR
+  recordings/presentation, disabled processing and stale telemetry.
+- Windows UI fixture: selected FSR 4 4K Quality from the main screen, verified
+  fullscreen 4K/Quality/AA preference edits, help dialogs and advanced controls,
+  then closed/reopened the app and confirmed the same preset/provider returned.
+
+The new Windows active notification is requested through the system tray; OS
+notification preferences can suppress it. No live-flight notification test or
+new live visual-quality result is claimed for this launcher-only update.
 
 These are controlled tests on an AMD Radeon AI PRO R9700, driver 26.10.1.
 The supported renderer was investigated on X-Plane 12.4.4-b5, build 124417.
