@@ -1,5 +1,19 @@
 # Changes
 
+## 0.5.4-alpha
+
+- Add automatic GitHub Release checks on startup and an Updates window with
+  remembered automatic-check and preview-channel choices.
+- Offer Download and install after a newer compatible release is found. Verify
+  HTTPS origin, file size and GitHub's SHA-256 digest before running setup.
+- Update the recognized installation in place, wait for the old launcher to exit,
+  refuse locked application files and reopen the launcher with saved choices.
+- Publish a standalone installer alongside the RAR for future in-app updates.
+  Users of older versions must install this updater-enabled version once.
+
+Installation requires the user's click and X-Plane/GPU checks closed. There is
+no background service, forced mid-flight update or renderer change in this build.
+
 ## 0.5.3-alpha
 
 - Add Sim setup on the main screen with a first-flight checklist and an explicit

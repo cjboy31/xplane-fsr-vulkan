@@ -23,6 +23,15 @@ Source changes alone do not deliver the Windows installer to users.
 7. Publish and verify the public page, source tag, asset names/sizes and server
    SHA-256 digest when available. Give the user the release URL.
 
+Starting with 0.5.4, also pass `-SetupInstaller` to Prepare-Release and upload
+`XPlane-FSR-Ghosting-Fix-<version>-Setup.exe`. It must be the exact setup inside
+the tested RAR, and automatic-update mode must pass. The updater requires this
+exact filename, a v-prefixed semantic tag, uploaded state, HTTPS download path
+and GitHub's SHA-256 digest. Keep this asset available: RAR-only releases cannot
+be installed by the updater. No separate update server or scheduler is needed.
+Update `currentVersion` in src/update_feed.hpp along with the app resource/UI
+version. Release preparation rejects a mismatch to prevent repeated self-updates.
+
 Example after a separately tested installer has been built:
 
 ```powershell

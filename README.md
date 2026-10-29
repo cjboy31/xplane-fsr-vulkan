@@ -13,6 +13,9 @@ Laminar Research product, and is not a complete solution to ghosting or stutter.
 
 ## Features
 
+- Automatic startup checks for GitHub Releases, preview-channel selection and
+  verified one-click installation from **Updates...**, preserving saved choices.
+  Install 0.5.4 or later once to enable this feature.
 - Explicit Vulkan layer enabled only for X-Plane started by the launcher.
 - FSR 3.1.6 compatibility and 4.1.2 ML-preview AA/upscaling providers.
 - Optional FSR frame generation with SDK-controlled presentation.

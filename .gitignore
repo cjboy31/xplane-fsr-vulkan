@@ -4,6 +4,9 @@
 /outputs/
 /work/
 /installer/build*/
+/installer/test*/
+/installer/release-docs*/
+/installer/*-RESULTS.json
 __pycache__/
 *.pyc
 *.exe

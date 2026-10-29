@@ -1,9 +1,9 @@
 # Validation status and limitations
 
-Current milestone: 0.5.3-alpha, simulator setup guidance and a read-only settings report,
+Current milestone: 0.5.4-alpha, verified updates and simulator setup guidance,
 with the independent SR22 current-frame Vulkan compositor from 0.5.0.
 
-0.5.3 adds launcher guidance/checks. Renderer/plugin binaries, saved setting keys
+0.5.4 adds launcher updates. Renderer/plugin binaries, saved graphics setting keys
 and aircraft coverage are unchanged. The cockpit-screen fix still supports only
 the default Cirrus SR22. See its help for compatibility and validation limits.
 
@@ -13,6 +13,11 @@ validate every add-on/driver option or establish compatibility with all hardware
 
 ## Completed checks
 
+- Updater fixtures cover stable/preview selection, numeric version ordering,
+  downgrade refusal, strict JSON/Unicode and unsafe asset metadata rejection.
+- The production WinHTTP client reads the public GitHub release feed.
+- The Updates UI and saved preferences were inspected in an isolated Windows
+  fixture. Installer checks exercise the automatic-update handoff.
 - Setup UI fixture reported mismatched MSAA/FXAA, internal scale and output;
   after supplying matching settings, it reported OK. Resource/preferences hashes
   were byte-identical before and after both read-only checks.

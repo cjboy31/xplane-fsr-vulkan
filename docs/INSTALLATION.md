@@ -3,6 +3,37 @@
 Use the complete release package or build `app/` as described in BUILDING.md.
 Close X-Plane and the previous launcher before installing/updating anything.
 
+## App updates
+
+Install version 0.5.4-alpha or later once using the full official installer.
+The launcher then checks this project's public GitHub Releases when it opens.
+Click **Updates...** to check manually, read the release notes and choose
+**Download and install**. Close every X-Plane process and all GPU checks first.
+The launcher saves your choices, downloads standalone setup, verifies its size
+and SHA-256 against GitHub's HTTPS metadata, closes, installs into the same owned
+application folder and reopens. The installer does not edit simulator preferences.
+A portable copy must first be installed with official setup.
+
+Automatic checks and preview releases can each be disabled in Updates. Both
+start enabled in this alpha and are remembered in settings.ini. Disabling
+previews selects stable releases only; it never downgrades an alpha. There is
+no background service or mid-flight installation. No GitHub login is needed;
+simulator paths/settings/logs are not sent to GitHub.
+
+Offline, rate-limited, interrupted or invalid downloads show a retry message.
+**Close / cancel download** cancels the download. Setup waits for launcher exit
+and rejects files that are in use. If setup fails after installation starts, use
+the full release installer in the same folder to repair the app; retain a working
+release. The verified installer remains in a unique XPFSR24-update folder under
+Windows Temp and can be removed after setup finishes.
+
+SHA-256 verifies download integrity against GitHub, rather than an independent
+publisher signature. The original launcher/installer is currently unsigned;
+Windows may show its normal reputation prompt. Updates do not bypass it.
+Release-feed and integrity handling follow the official
+[GitHub Releases API](https://docs.github.com/en/rest/releases/releases) and
+[WinHTTP options](https://learn.microsoft.com/en-us/windows/win32/winhttp/option-flags).
+
 ## Required simulator configuration
 
 Click **Sim setup...** on the main screen for the checklist and a read-only

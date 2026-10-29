@@ -192,6 +192,7 @@ static void runtimeBanner(launcher::RuntimeState state, const app::Telemetry &st
 }
 #include "graphics_ui.inc"
 #include "setup_ui.inc"
+#include "update_ui.inc"
 static void createMainControls(HWND hwnd) {
     window = hwnd;
     font = CreateFontW(-16, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET, 0, 0,
@@ -200,8 +201,9 @@ static void createMainControls(HWND hwnd) {
                             CLEARTYPE_QUALITY, 0, L"Segoe UI");
     auto title = control(L"STATIC", L"FSR Ghosting Fix for X-Plane", 0, 28, 18, 610, 38);
     SendMessageW(title, WM_SETFONT, reinterpret_cast<WPARAM>(titleFont), TRUE);
-    control(L"STATIC", L"Vulkan community preview 0.5.3  |  Hover or click ? for help", 0, 30, 59,
+    control(L"STATIC", L"Vulkan community preview 0.5.4  |  Hover or click ? for help", 0, 30, 59,
             620, 25);
+    updatesButton = control(L"BUTTON", L"Updates...", BS_PUSHBUTTON | WS_TABSTOP, 675, 59, 313, 30, 39);
     savedLabel = control(L"STATIC", L"Your choices are restored on startup", 0, 665, 25, 330, 40);
     control(L"STATIC", L"X-Plane folder", 0, 30, 96, 145, 22);
     helpIcon(hwnd, 200, 170, 91);
@@ -292,6 +294,10 @@ static void createMainControls(HWND hwnd) {
     Shell_NotifyIconW(NIM_ADD, &tray);
     runtimeBanner(launcher::RuntimeState::stopped, {});
     SetTimer(hwnd, 1, 1000, nullptr);
+    autoCheckUpdates = launcher::readSetting(appDirectory / L"settings.ini", L"Updates", L"AutomaticChecks", L"1") != L"0";
+    previewUpdates = launcher::readSetting(appDirectory / L"settings.ini", L"Updates", L"PreviewReleases", L"1") != L"0";
+    SetTimer(hwnd, 3, 1500, nullptr);
+    SetTimer(hwnd, 4, 500, nullptr);
 }
 static LRESULT CALLBACK procedure(HWND hwnd, UINT message, WPARAM w, LPARAM l) {
     switch (message) {
@@ -424,6 +430,9 @@ static LRESULT CALLBACK procedure(HWND hwnd, UINT message, WPARAM w, LPARAM l) {
                               (appDirectory / L"cockpit-check/comparison.html").c_str(), nullptr,
                               nullptr, SW_SHOWNORMAL);
                 break;
+            case 39:
+                showUpdates();
+                break;
             case 107:
                 restoreGraphics();
                 break;
@@ -434,7 +443,12 @@ static LRESULT CALLBACK procedure(HWND hwnd, UINT message, WPARAM w, LPARAM l) {
         }
         return 0;
     case WM_TIMER:
-        if (w == 2) {
+        if (w == 3) {
+            KillTimer(hwnd, 3);
+            if (autoCheckUpdates) startUpdateCheck();
+        } else if (w == 4) {
+            pollUpdate();
+        } else if (w == 2) {
             KillTimer(hwnd, 2);
             try {
                 saveChoices();
@@ -462,6 +476,7 @@ static LRESULT CALLBACK procedure(HWND hwnd, UINT message, WPARAM w, LPARAM l) {
         }
         return 0;
     case WM_CLOSE:
+        updateJob->cancel = true;
         try {
             saveChoices();
         } catch (const std::exception &e) {
@@ -473,6 +488,8 @@ static LRESULT CALLBACK procedure(HWND hwnd, UINT message, WPARAM w, LPARAM l) {
     case WM_DESTROY: {
         KillTimer(hwnd, 1);
         KillTimer(hwnd, 2);
+        KillTimer(hwnd, 3);
+        KillTimer(hwnd, 4);
         detach();
         NOTIFYICONDATAW tray{sizeof(tray)};
         tray.hWnd = hwnd;

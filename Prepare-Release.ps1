@@ -4,6 +4,7 @@ param(
     [Parameter(Mandatory)][string]$Archive,
     [Parameter(Mandatory)][string]$InstallerTestResult,
     [Parameter(Mandatory)][string]$Instructions,
+    [string]$SetupInstaller = '',
     [string]$Git = 'git'
 )
 $ErrorActionPreference = 'Stop'
@@ -33,6 +34,19 @@ Copy-Item -LiteralPath $archivePath -Destination (Join-Path $output $archiveName
 Copy-Item -LiteralPath $Instructions -Destination (Join-Path $output 'INSTALLATION-AND-USE.txt')
 $utf8 = [Text.UTF8Encoding]::new($false)
 [IO.File]::WriteAllText((Join-Path $output 'SHA256SUMS.txt'), "$hash  $archiveName`n", $utf8)
+if ($SetupInstaller) {
+    $updateHeader = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'src\update_feed.hpp') -Raw
+    if ($updateHeader -notmatch ('currentVersion\[\]\s*=\s*"'+[regex]::Escape($Version)+'"')) {
+        throw 'Updater currentVersion must match the release version'
+    }
+    $setupHash = (Get-FileHash -LiteralPath $SetupInstaller -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($result.setupSha256 -ne $setupHash -or $result.setupBytes -ne (Get-Item -LiteralPath $SetupInstaller).Length -or $result.automaticUpdate -ne 'PASS') {
+        throw 'Standalone setup must match the installer tested through automatic-update mode'
+    }
+    $setupName = "XPlane-FSR-Ghosting-Fix-$Version-Setup.exe"
+    Copy-Item -LiteralPath $SetupInstaller -Destination (Join-Path $output $setupName)
+    [IO.File]::AppendAllText((Join-Path $output 'SHA256SUMS.txt'), "$setupHash  $setupName`n", $utf8)
+}
 $notes = @"
 ## FSR Ghosting Fix for X-Plane $Version
 
@@ -49,6 +63,10 @@ Download the installer RAR, extract it, and run XPlane-FSR24-Setup.exe. Close
 X-Plane and the previous launcher first. For a recognized update, choose the
 existing app folder; saved launcher choices are preserved. Read the attached
 INSTALLATION-AND-USE.txt before starting the simulator.
+
+The standalone Setup.exe asset is also used by the in-app updater. Existing
+users install 0.5.4 once; future releases can be checked and installed from
+Updates. No archive extractor is needed for that flow.
 
 ### Validation and limits
 
