@@ -4,6 +4,7 @@
 #include "probe_support.hpp"
 #undef wmain
 #include "shared.hpp"
+#include "ground_camera.hpp"
 static std::vector<uint32_t> loadSpv(const wchar_t *path) {
     FILE *f = _wfopen(path, L"rb");
     require(f, "Test shader missing");
@@ -29,6 +30,8 @@ int wmain(int argc, wchar_t **argv) {
         auto samples = VkSampleCountFlagBits(sampleCount);
         std::wstring resolveKind = argc > 5 ? argv[5] : L"attachment";
         std::cout << "Scene MSAA samples=" << sampleCount << "\n";
+        const bool staleCamera = argc > 6 && std::wstring(argv[6]) == L"stale-camera";
+        const bool groundCamera = argc > 6 && std::wstring(argv[6]) == L"ground-camera";
         const uint32_t OW = nativeAA ? 256 : 384, OH = nativeAA ? 144 : 216;
         SetEnvironmentVariableW(L"XPFSR24_MODE", observe    ? L"observe"
                                                  : nativeAA ? L"native-aa"
@@ -409,7 +412,14 @@ int wmain(int argc, wchar_t **argv) {
             camera.ticks = now.QuadPart;
             for (int i = 0; i < 16; ++i)
                 camera.reprojection[i] = camera.inverseProjection[i] = (i % 5) == 0;
-            camera.reprojection[12] = .03f;
+            camera.reprojection[12] = groundCamera ? 0.f : .03f;
+            if (groundCamera && frame >= 12) {
+                camera.internal = 0;
+                app::groundMetadata(camera, frame <= 15,
+                                    frame == 14   ? 2.f
+                                    : frame == 15 ? 2.6f
+                                                  : .15f);
+            }
             InterlockedIncrement(&shared->cameraSequence);
             shared->camera = camera;
             InterlockedIncrement(&shared->cameraSequence);
@@ -493,6 +503,13 @@ int wmain(int argc, wchar_t **argv) {
                     vk.dev<PFN_vkCmdEndRendering>("vkCmdEndRendering")(children[n]);
                 vkcheck(vk.dev<PFN_vkEndCommandBuffer>("vkEndCommandBuffer")(children[n]),
                         "End child");
+            }
+            if (staleCamera && frame == 12) {
+                camera.frame += 100000;
+                camera.reprojection[13] = .3f;
+                InterlockedIncrement(&shared->cameraSequence);
+                shared->camera = camera;
+                InterlockedIncrement(&shared->cameraSequence);
             }
             vkcheck(vk.dev<PFN_vkResetCommandBuffer>("vkResetCommandBuffer")(cb, 0), "Test reset");
             VkCommandBufferBeginInfo begin{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
@@ -666,8 +683,18 @@ int wmain(int argc, wchar_t **argv) {
                     "Layer output readback differs");
             app::Telemetry status{};
             uint64_t expected = observe ? 0 : frame <= 8 ? frame : frame <= 10 ? 8 : frame - 2;
+            if (!observe && groundCamera && frame >= 12)
+                expected -= std::min<uint64_t>(frame - 11, 3);
+            if (!observe && staleCamera && frame >= 12)
+                --expected;
             require(app::readStatus(shared, status) && status.recordings == expected,
                     "Layer replacement/toggle count differs");
+            if (staleCamera && frame == 12 && !observe)
+                require(!status.active && strstr(status.reason, "camera frame mismatch"),
+                        "Stale scene must explain native fallback");
+            if (groundCamera && frame >= 12 && frame <= 14 && !observe)
+                require(!status.active && strstr(status.reason, "Ground camera safety:"),
+                        "Camera resting at the ground must show native safety fallback");
             std::cout << "Source frame " << frame << ": completed, RGB " << rgb[0] << ',' << rgb[1]
                       << ',' << rgb[2] << ", FSR recordings " << status.recordings << ", provider "
                       << status.provider << '\n';

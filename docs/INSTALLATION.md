@@ -1,11 +1,10 @@
 # Install FSR 3/4 + Frame Gen for X-Plane
 
-0.5.8 optimizes the existing camera/cockpit motion path and adds numerical/GPU
-verification. There is no extra motion plugin to install. It does not supply
-complete vectors for independently moving aircraft, propellers, clouds or
-transparent effects, and cannot guarantee zero ghosting. GPU benchmark savings
-refer only to motion packing, not total frame time. Restart X-Plane after updating
-so the launcher can replace its recognized owned publisher with a backup.
+0.5.9 adds fresh session logs, rejects stale camera/depth frames and adds a
+ground-camera safeguard for external views. Close X-Plane before updating and
+start it again from the new launcher so its recognized owned camera publisher
+can be updated with a backup. No extra motion plugin is required. Complete
+independent object/cloud motion and zero ghosting are not guaranteed.
 
 Use the complete release package or build `app/` as described in BUILDING.md.
 Close X-Plane and the previous launcher before installing/updating anything.
@@ -49,6 +48,17 @@ Release-feed and integrity handling follow the official
 
 ### Flickering, external-view artifacts or jagged edges
 
+When the aircraft is on the ground and an external camera is within 1.5 metres
+of terrain, **GROUND CAMERA SAFETY / Native rendering** temporarily bypasses
+FSR and pauses frame generation. Your selections remain saved. Raise the camera
+above 2.5 metres, switch to the cockpit, or take off to resume automatically
+with fresh temporal history. The gap between the two heights prevents rapid
+switching at the ground collision limit. This uses read-only camera/ground
+metadata; it does not move the camera, disable collision or touch controllers.
+Rendering/AA and frame rate can change while the safeguard is active. It is a
+precaution for the reported ground-level pan artifacts, not a verified cure for
+every aircraft, cloud or view. It requires the updated bundled publisher.
+
 0.5.6 contains frame-generation synchronization/source-frame guards and temporal
 history corrections. Close X-Plane before updating; the launcher updates its
 owned camera publisher on the next FSR launch. If FG produces black flashes,
@@ -91,8 +101,8 @@ quality sliders can be tuned for performance; FG cannot repair slow base frames.
 The setup report reads disk preferences; it does not verify every running add-on,
 VR state, driver override or unsaved in-simulator change.
 
-Change graphics only while X-Plane is closed. Select a preset, or use Advanced
-graphics > Apply and save, then relaunch. If the setup report and live renderer
+Change graphics only while X-Plane is closed. Select a preset, or use the main
+screen's graphics controls and **Apply graphics**, then relaunch. If the setup report and live renderer
 sizes differ, trust the live sizes and inspect the log before judging quality.
 
 ## Optional cockpit-screen check
@@ -145,13 +155,24 @@ and its best use. Enabling FG turns cockpit restore/tint Off; enabling restore
 or tint turns FG Off. Selecting a preset also sets FG Off.
 
 The **Live simulator status** panel distinguishes NOT RUNNING, STARTING, VULKAN
-LAYER LOADED, FSR ACTIVE, PAUSED and NO RECENT ACTIVITY. Green **FSR ACTIVE** means
+LAYER LOADED, FSR ACTIVE, GROUND CAMERA SAFETY, PAUSED and NO RECENT ACTIVITY. Green **FSR ACTIVE** means
 recent FSR command recordings plus Vulkan presentation telemetry, not proof of
 visual quality. Loading a flight is usually needed. A camera-plugin mapping by
 itself never proves injection. A one-time Windows tray notification is requested
 on first active processing; Windows can suppress notifications. Status stays in
 the launcher. Closing/reopening the launcher loses monitoring of an already
 running simulator; launch a new session from the app to monitor it.
+
+## Session logs
+
+Each new X-Plane launch from the app starts fresh `logs/renderer.log`,
+`renderer-status.txt`, `exit-status.txt` and `launch.txt`. One previous session
+is retained with the `.previous` suffix; stale temporary status is removed.
+The new renderer/launch headers identify the version, session, process and UTC
+start time. Opening the launcher again or reloading a flight does not wipe an
+active session. If logs cannot reset, the app reports the error before starting
+X-Plane. For a bug report, copy the current session's log before another launch
+and review private paths before sharing it.
 
 Graphics changes require X-Plane closed. Exact files/change manifests are kept
 in `graphics-backups/`. **Restore last change** restores only matching changed

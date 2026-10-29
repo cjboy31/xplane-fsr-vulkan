@@ -16,6 +16,9 @@ Laminar Research product, and is not a complete solution to ghosting or stutter.
 
 ## Features
 
+- Fresh logs for every simulator process, stale camera-frame rejection and
+  temporary native rendering/FG pause for a grounded external camera near
+  terrain in 0.5.9. See [ground-camera behavior and testing](docs/RENDERING-STABILITY.md).
 - Frame-generation source matching/synchronization and safer temporal history
   handling in 0.5.6. See [stability changes and retest steps](docs/RENDERING-STABILITY.md).
 - Automatic startup checks for GitHub Releases, preview-channel selection and

@@ -10,6 +10,9 @@
 #include "fsr24.hpp"
 #include "pacing.hpp"
 #include "shared.hpp"
+#include "scene_frame.hpp"
+#include "ground_camera.hpp"
+#include "session_logs.hpp"
 #include "temporal_spv.hpp"
 #include "temporal_msaa_spv.hpp"
 #include <algorithm>
@@ -55,9 +58,20 @@ void log(const char *format, ...) {
     wchar_t path[32768]{};
     if (!GetEnvironmentVariableW(L"XPFSR24_LOG", path, 32768))
         return;
-    FILE *file = _wfopen(path, L"a");
+    static std::wstring activeLogPath;
+    const bool first = activeLogPath != path;
+    FILE *file = _wfopen(path, first ? L"w" : L"a");
     if (!file)
         return;
+    if (first) {
+        try {
+            auto header = session::header(session::rendererToken(), "renderer");
+            fputs(header.c_str(), file);
+        } catch (...) {
+            fprintf(file, "XPFSR24 new renderer session; pid=%lu\n", GetCurrentProcessId());
+        }
+        activeLogPath = path;
+    }
     va_list args;
     va_start(args, format);
     vfprintf(file, format, args);
@@ -107,7 +121,7 @@ struct Depth {
     float jitterX{}, jitterY{}, ySign = -1;
     std::set<VkImage> colors;
     uint64_t order{};
-    bool fullArea{};
+    bool fullArea{}, cameraCoherent = true;
 };
 struct BindingUse {
     bool known{};
@@ -135,6 +149,7 @@ struct Command {
     std::map<VkImage, std::set<VkImage>> depthOrigins;
     std::vector<DepthProbe *> probes;
     uint64_t depthOrder{};
+    app::SceneCameraStamp sceneCamera;
     bool activeCaptureEligible{};
     std::map<VkImage, std::shared_ptr<DepthCapture>> capturedDepths;
     uint64_t fgFrame{}, sceneFrame{};
@@ -223,7 +238,20 @@ struct Device {
     bool runtimeFailed{}, pathReady{}, featuresReady{};
     uint64_t epoch{}, frameSerial{};
     float jitterX{}, jitterY{};
-    uint64_t lastCameraFrame{}, lastRecordedCamera{};
+    uint64_t lastCameraFrame{}, lastRecordedCamera{}, sceneFrameRejects{};
+    app::GroundCameraSafety groundSafety;
+    bool groundCameraActive() {
+        const bool before = groundSafety.active;
+        const bool active = groundSafety.update(camera);
+        if (active != before)
+            log("Ground camera safety %s: external=%u aircraft-ground=%g camera-agl=%gm; no "
+                "camera/control writes",
+                active ? "entered (native rendering)" : "released (temporal restart)",
+                !camera.internal, camera.ownSphere[1], camera.ownSphere[0]);
+        if (active)
+            pathReady = false;
+        return active;
+    }
     bool enabled = true, separateDepthStencil{};
     uint64_t lastStatusWrite{}, lastControlRead{}, nativeCalls{};
     template <class T> T fn(const char *name) {
@@ -618,7 +646,7 @@ void captureDepth(Device &d, VkCommandBuffer cb, Command &command) {
         return;
     auto depth = command.depths.find(command.activeDepth);
     auto meta = d.images.find(command.activeDepth);
-    if (depth == command.depths.end() || meta == d.images.end())
+    if (depth == command.depths.end() || meta == d.images.end() || !depth->second.cameraCoherent)
         return;
     auto nativeView = d.views.find(depth->second.view);
     if (nativeView == d.views.end())
@@ -1199,6 +1227,12 @@ bool replace(Device &d, VkCommandBuffer cb, Command &command) {
                                  : "Disabled; native upscaling active");
         return false;
     }
+    if (d.groundCameraActive()) {
+        strncpy(d.status.fgReason, "FG paused by ground camera safety; selection retained", 159);
+        d.bypass("Ground camera safety: native rendering near terrain; raise camera above 2.5m or "
+                 "take off");
+        return false;
+    }
     // Later native copy/sharpen passes belong to this already reconstructed
     // frame. Leave them native without disabling next frame's scene jitter.
     if (d.camera.frame == d.lastRecordedCamera)
@@ -1293,10 +1327,22 @@ bool replace(Device &d, VkCommandBuffer cb, Command &command) {
     }
     pollProbes(d);
     std::vector<Depth> candidates;
+    bool mismatchedScene = false;
+    uint64_t rejectedDepthFrame{};
     auto &depthMap = command.depths; // Never infer execution order from another command buffer.
     for (auto &[image, depth] : depthMap) {
         auto found = d.images.find(image);
-        if (found == d.images.end() || depth.epoch != d.camera.frame)
+        if (found == d.images.end())
+            continue;
+        const bool belongs = depth.fullArea && found->second.create.extent.width == rw &&
+                             found->second.create.extent.height == rh &&
+                             (depth.colors.count(inView->second.create.image) ||
+                              command.depthOrigins[inView->second.create.image].count(image));
+        if (belongs && (!depth.cameraCoherent || depth.epoch != d.camera.frame)) {
+            mismatchedScene = true;
+            rejectedDepthFrame = depth.epoch;
+        }
+        if (!depth.cameraCoherent || depth.epoch != d.camera.frame)
             continue;
         auto &c = found->second.create;
         if (command.capturedDepths.count(image) &&
@@ -1321,6 +1367,15 @@ bool replace(Device &d, VkCommandBuffer cb, Command &command) {
     if (candidates.size() > 1)
         candidates.resize(1);
     if (candidates.size() != 1) {
+        if (mismatchedScene) {
+            if (++d.sceneFrameRejects <= 4 || d.sceneFrameRejects % 300 == 0)
+                log("Scene camera mismatch: current=%llu recorded-depth=%llu rejected=%llu; native "
+                    "frame retained",
+                    (unsigned long long)d.camera.frame, (unsigned long long)rejectedDepthFrame,
+                    (unsigned long long)d.sceneFrameRejects);
+            d.bypass("Scene camera frame mismatch; native frame retained");
+            return false;
+        }
         if (d.nativeCalls < 8) {
             log("Depth provenance: input=%p candidates=%zu tracked=%zu",
                 reinterpret_cast<void *>(inView->second.create.image), candidates.size(),
@@ -1598,13 +1653,15 @@ bool replace(Device &d, VkCommandBuffer cb, Command &command) {
         if (d.status.recordings <= 4 || frame.reset || d.status.recordings % 1000 == 0)
             log("Recorded frame=%llu depth=%p jitter=(%g,%g) trackedStaticViewports=%zu "
                 "candidates=%zu viewports=%llu secondary=%llu multi=%llu body=%u internal=%u "
-                "reset=%u near=%g far=%g reverse=%u infinite=%u",
+                "reset=%u near=%g far=%g reverse=%u infinite=%u camera_agl=%g aircraft_ground=%g "
+                "ground_metadata=%u",
                 (unsigned long long)d.camera.frame, reinterpret_cast<void *>(depth.image),
                 depth.jitterX, depth.jitterY, d.graphicsViewports.size(), depthCandidateCount,
                 (unsigned long long)d.viewportCalls, (unsigned long long)d.secondaryViewportCalls,
                 (unsigned long long)d.multiViewportCalls, d.camera.bodyValid, d.camera.internal,
                 frame.reset, d.camera.nearPlane, d.camera.farPlane, d.camera.reverseZ,
-                d.camera.infiniteZ);
+                d.camera.infiniteZ, d.camera.ownSphere[0], d.camera.ownSphere[1],
+                d.camera.ownSphere[3] == app::groundCameraMarker);
         d.publish(d.mode == Mode::NativeAA
                       ? "Native AA recorded; experimental camera-derived motion"
                       : "Temporal upscaling recorded; experimental camera-derived motion");
@@ -1650,6 +1707,12 @@ static VKAPI_ATTR VkResult VKAPI_CALL L_CreateInstance(const VkInstanceCreateInf
         std::lock_guard<std::mutex> lock(registryLock);
         instances[key(*out)] = instance;
         log("Instance created; explicit FSR layer active");
+        if (ci->pApplicationInfo) {
+            auto &a = *ci->pApplicationInfo;
+            log("Host application=%s app_version=%u engine=%s engine_version=%u vulkan_api=%u",
+                a.pApplicationName ? a.pApplicationName : "unknown", a.applicationVersion,
+                a.pEngineName ? a.pEngineName : "unknown", a.engineVersion, a.apiVersion);
+        }
     }
     return result;
 }
@@ -2927,7 +2990,19 @@ static bool applyViewport(Device &d, VkCommandBuffer cb, Command &command) {
                  (command.secondary ||
                   (active != d.images.end() && active->second.create.extent.width == width &&
                    active->second.create.extent.height == height));
-    if (d.mode != Mode::Observe && scope && d.enabled && d.pathReady && d.camera.valid) {
+    bool coherent = true;
+    if (scope) {
+        command.sceneCamera.observe(d.camera.valid ? d.camera.frame : 0);
+        coherent = command.sceneCamera.matches(d.camera.frame);
+        if (command.activeDepth && command.depths.count(command.activeDepth)) {
+            auto &depth = command.depths.at(command.activeDepth);
+            depth.cameraCoherent &= command.sceneCamera.matches(depth.epoch);
+            coherent &= depth.cameraCoherent;
+        }
+    }
+    const bool groundContact = d.mode != Mode::Observe && d.groundCameraActive();
+    if (d.mode != Mode::Observe && !groundContact && scope && coherent && d.enabled &&
+        d.pathReady && d.camera.valid) {
         auto context = d.contexts.find(d.activeContext);
         if (context != d.contexts.end()) {
             try {
@@ -3034,8 +3109,8 @@ static VKAPI_ATTR void VKAPI_CALL L_CmdBeginRendering(VkCommandBuffer cb,
                     d->enabled = InterlockedCompareExchange(&d->shared->enabled, 0, 0) != 0;
                 d->readControl();
                 auto source = d->images.find(depth.image);
-                if (d->mode != Mode::Observe && d->enabled && d->camera.valid && depth.fullArea &&
-                    source != d->images.end() &&
+                if (d->mode != Mode::Observe && !d->groundCameraActive() && d->enabled &&
+                    d->camera.valid && depth.fullArea && source != d->images.end() &&
                     (source->second.create.samples &
                      (VK_SAMPLE_COUNT_1_BIT | VK_SAMPLE_COUNT_2_BIT | VK_SAMPLE_COUNT_4_BIT |
                       VK_SAMPLE_COUNT_8_BIT)) &&
@@ -3255,13 +3330,12 @@ static VKAPI_ATTR void VKAPI_CALL L_CmdExecuteCommands(VkCommandBuffer cb, uint3
             std::sort(childDepths.begin(), childDepths.end(),
                       [](const Depth &a, const Depth &b) { return a.order < b.order; });
             for (auto depth : childDepths) {
-                depth.epoch = d->camera.frame;
+                depth.cameraCoherent &= child.sceneCamera.matches(depth.epoch);
                 depth.order = ++parent.depthOrder;
                 parent.depths[depth.image] = depth;
                 d->depths[depth.image] = depth;
                 auto copy = child.capturedDepths.find(depth.image);
                 if (copy != child.capturedDepths.end()) {
-                    copy->second->frame = depth.epoch;
                     parent.capturedDepths[depth.image] = copy->second;
                 }
             }
@@ -3286,6 +3360,7 @@ static VKAPI_ATTR void VKAPI_CALL L_CmdExecuteCommands(VkCommandBuffer cb, uint3
                     std::abs(std::abs(child.viewport.height) -
                              float(image->second.create.extent.height)) < 2) {
                     auto &depth = parent.depths[parent.activeDepth];
+                    depth.cameraCoherent &= child.sceneCamera.matches(depth.epoch);
                     depth.jitterX = child.appliedJitterX;
                     depth.jitterY = child.appliedJitterY;
                     depth.ySign = child.viewport.height < 0 ? -1 : 1;

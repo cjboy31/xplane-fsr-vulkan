@@ -75,7 +75,10 @@ static constexpr SettingHelp settingHelp[] = {
      L"running, but layer activity is not confirmed.\nLAYER LOADED: the Vulkan layer reports "
      L"activity, but FSR is waiting or bypassed.\nFSR ACTIVE: recent FSR command recordings and "
      L"Vulkan presentation have been reported.\nPAUSED or NO RECENT ACTIVITY: processing is "
-     L"disabled or telemetry has stopped progressing.\n\nBest use: launch from this app, load a "
+     L"disabled or telemetry has stopped progressing. GROUND CAMERA SAFETY: when the aircraft is "
+     L"on the ground, an external camera at or below 1.5 metres AGL uses native rendering and "
+     L"pauses FG. Raise it to 2.5 metres, enter the cockpit or take off to resume. "
+     L"Camera/controller settings are unchanged.\n\nBest use: launch from this app, load a "
      L"flight, then check for green FSR ACTIVE. A one-time Windows notification is requested when "
      L"FSR first becomes active; Windows may suppress it. This is not a visual-quality or FPS "
      L"guarantee."},
@@ -163,6 +166,9 @@ static void runtimeBanner(launcher::RuntimeState state, const app::Telemetry &st
     case launcher::RuntimeState::active:
         message = L"FSR ACTIVE\r\nVulkan layer confirmed";
         break;
+    case launcher::RuntimeState::groundSafety:
+        message = L"GROUND CAMERA SAFETY\r\nNative rendering";
+        break;
     case launcher::RuntimeState::paused:
         message = L"FSR PAUSED\r\nProcessing disabled";
         break;
@@ -205,7 +211,7 @@ static void createMainControls(HWND hwnd) {
                             CLEARTYPE_QUALITY, 0, L"Segoe UI");
     auto title = control(L"STATIC", L"FSR 3/4 + Frame Gen for X-Plane", 0, 28, 18, 610, 38);
     SendMessageW(title, WM_SETFONT, reinterpret_cast<WPARAM>(titleFont), TRUE);
-    control(L"STATIC", L"Vulkan community preview 0.5.8  |  Hover or click ? for help", 0, 30, 59,
+    control(L"STATIC", L"Vulkan community preview 0.5.9  |  Hover or click ? for help", 0, 30, 59,
             620, 25);
     updatesButton =
         control(L"BUTTON", L"Updates...", BS_PUSHBUTTON | WS_TABSTOP, 675, 59, 313, 30, 39);

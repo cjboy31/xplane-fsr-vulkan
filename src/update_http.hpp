@@ -43,7 +43,7 @@ inline std::wstring header(HINTERNET request, DWORD id) {
 inline std::string transfer(std::wstring url, const fs::path &destination, uint64_t expected,
                             std::atomic<bool> &cancel, std::atomic<uint64_t> &progress) {
     bool binary = !destination.empty();
-    Internet session(WinHttpOpen(L"XPlane-FSR3-4-FrameGen-Updater/0.5.8",
+    Internet session(WinHttpOpen(L"XPlane-FSR3-4-FrameGen-Updater/0.5.9",
                                  WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY, WINHTTP_NO_PROXY_NAME,
                                  WINHTTP_NO_PROXY_BYPASS, 0));
     require(WinHttpSetTimeouts(session.h, 10000, 10000, 15000, 15000),

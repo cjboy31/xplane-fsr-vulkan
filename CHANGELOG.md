@@ -1,5 +1,31 @@
 # Changes
 
+## 0.5.9-alpha
+
+- Start each newly launched X-Plane process with fresh renderer, status, exit
+  and launch logs. Keep one `.previous` copy, remove stale temporary status,
+  and include the build, session ID, process ID and UTC start time. Reopening
+  the launcher or reloading a flight does not clear an active session's log.
+- Add a ground-camera safeguard for external views while the aircraft is on
+  the ground: at camera clearance of 1.5 m or less, temporarily bypass FSR and
+  pause frame generation. Resume with a temporal-history reset above 2.5 m,
+  inside the cockpit or after takeoff. Show **GROUND CAMERA SAFETY** in the app;
+  preserve the user's FSR/FG choices. Camera collision and controls are untouched.
+- Preserve the actual recorded camera frame on secondary rendering commands.
+  Reject stale or conflicting camera/depth metadata instead of relabeling it
+  as current. Add a regression that fails against the previous layer.
+- Add 16 real Vulkan layer checks across FSR 3/4, Native AA/upscaling and
+  single-sample/4x MSAA, plus log-rotation and ground-clearance hysteresis tests.
+  Recognize and back up the previous owned publisher when installing the new
+  read-only camera-clearance metadata publisher.
+
+The ground-camera change is a precautionary mitigation for the 0.5.7 report;
+the reporter's exact scene has not been reproduced. Native rendering near the
+ground can look different and pauses generated frames. This does not supply
+missing cloud/object motion or guarantee that all artifacts are eliminated.
+The alternative native-motion backend remains on its separate experimental
+branch and update channel.
+
 ## 0.5.8-alpha
 
 - Reduce motion packing to one selected world/body reprojection. Reconstruct
