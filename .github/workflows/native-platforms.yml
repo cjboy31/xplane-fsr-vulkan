@@ -1,0 +1,44 @@
+name: Native platform previews
+on:
+  push:
+    branches: [experimental/native-platforms]
+    paths: ['platform/**', '.github/workflows/native-platforms.yml']
+  pull_request:
+    paths: ['platform/**', '.github/workflows/native-platforms.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  native:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, macos-14]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Linux build and software Vulkan dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update -qq && sudo apt-get install -y cmake g++-11 libvulkan-dev glslang-tools mesa-vulkan-drivers vulkan-validationlayers python3-tk xvfb
+      - name: Native launcher checks
+        run: python3 -m unittest discover -s platform/tests -p 'test_core.py' -v
+      - name: Native build, plugin lifecycle, Vulkan and package tests
+        env:
+          CC: ${{ runner.os == 'Linux' && 'gcc-11' || 'clang' }}
+          CXX: ${{ runner.os == 'Linux' && 'g++-11' || 'clang++' }}
+        run: python3 platform/build_native.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: native-${{ runner.os }}
+          path: |
+            dist/native/*.tar.gz
+            dist/native/*.zip
+            dist/native/*.sha256
+          if-no-files-found: error
+          retention-days: 14

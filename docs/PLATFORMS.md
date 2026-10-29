@@ -1,6 +1,9 @@
 # Platform compatibility
 
-Audit date: October 29, 2026. A Vulkan API is not by itself proof that a Windows
+Audit date: October 29, 2026. Native development continues separately on
+`experimental/native-platforms`; see [builds, tests and limits](../platform/README.md).
+Its Linux FSR 3.1 backend and Mac universal diagnostic probe are previews, not
+confirmation of Linux FSR 4 or Mac FSR rendering. A Vulkan API is not by itself proof that a Windows
 plugin or its packaged upscaler runtime works on another operating system.
 
 | Platform | Current release | What is established |

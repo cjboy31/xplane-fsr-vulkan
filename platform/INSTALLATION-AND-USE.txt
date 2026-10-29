@@ -1,0 +1,123 @@
+FSR 3/4 + FRAME GEN FOR X-PLANE — NATIVE PLATFORM PREVIEW
+Version 0.6.2-platform-preview.1 — experimental, October 29, 2026
+
+READ THIS FIRST
+Linux package: native x86_64 FSR 3.1 Vulkan upscaling preview, built from
+JonathanOrr's MIT Linux backend plus this project's launcher and diagnostics.
+macOS package: universal arm64/x86_64 COMPATIBILITY PROBE ONLY. It does NOT
+enable FSR, AA improvements or frame generation. A Metal renderer is still needed.
+Windows users should continue using the regular Windows release.
+
+FSR 4, built-in frame generation, VR and native-resolution FSR AA are NOT
+available in these native previews. NR development is canceled.
+Linux MSAA+FSR combination and the Windows cockpit-screen compositor are NOT
+ported. Do not assume feature parity with the Windows application.
+Hosted native builds/tests are not evidence of real X-Plane flight quality.
+
+LINUX INSTALL — NO SYSTEM-WIDE INJECTION OR ADMIN RIGHTS
+1. Requirements: Linux x86_64, X-Plane 12 Vulkan, a working native Vulkan driver,
+   glibc 2.34+ and libstdc++ GLIBCXX_3.4.29+. Ubuntu 22.04+ is the initial target.
+   Install Python 3.10+ and Tk. Ubuntu: sudo apt install python3 python3-tk
+2. Extract the complete Linux .tar.gz into your home folder. Keep all files
+   together. Do not copy the .so into the simulator's plugin folder.
+3. Open a terminal in that folder and run ./Launch-FSR
+   If needed: chmod +x Launch-FSR
+4. Browse to your X-Plane 12 folder, choose FSR 3.1 upscaling and launch.
+   Your folder, rendering mode and arguments save automatically. Reopening the
+   launcher restores them. A failed save is shown; corrupt choices are not reset.
+5. In X-Plane Settings > Graphics:
+   - Output/display resolution: your desired final resolution, e.g. 3840x2160.
+     Setting the sim's OUTPUT to 2560x1440 will NOT produce a 4K output.
+   - Rendering Resolution / FSR Supersampling: enabled, initially 1.5x.
+     This controls the lower internal render resolution.
+   - MSAA: OFF. This backend falls back to FSR 1 if MSAA is enabled.
+   - FXAA: OFF recommended. FSR 3.1 supplies temporal anti-aliasing.
+   - Do not use VR in this preview.
+   The launcher deliberately does not rewrite X-Plane preferences or controllers.
+6. Load a flight. The launcher starts as unconfirmed, then shows the renderer's
+   own status: ACTIVE means the backend replaced the upscale passes. It also
+   reports actual input/output sizes. WAITING / PARTLY ACTIVE / NOT USED explain
+   fallback conditions. Launch success alone does not confirm FSR injection.
+   Observe mode is a diagnostic and displays X-Plane's FSR 1, even though FSR 3.1
+   runs into private images. Compare mode launches without our Vulkan layer.
+
+STEAM (LINUX)
+Use the absolute package path in Steam > X-Plane > Properties > Launch Options:
+  python3 "/home/you/XPlane-FSR-Native/launcher.py" --launch --sim "/path/to/X-Plane 12"
+For Steam installations, the native executable is launched directly by this
+preview; Steam must already be running. The Steam Linux Runtime wrapper and
+third-party launch chains are not yet validated. Avoid concurrent launches.
+Use the regular GUI for non-Steam installations. Never run this launcher as root.
+
+MAC INSTALL — DIAGNOSTICS, NO FSR RENDERING
+1. Requirements: macOS 11+ and native X-Plane 12; Python 3.10+ with Tk from
+   python.org for the GUI. Both Apple Silicon and Intel plugin slices are built;
+   real Mac simulator testing is pending. Intel slice execution is unverified.
+2. Extract the Mac-Universal-Probe .zip. Open a terminal in the extracted folder
+   and run python3 launcher.py (or ./Launch.command after chmod +x Launch.command).
+3. CLOSE X-Plane. Browse to its installation folder and click Install probe.
+   This installs only Resources/plugins/XPFSRNativeProbe/64/mac.xpl and an
+   ownership marker. It does not install a Metal hook or improve graphics.
+4. Launch test session. A fresh compatibility.json report appears once the probe
+   is loaded. The report checks simulator/SDK version and finite camera matrices;
+   it is not proof of usable Metal scene textures, depth or motion-vector access.
+5. This preview uses an ad-hoc signature, not Apple notarization. If macOS blocks
+   it, use Apple's normal Privacy & Security approval for this specific plugin
+   after verifying its hash. Do not disable Gatekeeper globally. If your security
+   policy requires notarization, wait for a signed release.
+6. To remove: CLOSE X-Plane, click Remove probe. It removes only the owned binary
+   and marker; unrelated files stay. You may also remove the XPFSRNativeProbe
+   folder manually. Do not delete other plugins.
+
+OPTIONAL LINUX PROBE
+The same Install probe action installs lin.xpl for read-only camera/version
+diagnostics. It is optional: the FSR 3.1 backend reads camera/depth from Vulkan
+scene passes and does not depend on the diagnostic plugin.
+Install/remove probes only while ALL simulator instances are closed.
+
+LOGS, PRIVACY AND TROUBLESHOOTING
+Each launch creates a new session folder and new renderer log/status. Old ACTIVE
+messages never carry into the next session. A renderer status older than 30
+seconds is shown as unconfirmed. Closing the sim ends its status.
+Settings and sessions are stored outside the install folder:
+ Linux: ${XDG_CONFIG_HOME:-$HOME/.config}/xplane-fsr-native
+ Mac:   ~/Library/Application Support/XPlaneFSRNative
+The GUI shows renderer status. CLI prints the exact fresh session folder.
+The probe does not log aircraft, location, controller assignments or user paths.
+Nothing is uploaded automatically. Review logs before sharing them.
+If installed manually and launched without our launcher, the probe report goes
+to X-Plane/Output/preferences/XPFSRNativeReport.json and is replaced each update.
+
+Known Linux limits: camera-derived motion, no complete object/cloud motion or
+reactive masks; gauges/propellers/clouds may ghost. Ground-camera artifact
+safeguards from the Windows implementation are not yet integrated. A missing or
+changed SSR/depth/upscale pattern causes fallback rather than a success claim.
+Do not treat this preview as a fix for the reported cloud/ground artifacting.
+
+UPDATING / REMOVING
+There is no native automatic updater in this preview. Extract the newer complete
+archive into a NEW folder and use its launcher; external saved choices remain.
+For probe updates, close the simulator and click Install probe in the new build.
+To stop Linux injection, start X-Plane normally without our launcher. No Vulkan
+layer is installed globally. Delete the extracted package when no longer needed.
+Uninstall the optional probe first. Saved choices/sessions are kept unless you
+explicitly delete the user-data folder above. There is no controller remapping,
+camera ownership override, terrain collision change or joystick input hook.
+
+COMMAND LINE
+  python3 launcher.py --help
+  python3 launcher.py --sim "/path/to/X-Plane 12" --launch
+  python3 launcher.py --sim "/path/to/X-Plane 12" --install-probe
+  python3 launcher.py --sim "/path/to/X-Plane 12" --remove-probe
+
+LICENSES AND SOURCE
+Project source: https://github.com/cjboy31/xplane-fsr-vulkan
+Branch: experimental/native-platforms
+Linux backend: JonathanOrr/xplane-fsr3 at
+fa51577c9bc2c3477e64dfdd358796aebb9ca45b (MIT), with AMD's MIT FSR 3.1.5
+upscaler built from FidelityFX SDK v1.1.4 and the upstream Linux patches.
+See LICENSE.txt and licenses/ for the complete notices. The package includes no
+Windows AMD provider DLLs, NVIDIA libraries/models, Lossless Scaling files,
+simulator shaders/assets, private data or bundled Python/Tk/system runtimes.
+The Mac plugin uses X-Plane SDK declarations; no Laminar runtime is distributed.
+Unaffiliated with AMD, Apple, NVIDIA or Laminar Research.

@@ -1,5 +1,18 @@
 # Changes
 
+## Native platform preview 0.6.2-platform-preview.1
+
+- Separate Linux x64 FSR 3.1 build using a pinned, attributed MIT Vulkan backend;
+  MSAA off and FSR supersampling required. No FSR 4/FG/VR/Native AA parity claim.
+- Native arm64/x86_64 Mac diagnostic plugin; no Metal FSR renderer yet. The same
+  read-only probe is optional on Linux.
+- Native Python/Tk launcher with saved choices, per-session logs, live renderer
+  confirmation/fallback reasons, isolated launch environment and owned probe
+  install/update/removal. No controller or simulator preference writes.
+- Hosted native builds, plugin lifecycle tests, synthetic Linux FSR tests and
+  archive checks. Real simulator/GPU quality testing remains pending.
+- Keep Windows 0.6.1-alpha unchanged, NR canceled and regular FG disabled.
+
 ## 0.6.1-alpha
 
 - Temporarily suspend built-in frame generation in regular releases. Show

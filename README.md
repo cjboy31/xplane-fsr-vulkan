@@ -26,6 +26,8 @@ Laminar Research product, and is not a complete solution to ghosting or stutter.
 - **Platform support:** current packages are Windows x64 only. Linux requires
   a native port; macOS requires a separate Metal implementation. See the
   [platform audit and port requirements](docs/PLATFORMS.md).
+  This branch also develops a separate [Linux FSR 3.1 preview and Mac diagnostic
+  probe](platform/README.md); the Mac probe does not enable FSR rendering.
 - Fresh logs for every simulator process, stale camera-frame rejection and
   temporary native rendering/FG pause for a grounded external camera near
   terrain in 0.5.9. See [ground-camera behavior and testing](docs/RENDERING-STABILITY.md).
