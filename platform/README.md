@@ -28,7 +28,7 @@ Ad-hoc signing is not notarization.
 
 ## Build and validate
 
-On Ubuntu 22.04 x64, install `cmake g++-11 libvulkan-dev glslang-tools
+On Ubuntu 22.04 x64, install `cmake g++-12 libvulkan-dev glslang-tools
 mesa-vulkan-drivers vulkan-validationlayers python3-tk`. On macOS, install Xcode
 command-line tools, CMake and Python 3.10+. Then:
 
@@ -41,6 +41,10 @@ The build downloads the SHA-256-pinned official SDK 4.4.0-r1 for declarations;
 no Laminar runtime is packaged. Linux builds also fetch the commit-pinned MIT
 renderer/AMD source. Outputs are under ignored `dist/native`; dependencies and
 build intermediates are under ignored `work/native`.
+Set `CC=gcc-12 CXX=g++-12` for the Linux build; the fixture uses `_Float16`,
+which GCC 11 does not provide on x64. Current Vulkan headers are fetched at a
+pinned commit so older distribution headers do not limit compilation. The
+packaged layer is still checked against the stated glibc/libstdc++ floors.
 
 The hosted workflow builds on Ubuntu 22.04 and macOS 14. It checks persisted
 choices, isolated launch environments, fresh-session status, probe ownership,

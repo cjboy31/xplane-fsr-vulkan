@@ -29,10 +29,15 @@ def gui(root, saved):
     style.configure("TButton", background="#303745", foreground="#eee9df", padding=10)
     style.configure("TEntry", fieldbackground="#242b36", foreground="#eee9df", padding=8)
     style.configure("TCombobox", fieldbackground="#242b36", foreground="#eee9df", padding=8)
+    style.map("TCombobox", fieldbackground=[("readonly", "#242b36"), ("disabled", "#242b36")],
+              foreground=[("readonly", "#eee9df"), ("disabled", "#d9c394")],
+              selectbackground=[("readonly", "#242b36")], selectforeground=[("readonly", "#eee9df")])
+    window.option_add("*TCombobox*Listbox.background", "#242b36")
+    window.option_add("*TCombobox*Listbox.foreground", "#eee9df")
     body = ttk.Frame(window, padding=26)
     body.pack(fill="both", expand=True)
     ttk.Label(body, text="NATIVE PLATFORM PREVIEW", foreground="#d9c394", font=("Helvetica", 10, "bold")).pack(anchor="w")
-    ttk.Label(body, text="A clearer flight starts here.", font=("Helvetica", 24, "bold")).pack(anchor="w", pady=(8, 14))
+    ttk.Label(body, text="FSR for X-Plane", font=("Helvetica", 24, "bold")).pack(anchor="w", pady=(8, 14))
     explanation = ("Linux x64 • FSR 3.1 Vulkan preview. Community flight testing pending."
                    if SYSTEM == "Linux" else "macOS • Compatibility probe only. Metal FSR rendering is not implemented.")
     ttk.Label(body, text=explanation, wraplength=740).pack(anchor="w", pady=(0, 16))
@@ -119,6 +124,12 @@ def gui(root, saved):
 
     for variable in fields.values():
         variable.trace_add("write", persist)
+    def resize(event):
+        if event.widget is body:
+            for widget in body.winfo_children():
+                if isinstance(widget, ttk.Label):
+                    widget.configure(wraplength=max(200, event.width - 52))
+    body.bind("<Configure>", resize)
     window.after(1000, poll)
     window.mainloop()
 

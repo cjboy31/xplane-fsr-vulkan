@@ -18,6 +18,7 @@ import zipfile
 ROOT = Path(__file__).resolve().parents[1]
 VERSION = "0.6.2-platform-preview.1"
 UPSTREAM = "fa51577c9bc2c3477e64dfdd358796aebb9ca45b"
+VULKAN_HEADERS = "cde2207d8bc426cfd201ffd67031e7b135a01df7"
 SDK_SHA = "73e6d8be3b0b3bf1fd703113e0b0df2aa854db753c66802d7379320dbc22f771"
 SDK_URL = "https://github.com/X-Plane/xpsdk/releases/download/xpsdk_4.4.0-r1/XPSDK440-r1.zip"
 
@@ -76,6 +77,8 @@ def package(output, system, layer, probe, sdk, upstream):
         (target / "VkLayer_xplane_fsr3.json").write_text(json.dumps(manifest, indent=2) + "\n")
         shutil.copy2(upstream / "LICENSE", license_dir / "JonathanOrr-xplane-fsr3-MIT.txt")
         shutil.copy2(upstream / "THIRD_PARTY_NOTICES.md", license_dir / "AMD-FidelityFX-MIT.txt")
+        headers = ROOT / "work/native/Vulkan-Headers"
+        shutil.copy2(headers / "LICENSES/MIT.txt", license_dir / "Khronos-Vulkan-Headers-MIT.txt")
         run(sys.executable, upstream / "fsr3-layer/tests/check_portable.py", target / layer.name)
     command = target / ("Launch.command" if system == "Darwin" else "Launch-FSR")
     command.write_text('#!/bin/sh\ncd -- "$(dirname -- "$0")" || exit 1\nexec python3 ./launcher.py "$@"\n')
@@ -88,6 +91,12 @@ def package(output, system, layer, probe, sdk, upstream):
     hashes = [f"{sha(p)}  {p.relative_to(target).as_posix()}" for p in sorted(target.rglob("*")) if p.is_file()]
     (target / "PAYLOAD-SHA256SUMS.txt").write_text("\n".join(hashes) + "\n")
     if system == "Linux":
+        headers = work / "Vulkan-Headers"
+        if not headers.exists():
+            run("git", "clone", "--filter=blob:none", "--no-checkout", "https://github.com/KhronosGroup/Vulkan-Headers.git", headers)
+            run("git", "checkout", "--detach", VULKAN_HEADERS, cwd=headers)
+        if subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=headers, text=True).strip() != VULKAN_HEADERS:
+            raise RuntimeError("Vulkan headers are not the reviewed pinned commit")
         archive = output / (target.name + ".tar.gz")
         with tarfile.open(archive, "w:gz") as out:
             out.add(target, arcname=target.name)
@@ -118,7 +127,7 @@ def main():
     run("ctest", "--test-dir", build, "--output-on-failure")
     probe = build / ("lin.xpl" if system == "Linux" else "mac.xpl")
     if system == "Darwin":
-        run("lipo", "-verify_arch", "arm64", "x86_64", probe)
+        run("lipo", probe, "-verify_arch", "arm64", "x86_64")
         run("codesign", "--force", "--sign", "-", probe)
         run("codesign", "--verify", "--strict", probe)
     layer, upstream = None, None
@@ -132,7 +141,8 @@ def main():
         if not (upstream / "third_party/FidelityFX-SDK").exists():
             run("bash", upstream / "scripts/fetch-sdk.sh")
         linux_build = work / "linux-build"
-        run("cmake", "-S", upstream / "fsr3-layer", "-B", linux_build, "-DCMAKE_BUILD_TYPE=RelWithDebInfo", "-DXPLANE_ROOT=")
+        run("cmake", "-S", upstream / "fsr3-layer", "-B", linux_build, "-DCMAKE_BUILD_TYPE=RelWithDebInfo", "-DXPLANE_ROOT=",
+            f"-DVulkan_INCLUDE_DIR={headers / 'include'}")
         run("cmake", "--build", linux_build, "--parallel", "2")
         # Running directly makes a missing software GPU a failure, never a skipped green test.
         env = dict(os.environ, FSR_DEVICE="llvmpipe", FSR_VALIDATION="1")

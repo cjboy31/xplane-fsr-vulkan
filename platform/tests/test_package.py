@@ -35,7 +35,8 @@ def main(archive):
                    "Launch-FSR" if linux else "Launch.command", "probe/64/lin.xpl" if linux else "probe/64/mac.xpl"}
         if linux:
             allowed |= {"VkLayer_xplane_fsr3.json", "libVkLayer_xplane_fsr3.so",
-                        "licenses/JonathanOrr-xplane-fsr3-MIT.txt", "licenses/AMD-FidelityFX-MIT.txt"}
+                        "licenses/JonathanOrr-xplane-fsr3-MIT.txt", "licenses/AMD-FidelityFX-MIT.txt",
+                        "licenses/Khronos-Vulkan-Headers-MIT.txt"}
         actual = {p.relative_to(package).as_posix() for p in package.rglob("*") if p.is_file()}
         assert actual == allowed, actual ^ allowed
         for line in (package / "PAYLOAD-SHA256SUMS.txt").read_text().splitlines():
