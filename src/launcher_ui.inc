@@ -191,6 +191,7 @@ static void runtimeBanner(launcher::RuntimeState state, const app::Telemetry &st
     }
 }
 #include "graphics_ui.inc"
+#include "setup_ui.inc"
 static void createMainControls(HWND hwnd) {
     window = hwnd;
     font = CreateFontW(-16, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET, 0, 0,
@@ -199,7 +200,7 @@ static void createMainControls(HWND hwnd) {
                             CLEARTYPE_QUALITY, 0, L"Segoe UI");
     auto title = control(L"STATIC", L"FSR Ghosting Fix for X-Plane", 0, 28, 18, 610, 38);
     SendMessageW(title, WM_SETFONT, reinterpret_cast<WPARAM>(titleFont), TRUE);
-    control(L"STATIC", L"Vulkan community preview 0.5.2  |  Hover or click ? for help", 0, 30, 59,
+    control(L"STATIC", L"Vulkan community preview 0.5.3  |  Hover or click ? for help", 0, 30, 59,
             620, 25);
     savedLabel = control(L"STATIC", L"Your choices are restored on startup", 0, 665, 25, 330, 40);
     control(L"STATIC", L"X-Plane folder", 0, 30, 96, 145, 22);
@@ -254,10 +255,10 @@ static void createMainControls(HWND hwnd) {
     control(L"BUTTON", L"Advanced graphics...", BS_PUSHBUTTON | WS_TABSTOP, 30, 675, 190, 34, 35);
     control(L"BUTTON", L"Restore last graphics change", BS_PUSHBUTTON | WS_TABSTOP, 230, 675, 235,
             34, 107);
-    control(L"BUTTON", L"Read guide", BS_PUSHBUTTON | WS_TABSTOP, 475, 675, 140, 34, 33);
+    control(L"BUTTON", L"Sim setup...", BS_PUSHBUTTON | WS_TABSTOP, 475, 675, 140, 34, 33);
     control(L"STATIC",
-            L"Presets save and apply automatically while X-Plane is closed. Changes to FSR "
-            L"mode,\r\nFG provider and cockpit options take effect on the next simulator launch.",
+            L"Required: MSAA Off, FXAA Off. Native AA = Full; upscaling = below Full.\r\n"
+            L"Choose a preset with X-Plane closed. See Sim setup for the full checklist.",
             0, 30, 729, 610, 44);
     control(L"STATIC", L"Live simulator status", 0, 675, 96, 280, 24);
     helpIcon(hwnd, 209, 963, 91);
@@ -404,9 +405,7 @@ static LRESULT CALLBACK procedure(HWND hwnd, UINT message, WPARAM w, LPARAM l) {
                 SetWindowTextW(statusBox, L"This package's camera plugin has been removed.");
                 break;
             case 33:
-                ShellExecuteW(hwnd, L"open", L"notepad.exe",
-                              quote((appDirectory / L"INSTALLATION-AND-USE.txt").wstring()).c_str(),
-                              nullptr, SW_SHOWNORMAL);
+                showSetup();
                 break;
             case 34:
                 checkAA();

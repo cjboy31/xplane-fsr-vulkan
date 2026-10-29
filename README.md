@@ -22,6 +22,8 @@ Laminar Research product, and is not a complete solution to ghosting or stutter.
   folder and arguments; manual AA/output choices are saved when applied.
 - Hover/click help beside settings and a live injection banner. Green FSR ACTIVE
   requires recent renderer activity; a one-time Windows notification is requested.
+- **Sim setup...** provides the required AA/input/output configuration and a
+  read-only saved-settings check. Start with the [setup checklist](docs/INSTALLATION.md).
 - **FSR Ghosting Fix - cockpit screens**, an independent Vulkan compositor:
   replays current-scene screen pixels
   after temporal reconstruction, with jitter correction, depth checks, edge

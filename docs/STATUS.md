@@ -1,14 +1,21 @@
 # Validation status and limitations
 
-Current milestone: 0.5.2-alpha, FSR Ghosting Fix naming, saved presets and renderer status,
+Current milestone: 0.5.3-alpha, simulator setup guidance and a read-only settings report,
 with the independent SR22 current-frame Vulkan compositor from 0.5.0.
 
-0.5.2 changes visible naming only. Renderer/plugin binaries, saved setting keys
+0.5.3 adds launcher guidance/checks. Renderer/plugin binaries, saved setting keys
 and aircraft coverage are unchanged. The cockpit-screen fix still supports only
 the default Cirrus SR22. See its help for compatibility and validation limits.
 
+The setup checker reads saved preferences only. It checks known AA/scale/output
+and monitor keys against the selected mode/preset. It does not change settings,
+validate every add-on/driver option or establish compatibility with all hardware.
+
 ## Completed checks
 
+- Setup UI fixture reported mismatched MSAA/FXAA, internal scale and output;
+  after supplying matching settings, it reported OK. Resource/preferences hashes
+  were byte-identical before and after both read-only checks.
 - Default SR22 PFD/MFD geometry parsed at runtime from the user's installation.
 - Quad topology, attachment translation, animation rejection, clipping and
   camera-stability CPU tests.

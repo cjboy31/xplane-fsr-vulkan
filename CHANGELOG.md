@@ -1,5 +1,19 @@
 # Changes
 
+## 0.5.3-alpha
+
+- Add Sim setup on the main screen with a first-flight checklist and an explicit
+  Native AA / Quality / Performance settings table.
+- Explain the difference between simulator input scale, FSR provider and final
+  output resolution, including 1440p input to 4K output.
+- Add a read-only saved-settings report for AA, scale, output and monitor
+  mismatches; direct users to presets/Apply and save while X-Plane is closed.
+- Expand installation instructions with first-test options and live-status
+  verification. Explain that X-Plane 12 already uses Vulkan on Windows.
+
+Launcher/documentation update only. Renderer and camera publisher behavior are
+unchanged; no new camera/controller fix or live-flight quality result is claimed.
+
 ## 0.5.2-alpha
 
 - Rename the app to FSR Ghosting Fix for X-Plane and the cockpit option to

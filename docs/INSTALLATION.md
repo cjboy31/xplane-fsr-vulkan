@@ -3,7 +3,47 @@
 Use the complete release package or build `app/` as described in BUILDING.md.
 Close X-Plane and the previous launcher before installing/updating anything.
 
-1. Run the launcher and select the folder containing `X-Plane.exe`.
+## Required simulator configuration
+
+Click **Sim setup...** on the main screen for the checklist and a read-only
+**Check saved settings** report. It highlights mismatched AA, internal scale,
+saved output and monitor configuration. It does not change the simulator.
+
+| Mode in launcher | X-Plane internal rendering scale | X-Plane MSAA | X-Plane FXAA |
+| --- | --- | --- | --- |
+| FSR 3/4 Native AA | Full resolution | Off | Off |
+| FSR 3/4 Quality upscaling | Quality (1.5x ratio) | Off | Off |
+| FSR 3/4 Performance upscaling | Performance (2x ratio) | Off | Off |
+
+The simulator's Rendering Resolution / FSR scale sets the **input** size for
+this integration. Do not force it to Full in upscaling mode just because its
+label mentions FSR. The launcher selects the FSR 3/4 provider. **Output** is a
+separate setting: 4K Quality uses 2560x1440 input and 3840x2160 fullscreen output.
+Selecting a 1440p output never makes it 4K. Presets configure both together.
+
+For the first general test use a display-supported **FSR 3 Native AA** preset,
+**FG Off**, **cockpit-screen fix Off** and **alignment tint Off**. Use one simulator
+window on the primary display, 2D with VR Off. Run AA check for the selected
+provider, then **Launch X-Plane with FSR** and load a flight. Green **FSR ACTIVE**
+and the reported actual input/output sizes confirm recent processing. Diagnostics
+mode does not enable reconstruction. FSR 4 requires runtime-supported hardware
+and drivers; use its AA check before a flight.
+
+This is a Windows Vulkan build. X-Plane 12 already uses Vulkan on Windows; do
+not look for the old X-Plane 11 Vulkan-enable checkbox. Other DLSS/TAA renderer
+replacements, MotionVectors/LuminaXP plugins or a local `vulkan-1.dll` proxy must
+be disabled for this integration's isolated configuration. General graphics
+quality sliders can be tuned for performance; FG cannot repair slow base frames.
+The setup report reads disk preferences; it does not verify every running add-on,
+VR state, driver override or unsaved in-simulator change.
+
+Change graphics only while X-Plane is closed. Select a preset, or use Advanced
+graphics > Apply and save, then relaunch. If the setup report and live renderer
+sizes differ, trust the live sizes and inspect the log before judging quality.
+
+## Optional cockpit-screen check
+
+1. Complete the general setup above and select the folder containing `X-Plane.exe`.
 2. Run **AA check**, then **Ghosting check**. View the analytical
    cockpit comparison; it is a GPU regression fixture, not live-simulator proof.
 3. Choose a **Resolution and FSR preset** on the main screen. Both FSR 3 and
