@@ -1,0 +1,37 @@
+# Publishing application updates
+
+Application updates are also published at
+[GitHub Releases](https://github.com/cjboy31/xplane-fsr-vulkan/releases).
+Source changes alone do not deliver the Windows installer to users.
+
+1. Update version metadata and the changelog. Finish relevant source/graphics
+   checks and inspect the Windows UI when it changes.
+2. Build a complete installer RAR using an explicit file allow-list. Preserve
+   component licenses and include plain installation/use instructions. Exclude
+   simulator/aircraft assets, reference-mod code, user settings and test data.
+3. Verify archive integrity and hashes, installation, recognized updates,
+   saved-choice preservation and uninstall behavior in an isolated workspace.
+4. Prepare release assets with `Prepare-Release.ps1`. Supply the archive, passing
+   installer-test JSON and exact built source commit. It verifies the tested
+   archive hash and writes only selected public metadata; it does not upload
+   logs or the test result's local folder paths.
+5. On GitHub, create a release/tag such as `v0.5.1-alpha` targeting the exact
+   built source commit. Mark experimental builds as a **pre-release**. Do not
+   present a synthetic GPU result as a verified live-flight improvement.
+6. Upload the RAR, `SHA256SUMS.txt` and `INSTALLATION-AND-USE.txt`. Use the generated
+   `RELEASE-NOTES.md` as the release body. Keep prior versioned releases.
+7. Publish and verify the public page, source tag, asset names/sizes and server
+   SHA-256 digest when available. Give the user the release URL.
+
+Example after a separately tested installer has been built:
+
+```powershell
+./Prepare-Release.ps1 -Version '0.5.1-alpha' -Commit '<built-source-sha>' `
+  -Archive 'C:\Builds\XPlane-FSR24-Friendly-Presets-Installer.rar' `
+  -InstallerTestResult 'C:\Builds\installer-results.json' `
+  -Instructions 'C:\Builds\INSTALLATION-AND-USE.txt'
+```
+
+This prepares ignored `dist/<version>/` assets. It does not create credentials,
+change repository permissions or bypass authentication. Use a connected GitHub
+release/upload API when available; otherwise use the normal release editor.
