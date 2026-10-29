@@ -2,8 +2,9 @@
 #include "update_http.hpp"
 #include <iostream>
 using namespace updates;
-static std::string release(const std::string &tag, bool preview = true) {
-    auto filename = "XPlane-FSR-Ghosting-Fix-" + tag.substr(1) + "-Setup.exe";
+static std::string release(const std::string &tag, bool preview = true,
+                           const std::string &prefix = "XPlane-FSR3-4-FrameGen-") {
+    auto filename = prefix + tag.substr(1) + "-Setup.exe";
     return "{\"draft\":false,\"prerelease\":" + std::string(preview ? "true" : "false") +
            ",\"tag_name\":\"" + tag +
            "\",\"name\":\"Update "
@@ -33,6 +34,19 @@ int wmain(int argc, wchar_t **argv) {
         require(!select(feed, "0.6.0-alpha", true), "Downgrade rejected");
         require(!select("[" + release("v0.5.4-alpha") + "]", "0.5.4-alpha", true),
                 "Equal version rejected");
+        auto legacy = release("v0.5.5-alpha", true, "XPlane-FSR-Ghosting-Fix-");
+        auto branded = release("v0.5.5-alpha");
+        auto legacyJson = Parser(legacy).parse();
+        auto assetStart = legacy.find("[{\"name\"");
+        auto legacyAsset = legacy.substr(assetStart + 1, legacy.size() - assetStart - 3);
+        auto both = branded;
+        both.insert(both.size() - 2, "," + legacyAsset);
+        require(select("[" + legacy + "]", "0.5.4-alpha", true)
+                        .assetURL.find("XPlane-FSR-Ghosting-Fix-") != std::string::npos,
+                "Legacy filename accepted");
+        require(select("[" + both + "]", "0.5.4-alpha", true)
+                        .assetURL.find("XPlane-FSR3-4-FrameGen-") != std::string::npos,
+                "New filename preferred when both aliases are present");
         auto missing = release("v0.5.4-alpha");
         missing.replace(missing.find("-Setup.exe"), 10, "-Other.exe");
         require(!select("[" + missing + "]", "0.5.3-alpha", true), "Missing installer skipped");

@@ -9,7 +9,7 @@ static HWND control(const wchar_t *type, const wchar_t *label, DWORD style, int 
     return c;
 }
 static void error(const std::exception &e) {
-    MessageBoxW(window, wide(e.what()).c_str(), L"FSR Ghosting Fix for X-Plane",
+    MessageBoxW(window, wide(e.what()).c_str(), L"FSR 3/4 + Frame Gen for X-Plane",
                 MB_OK | MB_ICONERROR);
 }
 struct SettingHelp {
@@ -172,8 +172,8 @@ static void runtimeBanner(launcher::RuntimeState state, const app::Telemetry &st
     SetWindowTextW(injectionBanner, message);
     InvalidateRect(injectionBanner, nullptr, TRUE);
     SetWindowTextW(window, state == launcher::RuntimeState::active
-                               ? L"FSR ACTIVE - FSR Ghosting Fix for X-Plane"
-                               : L"FSR Ghosting Fix for X-Plane - Community Preview");
+                               ? L"FSR ACTIVE - FSR 3/4 + Frame Gen for X-Plane"
+                               : L"FSR 3/4 + Frame Gen for X-Plane - Community Preview");
     if (state == launcher::RuntimeState::active && !activeNotificationSent) {
         NOTIFYICONDATAW info{sizeof(info)};
         info.hWnd = window;
@@ -199,9 +199,9 @@ static void createMainControls(HWND hwnd) {
                        CLEARTYPE_QUALITY, 0, L"Segoe UI");
     titleFont = CreateFontW(-25, 0, 0, 0, FW_SEMIBOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET, 0, 0,
                             CLEARTYPE_QUALITY, 0, L"Segoe UI");
-    auto title = control(L"STATIC", L"FSR Ghosting Fix for X-Plane", 0, 28, 18, 610, 38);
+    auto title = control(L"STATIC", L"FSR 3/4 + Frame Gen for X-Plane", 0, 28, 18, 610, 38);
     SendMessageW(title, WM_SETFONT, reinterpret_cast<WPARAM>(titleFont), TRUE);
-    control(L"STATIC", L"Vulkan community preview 0.5.4  |  Hover or click ? for help", 0, 30, 59,
+    control(L"STATIC", L"Vulkan community preview 0.5.5  |  Hover or click ? for help", 0, 30, 59,
             620, 25);
     updatesButton = control(L"BUTTON", L"Updates...", BS_PUSHBUTTON | WS_TABSTOP, 675, 59, 313, 30, 39);
     savedLabel = control(L"STATIC", L"Your choices are restored on startup", 0, 665, 25, 330, 40);
@@ -290,7 +290,7 @@ static void createMainControls(HWND hwnd) {
     tray.uFlags = NIF_ICON | NIF_TIP | NIF_MESSAGE;
     tray.uCallbackMessage = WM_APP + 1;
     tray.hIcon = LoadIconW(GetModuleHandleW(nullptr), MAKEINTRESOURCEW(101));
-    wcscpy_s(tray.szTip, L"FSR Ghosting Fix - open for injection status");
+    wcscpy_s(tray.szTip, L"FSR 3/4 + Frame Gen - open for injection status");
     Shell_NotifyIconW(NIM_ADD, &tray);
     runtimeBanner(launcher::RuntimeState::stopped, {});
     SetTimer(hwnd, 1, 1000, nullptr);

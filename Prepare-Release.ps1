@@ -43,12 +43,13 @@ if ($SetupInstaller) {
     if ($result.setupSha256 -ne $setupHash -or $result.setupBytes -ne (Get-Item -LiteralPath $SetupInstaller).Length -or $result.automaticUpdate -ne 'PASS') {
         throw 'Standalone setup must match the installer tested through automatic-update mode'
     }
-    $setupName = "XPlane-FSR-Ghosting-Fix-$Version-Setup.exe"
-    Copy-Item -LiteralPath $SetupInstaller -Destination (Join-Path $output $setupName)
-    [IO.File]::AppendAllText((Join-Path $output 'SHA256SUMS.txt'), "$setupHash  $setupName`n", $utf8)
+    foreach ($setupName in @("XPlane-FSR3-4-FrameGen-$Version-Setup.exe", "XPlane-FSR-Ghosting-Fix-$Version-Setup.exe")) {
+        Copy-Item -LiteralPath $SetupInstaller -Destination (Join-Path $output $setupName)
+        [IO.File]::AppendAllText((Join-Path $output 'SHA256SUMS.txt'), "$setupHash  $setupName`n", $utf8)
+    }
 }
 $notes = @"
-## FSR Ghosting Fix for X-Plane $Version
+## FSR 3/4 + Frame Gen for X-Plane $Version
 
 Experimental Windows Vulkan community preview. Original project code is MIT
 licensed; packaged third-party runtimes retain their separate notices.
@@ -67,6 +68,10 @@ INSTALLATION-AND-USE.txt before starting the simulator.
 The standalone Setup.exe asset is also used by the in-app updater. Existing
 users install 0.5.4 once; future releases can be checked and installed from
 Updates. No archive extractor is needed for that flow.
+
+Choose XPlane-FSR3-4-FrameGen-$Version-Setup.exe for a direct download. The
+Ghosting-Fix-named setup is an identical compatibility copy for the 0.5.4 updater;
+it installs the newly named app. Ghosting Fix remains the cockpit feature's name.
 
 ### Validation and limits
 

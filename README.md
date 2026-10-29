@@ -1,10 +1,13 @@
 <img src="assets/app-icon.png" width="96" alt="Original aircraft and temporal-pixel icon">
 
-# FSR Ghosting Fix for X-Plane 12
+# FSR 3/4 + Frame Gen for X-Plane 12
 
 An experimental Windows Vulkan integration for AMD FSR Native AA, upscaling and
 frame generation, with a new current-frame cockpit-screen compositor for the
 default Cirrus SR22. Original project code and artwork are MIT licensed.
+
+The application is **FSR 3/4 + Frame Gen for X-Plane**. **FSR Ghosting Fix** is
+the optional cockpit-screen feature, not the application name.
 
 **Developer preview.** This project is being opened for community development.
 GPU fixtures pass on a Radeon AI PRO R9700; the new SR22 screen projection and

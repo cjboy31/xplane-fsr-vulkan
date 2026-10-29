@@ -566,7 +566,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, LPWSTR, int show) {
     c.hbrBackground = reinterpret_cast<HBRUSH>(COLOR_WINDOW + 1);
     RegisterClassW(&c);
     auto hwnd =
-        CreateWindowExW(0, c.lpszClassName, L"FSR Ghosting Fix for X-Plane - Community Preview",
+        CreateWindowExW(0, c.lpszClassName, L"FSR 3/4 + Frame Gen for X-Plane - Community Preview",
                         WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX, CW_USEDEFAULT,
                         CW_USEDEFAULT, 1040, 830, nullptr, nullptr, instance, nullptr);
     ShowWindow(hwnd, show);

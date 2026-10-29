@@ -1,9 +1,10 @@
 # Validation status and limitations
 
-Current milestone: 0.5.4-alpha, verified updates and simulator setup guidance,
+Current milestone: 0.5.5-alpha, FSR 3/4 + Frame Gen application branding,
 with the independent SR22 current-frame Vulkan compositor from 0.5.0.
 
-0.5.4 adds launcher updates. Renderer/plugin binaries, saved graphics setting keys
+0.5.5 separates app branding from the FSR Ghosting Fix cockpit feature.
+Renderer/plugin binaries, saved graphics setting keys
 and aircraft coverage are unchanged. The cockpit-screen fix still supports only
 the default Cirrus SR22. See its help for compatibility and validation limits.
 

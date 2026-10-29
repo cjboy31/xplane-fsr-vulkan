@@ -68,7 +68,7 @@ LLVM-MinGW and NSIS retain their respective licenses. No endorsement is claimed.
 '@
 Write-Text (Join-Path $generated 'THIRD-PARTY-NOTICES.txt') $notice
 Add-Payload (Join-Path $generated 'THIRD-PARTY-NOTICES.txt') 'licenses\THIRD-PARTY-NOTICES.txt' 'Original MIT index of upstream notices'
-$manifest = [ordered]@{product='FSR for X-Plane 12 (Experimental)';packageVersion=$PackageVersion;reviewDate='2026-10-29';hashAlgorithm='SHA-256';scope='Installed payload except this manifest. Its hash is recorded by the outer package manifest. Uninstaller, settings and ownership marker are generated at install time.';files=@($entries | Sort-Object path)}
+$manifest = [ordered]@{product='FSR 3/4 + Frame Gen for X-Plane 12 (Experimental)';packageVersion=$PackageVersion;reviewDate='2026-10-29';hashAlgorithm='SHA-256';scope='Installed payload except this manifest. Its hash is recorded by the outer package manifest. Uninstaller, settings and ownership marker are generated at install time.';files=@($entries | Sort-Object path)}
 Write-Text (Join-Path $payload 'PAYLOAD-MANIFEST.json') ($manifest | ConvertTo-Json -Depth 5)
 $allFiles = @($entries.path) + @('PAYLOAD-MANIFEST.json')
 # Reject unexpected staging files instead of silently including a development file.

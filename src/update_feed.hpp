@@ -9,7 +9,7 @@
 #include <tuple>
 #include <vector>
 namespace updates {
-inline constexpr char currentVersion[] = "0.5.4-alpha";
+inline constexpr char currentVersion[] = "0.5.5-alpha";
 inline constexpr char repository[] = "https://github.com/cjboy31/xplane-fsr-vulkan";
 inline void require(bool ok, const char *why) {
     if (!ok)
@@ -278,32 +278,38 @@ inline Release select(const std::string &feed, const std::string &current, bool 
             continue;
         auto url = std::string(repository) + "/releases/tag/" + tag;
         require(r.at("html_url").str() == url, "Update links to an unexpected repository");
-        auto filename = "XPlane-FSR-Ghosting-Fix-" + tag.substr(1) + "-Setup.exe";
         const auto &assets = r.at("assets");
         require(assets.type == Json::array, "Invalid update assets");
         Release candidate;
-        for (const auto &a : assets.items) {
-            if (a.at("name").str() != filename)
-                continue;
-            require(!candidate, "Duplicate update installer");
-            if (a.at("state").str() != "uploaded")
-                continue;
-            candidate = {tag,
-                         r.at("name").str(),
-                         r.at("body").type == Json::null ? "" : r.at("body").str(),
-                         url,
-                         a.at("browser_download_url").str(),
-                         a.at("digest").str(),
-                         a.at("size").size()};
-            require(candidate.assetURL ==
-                        std::string(repository) + "/releases/download/" + tag + "/" + filename,
-                    "Unexpected update download URL");
-            require(candidate.digest.size() == 71 && candidate.digest.substr(0, 7) == "sha256:" &&
-                        candidate.digest.substr(7).find_first_not_of("0123456789abcdef") ==
-                            std::string::npos,
-                    "Update has no valid GitHub SHA-256 digest");
-            require(candidate.bytes >= 1024 && candidate.bytes <= 256 * 1024 * 1024,
-                    "Update installer size is outside limits");
+        // New branding first; retain the 0.5.4 asset name during migration.
+        for (const auto *prefix : {"XPlane-FSR3-4-FrameGen-", "XPlane-FSR-Ghosting-Fix-"}) {
+            auto filename = std::string(prefix) + tag.substr(1) + "-Setup.exe";
+            for (const auto &a : assets.items) {
+                if (a.at("name").str() != filename)
+                    continue;
+                require(!candidate, "Duplicate update installer");
+                if (a.at("state").str() != "uploaded")
+                    continue;
+                candidate = {tag,
+                             r.at("name").str(),
+                             r.at("body").type == Json::null ? "" : r.at("body").str(),
+                             url,
+                             a.at("browser_download_url").str(),
+                             a.at("digest").str(),
+                             a.at("size").size()};
+                require(candidate.assetURL ==
+                            std::string(repository) + "/releases/download/" + tag + "/" + filename,
+                        "Unexpected update download URL");
+                require(candidate.digest.size() == 71 &&
+                            candidate.digest.substr(0, 7) == "sha256:" &&
+                            candidate.digest.substr(7).find_first_not_of("0123456789abcdef") ==
+                                std::string::npos,
+                        "Update has no valid GitHub SHA-256 digest");
+                require(candidate.bytes >= 1024 && candidate.bytes <= 256 * 1024 * 1024,
+                        "Update installer size is outside limits");
+            }
+            if (candidate)
+                break;
         }
         if (candidate) {
             best = v;

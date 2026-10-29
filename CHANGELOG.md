@@ -1,5 +1,16 @@
 # Changes
 
+## 0.5.5-alpha
+
+- Name the application FSR 3/4 + Frame Gen for X-Plane. Update launcher titles,
+  tray text, executable metadata, setup, shortcuts, guide and release branding.
+- Keep FSR Ghosting Fix as the cockpit-screen feature label, with its existing
+  default Cirrus SR22 support and frame-generation-Off requirement explained in help.
+- Prefer the newly named installer in the updater. Publish an identical legacy
+  asset for 0.5.4 users so automatic upgrades continue to work.
+
+Rendering and saved setting/installation identities are unchanged.
+
 ## 0.5.4-alpha
 
 - Add automatic GitHub Release checks on startup and an Updates window with

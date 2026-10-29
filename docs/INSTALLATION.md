@@ -1,7 +1,11 @@
-# Install and inspect FSR Ghosting Fix
+# Install FSR 3/4 + Frame Gen for X-Plane
 
 Use the complete release package or build `app/` as described in BUILDING.md.
 Close X-Plane and the previous launcher before installing/updating anything.
+
+The app is **FSR 3/4 + Frame Gen for X-Plane**. The **FSR Ghosting Fix** label
+refers only to the optional cockpit-screen feature. Its current aircraft support
+is explained in that setting's help; renaming it does not broaden compatibility.
 
 ## App updates
 

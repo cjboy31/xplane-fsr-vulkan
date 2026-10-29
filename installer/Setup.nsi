@@ -2,12 +2,12 @@
 Unicode true
 RequestExecutionLevel user
 SetCompressor zlib
-Name "FSR Ghosting Fix for X-Plane 12 (Experimental)"
+Name "FSR 3/4 + Frame Gen for X-Plane 12 (Experimental)"
 OutFile "${PACKAGE}\XPlane-FSR24-Setup.exe"
 InstallDir "$LOCALAPPDATA\Programs\XPlaneFSR24"
 BrandingText "Community graphics preview - SDK 2.4.0"
 VIProductVersion "${WINDOWS_VERSION}"
-VIAddVersionKey /LANG=1033 "ProductName" "FSR Ghosting Fix for X-Plane 12 (Experimental)"
+VIAddVersionKey /LANG=1033 "ProductName" "FSR 3/4 + Frame Gen for X-Plane 12 (Experimental)"
 VIAddVersionKey /LANG=1033 "FileDescription" "Per-user setup for the experimental FSR mod"
 VIAddVersionKey /LANG=1033 "FileVersion" "${PACKAGE_VERSION}"
 VIAddVersionKey /LANG=1033 "LegalCopyright" "2026 XPlane FSR24 prototype contributors; NSIS Contributors"
@@ -33,7 +33,7 @@ Var InstallLock
 Var ParentProcess
 
 !define MUI_ABORTWARNING
-!define MUI_WELCOMEPAGE_TITLE "FSR Ghosting Fix for X-Plane 12"
+!define MUI_WELCOMEPAGE_TITLE "FSR 3/4 + Frame Gen for X-Plane 12"
 !define MUI_WELCOMEPAGE_TEXT "Install the experimental Native AA, upscaling and optional frame-generation launcher.$\r$\n$\r$\nClose X-Plane and the FSR launcher before continuing. This preview can produce visual artifacts and is not a production-ready graphics upgrade.$\r$\n$\r$\nSetup installs for your Windows account. The camera plugin is installed by the launcher on first use."
 !insertmacro MUI_PAGE_WELCOME
 Page custom SimulatorPage SimulatorLeave
@@ -241,14 +241,22 @@ Section "Application"
   WriteINIStr "$INSTDIR\XPFSR24-Installation.ini" "Installation" "DesktopShortcut" "$DesktopWanted"
   WriteUninstaller "$INSTDIR\Uninstall.exe"
   ${If} $TestMode != 1
-    CreateDirectory "$SMPROGRAMS\FSR for X-Plane 12 (Experimental)"
-    CreateShortcut "$SMPROGRAMS\FSR for X-Plane 12 (Experimental)\FSR Launcher.lnk" "$INSTDIR\XPlaneFSR24.exe"
-    CreateShortcut "$SMPROGRAMS\FSR for X-Plane 12 (Experimental)\Instructions.lnk" "$INSTDIR\INSTALLATION-AND-USE.txt"
-    CreateShortcut "$SMPROGRAMS\FSR for X-Plane 12 (Experimental)\Uninstall.lnk" "$INSTDIR\Uninstall.exe"
+    ; Remove only shortcut names created by previous owned installs.
+    Delete "$SMPROGRAMS\FSR for X-Plane 12 (Experimental)\FSR Launcher.lnk"
+    Delete "$SMPROGRAMS\FSR for X-Plane 12 (Experimental)\Instructions.lnk"
+    Delete "$SMPROGRAMS\FSR for X-Plane 12 (Experimental)\Uninstall.lnk"
+    RMDir "$SMPROGRAMS\FSR for X-Plane 12 (Experimental)"
     ${If} $DesktopWanted == 1
-      CreateShortcut "$DESKTOP\FSR for X-Plane 12 (Experimental).lnk" "$INSTDIR\XPlaneFSR24.exe"
+      Delete "$DESKTOP\FSR for X-Plane 12 (Experimental).lnk"
     ${EndIf}
-    WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\XPFSR24CommunityAlpha" "DisplayName" "FSR Ghosting Fix for X-Plane 12 (Experimental)"
+    CreateDirectory "$SMPROGRAMS\FSR 3-4 + Frame Gen for X-Plane"
+    CreateShortcut "$SMPROGRAMS\FSR 3-4 + Frame Gen for X-Plane\FSR 3-4 + Frame Gen.lnk" "$INSTDIR\XPlaneFSR24.exe"
+    CreateShortcut "$SMPROGRAMS\FSR 3-4 + Frame Gen for X-Plane\Instructions.lnk" "$INSTDIR\INSTALLATION-AND-USE.txt"
+    CreateShortcut "$SMPROGRAMS\FSR 3-4 + Frame Gen for X-Plane\Uninstall.lnk" "$INSTDIR\Uninstall.exe"
+    ${If} $DesktopWanted == 1
+      CreateShortcut "$DESKTOP\FSR 3-4 + Frame Gen for X-Plane.lnk" "$INSTDIR\XPlaneFSR24.exe"
+    ${EndIf}
+    WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\XPFSR24CommunityAlpha" "DisplayName" "FSR 3/4 + Frame Gen for X-Plane 12 (Experimental)"
     WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\XPFSR24CommunityAlpha" "DisplayVersion" "${PACKAGE_VERSION}"
     WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\XPFSR24CommunityAlpha" "UninstallString" '$\"$INSTDIR\Uninstall.exe$\"'
     WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\XPFSR24CommunityAlpha" "QuietUninstallString" '$\"$INSTDIR\Uninstall.exe$\" /S'
@@ -282,12 +290,12 @@ Section "Uninstall"
   ReadINIStr $TestMode "$INSTDIR\XPFSR24-Installation.ini" "Installation" "TestMode"
   ReadINIStr $DesktopWanted "$INSTDIR\XPFSR24-Installation.ini" "Installation" "DesktopShortcut"
   ${If} $TestMode != 1
-    Delete "$SMPROGRAMS\FSR for X-Plane 12 (Experimental)\FSR Launcher.lnk"
-    Delete "$SMPROGRAMS\FSR for X-Plane 12 (Experimental)\Instructions.lnk"
-    Delete "$SMPROGRAMS\FSR for X-Plane 12 (Experimental)\Uninstall.lnk"
-    RMDir "$SMPROGRAMS\FSR for X-Plane 12 (Experimental)"
+    Delete "$SMPROGRAMS\FSR 3-4 + Frame Gen for X-Plane\FSR 3-4 + Frame Gen.lnk"
+    Delete "$SMPROGRAMS\FSR 3-4 + Frame Gen for X-Plane\Instructions.lnk"
+    Delete "$SMPROGRAMS\FSR 3-4 + Frame Gen for X-Plane\Uninstall.lnk"
+    RMDir "$SMPROGRAMS\FSR 3-4 + Frame Gen for X-Plane"
     ${If} $DesktopWanted == 1
-      Delete "$DESKTOP\FSR for X-Plane 12 (Experimental).lnk"
+      Delete "$DESKTOP\FSR 3-4 + Frame Gen for X-Plane.lnk"
     ${EndIf}
     DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\XPFSR24CommunityAlpha"
   ${EndIf}
