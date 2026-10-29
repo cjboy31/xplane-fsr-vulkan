@@ -2,7 +2,16 @@
 #pragma once
 #include "shared.hpp"
 namespace launcher {
-enum class RuntimeState { stopped, native, starting, loaded, active, paused, stalled };
+enum class RuntimeState {
+    stopped,
+    native,
+    starting,
+    loaded,
+    active,
+    paused,
+    stalled,
+    groundSafety
+};
 struct RuntimeMonitor {
     uint64_t presents{}, recordings{}, lastProgress{}, lastDispatch{};
     void reset() { *this = {}; }
@@ -26,6 +35,8 @@ struct RuntimeMonitor {
             return RuntimeState::paused;
         if (lastProgress && now - lastProgress > 6000)
             return RuntimeState::stalled;
+        if (!s.active && strncmp(s.reason, "Ground camera safety:", 21) == 0)
+            return RuntimeState::groundSafety;
         if (s.active && s.presents && lastDispatch && now - lastDispatch <= 6000)
             return RuntimeState::active;
         return RuntimeState::loaded;

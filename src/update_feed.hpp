@@ -9,7 +9,7 @@
 #include <tuple>
 #include <vector>
 namespace updates {
-inline constexpr char currentVersion[] = "0.5.9-experimental.1";
+inline constexpr char currentVersion[] = "0.5.9-experimental.2";
 inline constexpr char repository[] = "https://github.com/cjboy31/xplane-fsr-vulkan";
 inline void require(bool ok, const char *why) {
     if (!ok)

@@ -9,6 +9,7 @@
 #include "shared.hpp"
 #include "camera_continuity.hpp"
 #include "camera_math.hpp"
+#include "ground_camera.hpp"
 #include <XPLMDataAccess.h>
 #include <XPLMMenus.h>
 #include <XPLMPlanes.h>
@@ -22,7 +23,7 @@
 static HANDLE mapping{};
 static app::Shared *shared{};
 static XPLMDataRef projection{}, world{}, bodyRef{}, widthRef{}, heightRef{}, viewRef{}, pauseRef{},
-    externalRef{};
+    externalRef{}, cameraAglRef{}, onGroundRef{};
 static XPLMMenuID menu{};
 static bool previousValid{};
 static app::Camera previousCamera{};
@@ -69,6 +70,8 @@ static float update(float elapsed, float, int, void *) {
         viewRef = XPLMFindDataRef("sim/graphics/view/view_type");
         pauseRef = XPLMFindDataRef("sim/time/paused");
         externalRef = XPLMFindDataRef("sim/graphics/view/view_is_external");
+        cameraAglRef = XPLMFindDataRef("sim/graphics/view/view_elevation_agl_mtrs");
+        onGroundRef = XPLMFindDataRef("sim/flightmodel/failures/onground_any");
     }
     if (!shared)
         return -1;
@@ -127,6 +130,12 @@ static float update(float elapsed, float, int, void *) {
             packet.width = widthRef ? XPLMGetDatai(widthRef) : 0;
             packet.height = heightRef ? XPLMGetDatai(heightRef) : 0;
             packet.internal = externalRef ? !XPLMGetDatai(externalRef) : 0;
+            if (!packet.internal && externalRef && cameraAglRef && onGroundRef) {
+                const bool onGround = XPLMGetDatai(onGroundRef) != 0;
+                // Cached public datarefs only: no terrain probing, camera
+                // ownership, collision override or controller writes.
+                app::groundMetadata(packet, onGround, onGround ? XPLMGetDataf(cameraAglRef) : 0.f);
+            }
             float af[16]{};
             if (bodyRef && XPLMGetDatavf(bodyRef, af, 0, 16) == 16 &&
                 std::abs(af[12]) + std::abs(af[13]) + std::abs(af[14]) > .05f) {

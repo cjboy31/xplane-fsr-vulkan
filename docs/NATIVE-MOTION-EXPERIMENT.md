@@ -1,7 +1,16 @@
 # Native renderer motion: separate experimental option
 
 Branch: `experimental/native-motion-vectors`.
-Version: `0.5.9-experimental.1`. The regular `0.5.8-alpha` release remains available.
+Version: `0.5.9-experimental.2`. The regular `0.5.9-alpha` release remains available.
+
+This update shares the regular release's per-process log reset, immutable
+camera-frame checks and ground-camera safeguard. With the aircraft on the
+ground, an external camera within 1.5 m of terrain temporarily uses native
+rendering; the app shows GROUND CAMERA SAFETY. Raise it to at least 2.5 m, enter
+the cockpit or take off to resume with fresh history. Both motion choices obey
+this guard. It does not move the camera or change saved selections. Native
+rendering can change AA and frame rate. The original report still needs a live
+retest. See [diagnostics and retest steps](RENDERING-STABILITY.md).
 
 ## Choose which implementation to test
 

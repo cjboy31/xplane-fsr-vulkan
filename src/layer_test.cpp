@@ -4,6 +4,7 @@
 #include "probe_support.hpp"
 #undef wmain
 #include "shared.hpp"
+#include "ground_camera.hpp"
 static std::vector<uint32_t> loadSpv(const wchar_t *path) {
     FILE *f = _wfopen(path, L"rb");
     require(f, "Test shader missing");
@@ -30,6 +31,14 @@ int wmain(int argc, wchar_t **argv) {
         auto samples = VkSampleCountFlagBits(sampleCount);
         std::wstring resolveKind = argc > 5 ? argv[5] : L"attachment";
         std::cout << "Scene MSAA samples=" << sampleCount << "\n";
+        auto hasOption = [&](const wchar_t *option) {
+            for (int i = 6; i < argc; ++i)
+                if (std::wstring(argv[i]) == option)
+                    return true;
+            return false;
+        };
+        const bool staleCamera = hasOption(L"stale-camera");
+        const bool groundCamera = hasOption(L"ground-camera");
         const uint32_t OW = nativeAA ? 256 : 384, OH = nativeAA ? 144 : 216;
         SetEnvironmentVariableW(L"XPFSR24_MODE", observe    ? L"observe"
                                                  : nativeAA ? L"native-aa"
@@ -45,7 +54,9 @@ int wmain(int argc, wchar_t **argv) {
         shared->tag = app::magic;
         shared->version = app::abi;
         shared->enabled = 1;
-        bool nativeMotion = argc > 6;
+        bool nativeMotion = argc > 6 && (std::wstring(argv[6]) == L"native-2d" ||
+                                         std::wstring(argv[6]) == L"native-array" ||
+                                         std::wstring(argv[6]) == L"native-missing");
         bool missingNative = nativeMotion && std::wstring(argv[6]) == L"native-missing";
         bool nativeArray = nativeMotion && std::wstring(argv[6]) == L"native-array";
         SetEnvironmentVariableW(L"XPFSR24_MOTION", nativeMotion ? L"native-renderer" : nullptr);
@@ -423,7 +434,14 @@ int wmain(int argc, wchar_t **argv) {
             camera.ticks = now.QuadPart;
             for (int i = 0; i < 16; ++i)
                 camera.reprojection[i] = camera.inverseProjection[i] = (i % 5) == 0;
-            camera.reprojection[12] = .03f;
+            camera.reprojection[12] = groundCamera ? 0.f : .03f;
+            if (groundCamera && frame >= 12) {
+                camera.internal = 0;
+                app::groundMetadata(camera, frame <= 15,
+                                    frame == 14   ? 2.f
+                                    : frame == 15 ? 2.6f
+                                                  : .15f);
+            }
             InterlockedIncrement(&shared->cameraSequence);
             shared->camera = camera;
             InterlockedIncrement(&shared->cameraSequence);
@@ -507,6 +525,13 @@ int wmain(int argc, wchar_t **argv) {
                     vk.dev<PFN_vkCmdEndRendering>("vkCmdEndRendering")(children[n]);
                 vkcheck(vk.dev<PFN_vkEndCommandBuffer>("vkEndCommandBuffer")(children[n]),
                         "End child");
+            }
+            if (staleCamera && frame == 12) {
+                camera.frame += 100000;
+                camera.reprojection[13] = .3f;
+                InterlockedIncrement(&shared->cameraSequence);
+                shared->camera = camera;
+                InterlockedIncrement(&shared->cameraSequence);
             }
             vkcheck(vk.dev<PFN_vkResetCommandBuffer>("vkResetCommandBuffer")(cb, 0), "Test reset");
             VkCommandBufferBeginInfo begin{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
@@ -685,6 +710,10 @@ int wmain(int argc, wchar_t **argv) {
                                 : frame <= 8             ? frame
                                 : frame <= 10            ? 8
                                                          : frame - 2;
+            if (!observe && groundCamera && frame >= 12)
+                expected -= std::min<uint64_t>(frame - 11, 3);
+            if (!observe && staleCamera && frame >= 12)
+                --expected;
             require(app::readStatus(shared, status) && status.recordings == expected,
                     "Layer replacement/toggle count differs");
             if (nativeMotion && expected && status.active)
@@ -693,6 +722,12 @@ int wmain(int argc, wchar_t **argv) {
             if (missingNative && !observe)
                 require(!status.active,
                         "Missing native inputs must not silently use camera vectors");
+            if (staleCamera && frame == 12 && !observe)
+                require(!status.active && strstr(status.reason, "camera frame mismatch"),
+                        "Stale scene must explain native fallback");
+            if (groundCamera && frame >= 12 && frame <= 14 && !observe)
+                require(!status.active && strstr(status.reason, "Ground camera safety:"),
+                        "Camera resting at the ground must show native safety fallback");
             std::cout << "Source frame " << frame << ": completed, RGB " << rgb[0] << ',' << rgb[1]
                       << ',' << rgb[2] << ", FSR recordings " << status.recordings << ", provider "
                       << status.provider << '\n';

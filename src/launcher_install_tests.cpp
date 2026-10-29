@@ -10,7 +10,8 @@ int wmain(int argc, wchar_t **argv) {
         fs::path source = argv[1], previous = argv[2], fixture = argv[3];
         ensure(!fs::exists(fixture), "Fresh workspace fixture required");
         const std::string oldHash = hash(previous);
-        ensure(oldHash == "6b0b17f2d315b5d50018dd167e896cd54a814ad11aa03ad6d94d2a14ed882e3a" ||
+        ensure(oldHash == "370ee0ff5119aba274755d7f0ed67825b338df35b13c8665db8ba4af229e5b96" ||
+                   oldHash == "6b0b17f2d315b5d50018dd167e896cd54a814ad11aa03ad6d94d2a14ed882e3a" ||
                    oldHash == "5fb87828f94aca906601703d49f0626aeac85e38ebf7b068b00867cd18535720",
                "Previous plugin is not a verified published binary");
         appDirectory = fixture / L"app";
@@ -50,7 +51,7 @@ int wmain(int argc, wchar_t **argv) {
             refused = true;
         }
         ensure(refused && hash(target) == unknown, "Upgrade overwrote an unrecognized plugin");
-        std::cout << "PASS: 0.5.5 camera publisher upgrades with verified backup, repeat install, "
+        std::cout << "PASS: previous owned camera publisher upgrades with verified backup, repeat install, "
                      "owned removal and foreign-file refusal; no simulator was started\n";
         return 0;
     } catch (const std::exception &e) {

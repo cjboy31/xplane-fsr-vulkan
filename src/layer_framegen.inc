@@ -272,8 +272,8 @@ static VkResult presentFrame(Device &d, VkQueue queue, const VkPresentInfoKHR *i
                     int(static_cast<const VkBaseInStructure *>(info->pNext)->sType));
                 return VK_ERROR_FEATURE_NOT_PRESENT;
             }
-            bool active = d.enabled && d.fgLiveEnabled && !d.fgFailed && d.frameGenerator &&
-                          d.fgSequence.ready();
+            bool active = d.enabled && !d.groundSafety.active && d.fgLiveEnabled && !d.fgFailed &&
+                          d.frameGenerator && d.fgSequence.ready();
             if (d.frameGenerator) {
                 SdkScope sdk;
                 d.frameGenerator->configure(generation->presentation->handle(),
@@ -282,8 +282,10 @@ static VkResult presentFrame(Device &d, VkQueue queue, const VkPresentInfoKHR *i
             d.status.fgActive = active;
             if (!active)
                 strncpy(d.status.fgReason,
-                        d.enabled ? "FG bypass: submitted scene and prepared source must match"
-                                  : "FG disabled with reconstruction toggle",
+                        d.groundSafety.active
+                            ? "FG paused by ground camera safety; selection retained"
+                        : d.enabled ? "FG bypass: submitted scene and prepared source must match"
+                                    : "FG disabled with reconstruction toggle",
                         159);
             if (!active && d.frameGenerator &&
                 (++d.fgSourceBypasses <= 3 || d.fgSourceBypasses % 300 == 0))

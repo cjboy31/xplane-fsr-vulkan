@@ -3,6 +3,7 @@
 #include "shared.hpp"
 #include "launcher_preferences.hpp"
 #include "runtime_status.hpp"
+#include "session_logs.hpp"
 #include <algorithm>
 #include <bcrypt.h>
 #include <commctrl.h>
@@ -118,6 +119,7 @@ static void install(const fs::path &root) {
         ensure(old == "bf790e7915cd7afd125daf297eac12d36557f69c0a29d66dbb396522995826a0" ||
                    old == "d799da598058143fc99f63180da8a66d4cbe078bd6f105fd66a4a38b81a1d888" ||
                    old == "5fb87828f94aca906601703d49f0626aeac85e38ebf7b068b00867cd18535720" ||
+                   old == "65cc058436aefcc810530b441cf29b6ee3093b2230a7b5b543f5a2b2a3eb1e01" ||
                    old == "370ee0ff5119aba274755d7f0ed67825b338df35b13c8665db8ba4af229e5b96" ||
                    old == "6b0b17f2d315b5d50018dd167e896cd54a814ad11aa03ad6d94d2a14ed882e3a" ||
                    old == "119db0cae84dc5873c31eb42bb3afddd90c4a34c1fa2a949a1c056d394dc1045",
@@ -185,8 +187,8 @@ struct EnvironmentScope {
              {L"XPFSR24_COCKPIT_RESTORE", L"XPFSR24_GHOST_REDUCTION", L"VK_LAYER_PATH",
               L"VK_INSTANCE_LAYERS", L"VK_LOADER_LAYERS_ENABLE", L"VK_LOADER_DEBUG",
               L"DISABLE_VULKAN_OBS_CAPTURE", L"XPFSR24_FG_CONTROL", L"XPFSR24_MODE",
-              L"XPFSR24_PROVIDER", L"XPFSR24_MOTION", L"XPFSR24_FG", L"XPFSR24_RUNTIME",
-              L"XPFSR24_LOG", L"XPFSR24_STATUS", L"XPFSR24_CONTROL"}) {
+              L"XPFSR24_SESSION", L"XPFSR24_PROVIDER", L"XPFSR24_MOTION", L"XPFSR24_FG",
+              L"XPFSR24_RUNTIME", L"XPFSR24_LOG", L"XPFSR24_STATUS", L"XPFSR24_CONTROL"}) {
             wchar_t value[32768]{};
             GetEnvironmentVariableW(name, value, 32768);
             values.emplace_back(name, value);
@@ -255,13 +257,12 @@ static void launch(const fs::path &root, const std::wstring &arguments, bool nat
     SetEnvironmentVariableW(
         L"XPFSR24_MOTION",
         !native && SendMessageW(motionBox, CB_GETCURSEL, 0, 0) == 1 ? L"native-renderer" : nullptr);
-    for (auto *name : {L"renderer.log", L"renderer-status.txt"}) {
-        auto file = appDirectory / L"logs" / name;
-        if (fs::exists(file))
-            fs::copy_file(file, file.wstring() + L".previous",
-                          fs::copy_options::overwrite_existing);
-        std::ofstream(file, std::ios::trunc);
-    }
+    std::ostringstream sessionChoices;
+    sessionChoices << "requested_mode=" << mode << " provider=" << (mode >= 3 ? "4.1.2" : "3.1.6")
+                   << " frame_generation=" << fg << " native_comparison=" << native
+                   << " motion_source=" << SendMessageW(motionBox, CB_GETCURSEL, 0, 0);
+    auto sessionId = session::prepare(appDirectory / L"logs", sessionChoices.str());
+    SetEnvironmentVariableW(L"XPFSR24_SESSION", wide(sessionId.c_str()).c_str());
     SetEnvironmentVariableW(L"VK_LAYER_PATH", native ? nullptr : (appDirectory / L"layer").c_str());
     SetEnvironmentVariableW(L"VK_INSTANCE_LAYERS", native ? nullptr : L"VK_LAYER_XPFSR24");
     SetEnvironmentVariableW(L"VK_LOADER_LAYERS_ENABLE", native ? nullptr : L"VK_LAYER_XPFSR24");
@@ -293,7 +294,7 @@ static void launch(const fs::path &root, const std::wstring &arguments, bool nat
     runtimeBanner(native ? launcher::RuntimeState::native : launcher::RuntimeState::starting, {});
     CloseHandle(process.hThread);
     simulator = root;
-    std::ofstream(appDirectory / L"logs/launch.txt")
+    std::ofstream(appDirectory / L"logs/launch.txt", std::ios::app)
         << "Launcher PID " << GetCurrentProcessId() << "; X-Plane PID " << childId << '\n';
 }
 static void checkAA() {

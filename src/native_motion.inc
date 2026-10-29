@@ -136,12 +136,12 @@ void captureNativeMotion(Device &d, VkCommandBuffer cb, Command &command) {
         return;
     // Initial experiment is deliberately constrained to one application graphics
     // queue and one-time primary command buffers. No cross-buffer resource guess.
-    if (d.mode == Mode::Observe || command.secondary || !command.oneTime || command.rendering ||
-        command.processed || command.dynamicOffsets || command.sets.size() > 1 ||
-        command.pushed.size() > 1 || command.family != d.graphicsFamily ||
-        d.graphicsFamily == UINT32_MAX || !d.fgRequested.empty() || d.cockpitRequested ||
-        !d.camera.valid || !d.camera.reverseZ || !d.enabled || d.runtimeFailed ||
-        (command.nativeMotion && command.nativeMotion->captured))
+    if (d.mode == Mode::Observe || d.groundCameraActive() || command.secondary ||
+        !command.oneTime || command.rendering || command.processed || command.dynamicOffsets ||
+        command.sets.size() > 1 || command.pushed.size() > 1 ||
+        command.family != d.graphicsFamily || d.graphicsFamily == UINT32_MAX ||
+        !d.fgRequested.empty() || d.cockpitRequested || !d.camera.valid || !d.camera.reverseZ ||
+        !d.enabled || d.runtimeFailed || (command.nativeMotion && command.nativeMotion->captured))
         return;
     const Bindings *bindings = nullptr;
     if (command.pushed.count(0))
@@ -189,7 +189,7 @@ void captureNativeMotion(Device &d, VkCommandBuffer cb, Command &command) {
         !sampled(pv->second, image->second, false) || !sampled(fv->second, fi->second, true) ||
         pos->second.image.imageLayout == VK_IMAGE_LAYOUT_UNDEFINED ||
         flags->second.image.imageLayout == VK_IMAGE_LAYOUT_UNDEFINED ||
-        depth == command.depths.end() || !depth->second.fullArea ||
+        depth == command.depths.end() || !depth->second.fullArea || !depth->second.cameraCoherent ||
         depth->second.epoch != d.camera.frame ||
         !command.capturedDepths.count(pv->second.create.image))
         return;

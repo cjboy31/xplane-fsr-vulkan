@@ -1,5 +1,28 @@
 # Changes
 
+## 0.5.9-experimental.2
+
+- Bring the regular 0.5.9 session-log reset and ground-camera safeguards to
+  both motion choices. Every new simulator process starts fresh diagnostics,
+  with one bounded previous-session copy and build/session/PID/UTC headers.
+- Temporarily use native rendering when an external camera is within 1.5 m
+  of terrain while the aircraft is grounded. Resume FSR at 2.5 m, in the
+  cockpit or after takeoff, with temporal history reset. Show GROUND CAMERA
+  SAFETY; retain all saved choices. Camera collision and controllers are untouched.
+- Preserve recorded secondary-command camera frames and reject stale/conflicting
+  depth metadata instead of relabeling it as current. Skip native SSR capture
+  during ground safety or when depth provenance is incoherent.
+- Add 16 camera-path log/safety Vulkan cases plus eight native-SSR ground-camera
+  cases covering both FSR providers, Native AA/upscaling and 2D/array inputs.
+  Keep the separate experimental installer identity, updater and opt-in Motion
+  selector. Recognize the same updated publisher as the regular 0.5.9 release.
+
+This is a precautionary mitigation for the 0.5.7 ground-pan report, not a live
+reproduction or guaranteed cloud/ground artifact cure. Native rendering during
+the safeguard changes AA/frame rate. The native-motion option still requires
+MSAA, FXAA, FG and cockpit-screen restoration Off and lacks exact independent
+object/cloud motion. See docs/NATIVE-MOTION-EXPERIMENT.md for setup and limits.
+
 ## 0.5.9-experimental.1
 
 - Add **Native renderer motion — EXPERIMENTAL** as a second main-screen choice.

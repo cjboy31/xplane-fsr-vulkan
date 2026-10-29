@@ -13,7 +13,7 @@ struct Camera {
     float bodyReprojection[16]{};
     float position[3]{}, up[3]{}, right[3]{}, forward[3]{};
     float nearPlane{}, farPlane{}, verticalFov{}, milliseconds{};
-    float ownSphere[4]{};
+    float ownSphere[4]{}; // Deprecated sphere; tagged ground metadata in ground_camera.hpp.
     uint32_t width{}, height{}, reset{}, reverseZ{}, infiniteZ{}, valid{}, internal{}, bodyValid{};
     float screenClip[8][4]{};
     uint32_t screenCount{}, screenReady{};
