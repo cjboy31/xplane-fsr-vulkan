@@ -202,7 +202,8 @@ struct GpuImage {
     VkDeviceMemory allocation{};
     explicit GpuImage(Vulkan &owner) : vk(owner) {}
     void create(uint32_t w, uint32_t h, VkFormat format, VkImageCreateFlags flags = 0,
-                VkImageUsageFlags extraUsage = 0) {
+                VkImageUsageFlags extraUsage = 0,
+                VkSampleCountFlagBits samples = VK_SAMPLE_COUNT_1_BIT) {
         auto &d = value.description;
         d.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
         d.flags = flags;
@@ -210,7 +211,7 @@ struct GpuImage {
         d.format = format;
         d.extent = {w, h, 1};
         d.mipLevels = d.arrayLayers = 1;
-        d.samples = VK_SAMPLE_COUNT_1_BIT;
+        d.samples = samples;
         d.tiling = VK_IMAGE_TILING_OPTIMAL;
         d.usage = extraUsage | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT |
                   VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;

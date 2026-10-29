@@ -11,12 +11,16 @@ struct alignas(16) Uniform {
 };
 int wmain(int argc, wchar_t **argv) {
     try {
-        require(argc == 2, "temporal_tests PRODUCTION_TEMPORAL_SPV");
+        require(argc == 2 || argc == 4,
+                "temporal_tests PRODUCTION_TEMPORAL_SPV [MSAA_COUNT FILL_SPV]");
+        unsigned sampleCount = argc == 4 ? std::stoul(argv[2]) : 1;
+        require(sampleCount == 1 || sampleCount == 2 || sampleCount == 4 || sampleCount == 8,
+                "MSAA count");
         Vulkan vk;
         vk.open();
         constexpr uint32_t W = 32, H = 16;
         GpuImage source(vk), depth(vk), motion(vk), reactive(vk);
-        source.create(W, H, VK_FORMAT_R32_SFLOAT);
+        source.create(W, H, VK_FORMAT_R32_SFLOAT, 0, 0, VkSampleCountFlagBits(sampleCount));
         depth.create(W, H, VK_FORMAT_R32_SFLOAT);
         motion.create(W, H, VK_FORMAT_R16G16_SFLOAT);
         reactive.create(W, H, VK_FORMAT_R8_UNORM);
@@ -68,8 +72,8 @@ int wmain(int argc, wchar_t **argv) {
         sc.addressModeU = sc.addressModeV = sc.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
         vkcheck(vk.dev<PFN_vkCreateSampler>("vkCreateSampler")(vk.device, &sc, nullptr, &sampler),
                 "Stability sampler");
-        VkDescriptorSetLayoutBinding bindings[5]{};
-        for (uint32_t i = 0; i < 5; ++i) {
+        VkDescriptorSetLayoutBinding bindings[6]{};
+        for (uint32_t i = 0; i < (sampleCount > 1 ? 6u : 5u); ++i) {
             bindings[i].binding = i;
             bindings[i].descriptorCount = 1;
             bindings[i].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
@@ -79,14 +83,14 @@ int wmain(int argc, wchar_t **argv) {
         }
         VkDescriptorSetLayout layout{};
         VkDescriptorSetLayoutCreateInfo lc{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
-        lc.bindingCount = 5;
+        lc.bindingCount = sampleCount > 1 ? 6 : 5;
         lc.pBindings = bindings;
         vkcheck(vk.dev<PFN_vkCreateDescriptorSetLayout>("vkCreateDescriptorSetLayout")(
                     vk.device, &lc, nullptr, &layout),
                 "Stability descriptor layout");
         VkDescriptorPoolSize poolSizes[] = {{VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1},
                                             {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1},
-                                            {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 3}};
+                                            {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 4}};
         VkDescriptorPool pool{};
         VkDescriptorPoolCreateInfo pc{VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
         pc.maxSets = 1;
@@ -108,9 +112,10 @@ int wmain(int argc, wchar_t **argv) {
             {sampler, arrayView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL},
             {0, outputViews[0], VK_IMAGE_LAYOUT_GENERAL},
             {0, outputViews[1], VK_IMAGE_LAYOUT_GENERAL},
-            {0, outputViews[2], VK_IMAGE_LAYOUT_GENERAL}};
-        VkWriteDescriptorSet writes[5]{};
-        for (uint32_t i = 0; i < 5; ++i) {
+            {0, outputViews[2], VK_IMAGE_LAYOUT_GENERAL},
+            {0, arrayView, VK_IMAGE_LAYOUT_GENERAL}};
+        VkWriteDescriptorSet writes[6]{};
+        for (uint32_t i = 0; i < (sampleCount > 1 ? 6u : 5u); ++i) {
             auto &w = writes[i];
             w.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
             w.dstSet = set;
@@ -122,8 +127,8 @@ int wmain(int argc, wchar_t **argv) {
             else
                 w.pImageInfo = &images[i - 1];
         }
-        vk.dev<PFN_vkUpdateDescriptorSets>("vkUpdateDescriptorSets")(vk.device, 5, writes, 0,
-                                                                     nullptr);
+        vk.dev<PFN_vkUpdateDescriptorSets>("vkUpdateDescriptorSets")(
+            vk.device, sampleCount > 1 ? 6 : 5, writes, 0, nullptr);
         std::ifstream in(std::filesystem::path(argv[1]), std::ios::binary | std::ios::ate);
         require(bool(in), "Temporal shader missing");
         size_t bytes = size_t(in.tellg());
@@ -155,6 +160,26 @@ int wmain(int argc, wchar_t **argv) {
         vkcheck(vk.dev<PFN_vkCreateComputePipelines>("vkCreateComputePipelines")(
                     vk.device, 0, 1, &cp, nullptr, &pipeline),
                 "Temporal pipeline");
+        VkShaderModule fillModule{};
+        VkPipeline fillPipeline{};
+        if (sampleCount > 1) {
+            std::ifstream fill(std::filesystem::path(argv[3]), std::ios::binary | std::ios::ate);
+            require(bool(fill), "MSAA fill shader missing");
+            size_t count = size_t(fill.tellg());
+            require(count && count % 4 == 0, "MSAA fill shader size");
+            std::vector<uint32_t> fillCode(count / 4);
+            fill.seekg(0);
+            fill.read(reinterpret_cast<char *>(fillCode.data()), count);
+            mc.codeSize = count;
+            mc.pCode = fillCode.data();
+            vkcheck(vk.dev<PFN_vkCreateShaderModule>("vkCreateShaderModule")(vk.device, &mc,
+                                                                             nullptr, &fillModule),
+                    "MSAA fill module");
+            cp.stage.module = fillModule;
+            vkcheck(vk.dev<PFN_vkCreateComputePipelines>("vkCreateComputePipelines")(
+                        vk.device, 0, 1, &cp, nullptr, &fillPipeline),
+                    "MSAA fill pipeline");
+        }
         VkCommandPool commandPool{};
         VkCommandPoolCreateInfo cc{VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO};
         cc.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
@@ -170,7 +195,7 @@ int wmain(int argc, wchar_t **argv) {
         vkcheck(
             vk.dev<PFN_vkAllocateCommandBuffers>("vkAllocateCommandBuffers")(vk.device, &ca, &cb),
             "Temporal commands");
-        for (unsigned test = 0; test < 8; ++test) {
+        for (unsigned test = 0; test < (sampleCount > 1 ? 12u : 8u); ++test) {
             Uniform u{};
             for (int k = 0; k < 16; ++k)
                 u.reprojection[k] = u.inverseProjection[k] = u.body[k] = k % 5 == 0;
@@ -198,17 +223,31 @@ int wmain(int argc, wchar_t **argv) {
                 u.jitter[0] = .25f;
                 u.jitter[1] = -.25f;
             }
+            u.planes[3] = float(test);
+            u.sphere[0] = sample;
+            if (test == 8 || test == 10)
+                u.planes[0] = 0;
             memcpy(mapped, &u, sizeof(u));
             vkcheck(vk.dev<PFN_vkResetCommandBuffer>("vkResetCommandBuffer")(cb, 0),
                     "Temporal reset");
             VkCommandBufferBeginInfo begin{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
             vkcheck(vk.dev<PFN_vkBeginCommandBuffer>("vkBeginCommandBuffer")(cb, &begin),
                     "Temporal begin");
-            source.transition(cb, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
-            VkClearColorValue clear{{sample, 0, 0, 0}};
-            VkImageSubresourceRange range{VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
-            vk.dev<PFN_vkCmdClearColorImage>("vkCmdClearColorImage")(
-                cb, source.value.handle, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &clear, 1, &range);
+            if (sampleCount > 1) {
+                source.transition(cb, VK_IMAGE_LAYOUT_GENERAL);
+                vk.dev<PFN_vkCmdBindPipeline>("vkCmdBindPipeline")(
+                    cb, VK_PIPELINE_BIND_POINT_COMPUTE, fillPipeline);
+                vk.dev<PFN_vkCmdBindDescriptorSets>("vkCmdBindDescriptorSets")(
+                    cb, VK_PIPELINE_BIND_POINT_COMPUTE, pipelineLayout, 0, 1, &set, 0, nullptr);
+                vk.dev<PFN_vkCmdDispatch>("vkCmdDispatch")(cb, W / 8, H / 8, 1);
+            } else {
+                source.transition(cb, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+                VkClearColorValue clear{{sample, 0, 0, 0}};
+                VkImageSubresourceRange range{VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+                vk.dev<PFN_vkCmdClearColorImage>("vkCmdClearColorImage")(
+                    cb, source.value.handle, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &clear, 1,
+                    &range);
+            }
             source.transition(cb, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
             for (auto *image : {&depth, &motion, &reactive})
                 image->transition(cb, VK_IMAGE_LAYOUT_GENERAL);
@@ -261,14 +300,27 @@ int wmain(int argc, wchar_t **argv) {
                 if (test >= 2 && test <= 5)
                     require(mask[pixel] == 255 && mx == 0 && my == 0,
                             "Invalid depth/projection was not rejected");
+                if (test >= 8) {
+                    float expected = test == 8 ? .2f : test == 9 ? .8f : test == 10 ? .35f : 0.f;
+                    require(std::abs(packedDepth[pixel] - expected) < .00001f,
+                            "Multisample depth must select nearest valid geometry in either Z "
+                            "convention");
+                    require(mask[pixel] == (test == 11 ? 255 : 0), "MSAA invalid-sample handling");
+                }
                 if (test == 6)
                     require(std::abs(mx - 4) < .01 && std::abs(my + .8) < .01,
                             "External pan reprojection sign/scale differs");
             }
-            std::cout << "PASS temporal GPU case " << test << ": " << W * H << " pixels verified\n";
+            std::cout << "PASS temporal GPU samples=" << sampleCount << " case " << test << ": "
+                      << W * H << " pixels verified\n";
         }
         vk.dev<PFN_vkDestroyCommandPool>("vkDestroyCommandPool")(vk.device, commandPool, nullptr);
         vk.dev<PFN_vkDestroyPipeline>("vkDestroyPipeline")(vk.device, pipeline, nullptr);
+        if (fillPipeline)
+            vk.dev<PFN_vkDestroyPipeline>("vkDestroyPipeline")(vk.device, fillPipeline, nullptr);
+        if (fillModule)
+            vk.dev<PFN_vkDestroyShaderModule>("vkDestroyShaderModule")(vk.device, fillModule,
+                                                                       nullptr);
         vk.dev<PFN_vkDestroyPipelineLayout>("vkDestroyPipelineLayout")(vk.device, pipelineLayout,
                                                                        nullptr);
         vk.dev<PFN_vkDestroyShaderModule>("vkDestroyShaderModule")(vk.device, module, nullptr);

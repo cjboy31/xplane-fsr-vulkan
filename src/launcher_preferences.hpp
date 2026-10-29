@@ -9,8 +9,15 @@ struct Preferences {
     int mode{}, frameGeneration{};
     bool enabled{true}, ghostReduction{true}, cockpitRestore{true}, alignmentTint{};
     graphics::Options manual{};
-    bool manualApplied{};
+    bool manualApplied{}, manualPending{};
 };
+// Custom output/AA edits never select a reconstruction or FG provider for the user.
+inline void customGraphics(Preferences &p, const graphics::Options &options, bool applied) {
+    p.manual = options;
+    p.presetId.clear();
+    p.manualApplied = applied;
+    p.manualPending = !applied;
+}
 inline std::wstring readSetting(const graphics::fs::path &file, const wchar_t *section,
                                 const wchar_t *key, const wchar_t *fallback = L"") {
     wchar_t value[32768]{};
@@ -81,6 +88,7 @@ inline Preferences load(const graphics::fs::path &file) {
     for (auto &o : graphics::outputChoices)
         outputValid |= o.width == p.manual.outputWidth && o.height == p.manual.outputHeight;
     p.manualApplied = outputValid && integer(file, L"ManualApplied", 0, 1);
+    p.manualPending = outputValid && integer(file, L"ManualPending", 0, 1);
     return p;
 }
 inline std::wstring serialized(const Preferences &p) {
@@ -110,6 +118,7 @@ inline std::wstring serialized(const Preferences &p) {
     add(L"OutputWidth", std::to_wstring(p.manual.outputWidth));
     add(L"OutputHeight", std::to_wstring(p.manual.outputHeight));
     add(L"ManualApplied", std::to_wstring(p.manualApplied));
+    add(L"ManualPending", std::to_wstring(p.manualPending));
     section += L'\0';
     graphics::require(section.size() < 32767, "Saved choices exceed the settings.ini size limit");
     return section;

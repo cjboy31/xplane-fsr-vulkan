@@ -26,7 +26,9 @@ try{& $resourceCompiler 'app.rc' '-O' 'coff' '-o' (Join-Path $build 'app-icon.o'
 if(-not(Test-Path -LiteralPath (Join-Path $source 'fsr24.hpp'))){throw 'Missing source adapter: src\fsr24.hpp'}
 & $Glslang '-V' '--target-env' 'vulkan1.2' '-S' 'comp' (Join-Path $source 'temporal.comp') '-o' (Join-Path $build 'temporal.spv')
 if($LASTEXITCODE -ne 0){throw 'Shader compilation failed'}
-& $Python (Join-Path $root 'tools\generate.py') (Join-Path $build 'generated') $VulkanHeaders (Join-Path $build 'temporal.spv')
+& $Glslang '-V' '--target-env' 'vulkan1.2' '-S' 'comp' '-DDEPTH_MSAA=1' (Join-Path $source 'temporal.comp') '-o' (Join-Path $build 'temporal-msaa.spv')
+if($LASTEXITCODE -ne 0){throw 'MSAA packing shader compilation failed'}
+& $Python (Join-Path $root 'tools\generate.py') (Join-Path $build 'generated') $VulkanHeaders (Join-Path $build 'temporal.spv') (Join-Path $build 'temporal-msaa.spv')
 if($LASTEXITCODE -ne 0){throw 'Header generation failed'}
 $includes=@(('-I'+(Join-Path $build 'generated')),('-I'+(Join-Path $VulkanHeaders 'include')),('-I'+(Join-Path $FsrSdk 'Kits\FidelityFX\api\include')),('-I'+(Join-Path $FsrSdk 'Kits\FidelityFX\upscalers\include')),('-I'+(Join-Path $FsrSdk 'Kits\FidelityFX\framegeneration\include')))
 & $Compiler '-std=c++17' '-O2' '-static' '-shared' '-Wl,--no-insert-timestamp' '-DWIN32_LEAN_AND_MEAN' '-DNOMINMAX' @includes (Join-Path $source 'layer.cpp') (Join-Path $source 'layer.def') '-lbcrypt' '-o' (Join-Path $bin 'layer\XPFSR24Layer.dll')

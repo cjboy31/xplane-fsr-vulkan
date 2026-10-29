@@ -37,8 +37,10 @@ static constexpr SettingHelp settingHelp[] = {
      L"Native AA reduces jagged edges at full internal resolution. Upscaling reconstructs a larger "
      L"output from a smaller input. FSR 3.1.6 is the compatibility provider; FSR 4.1.2 is the ML "
      L"preview. Diagnostics loads the layer without FSR reconstruction.\n\nBest use: choose a "
-     L"preset first. Changing this mode switches to Custom; match internal scale in Advanced "
-     L"graphics. MSAA and FXAA must be Off for temporal FSR. Changing modes requires a simulator "
+     L"preset first. Changing this mode switches to Custom; match internal scale using the "
+     L"main-screen "
+     L"graphics controls. MSAA is experimental with FSR; FXAA must be Off. Changing modes requires "
+     L"a simulator "
      L"restart."},
     {204, L"Frame generation",
      L"Inserts interpolated frames between rendered frames. It can improve displayed smoothness "
@@ -79,8 +81,10 @@ static constexpr SettingHelp settingHelp[] = {
      L"guarantee."},
     {210, L"MSAA",
      L"Multisample antialiasing smooths geometry edges in X-Plane's native renderer. Higher levels "
-     L"cost GPU time and memory.\n\nBest use: 2x or 4x when launching native rendering. Leave Off "
-     L"for FSR Native AA or upscaling; combining them is unsupported here."},
+     L"cost GPU time and memory. The layer now resolves multisample depth for FSR 3/4 and FG. "
+     L"This combination is experimental and needs live-flight checks.\n\nBest use: start Off, then "
+     L"try 2x if geometry edges still shimmer. It cannot fix cloud or texture aliasing. "
+     L"Apply graphics with X-Plane closed; FSR and FG selections are preserved."},
     {211, L"FXAA",
      L"A lightweight post-process that smooths contrast edges but can soften cockpit text.\n\nBest "
      L"use: native rendering when GPU performance is limited. Leave Off with temporal FSR; presets "
@@ -201,9 +205,10 @@ static void createMainControls(HWND hwnd) {
                             CLEARTYPE_QUALITY, 0, L"Segoe UI");
     auto title = control(L"STATIC", L"FSR 3/4 + Frame Gen for X-Plane", 0, 28, 18, 610, 38);
     SendMessageW(title, WM_SETFONT, reinterpret_cast<WPARAM>(titleFont), TRUE);
-    control(L"STATIC", L"Vulkan community preview 0.5.6  |  Hover or click ? for help", 0, 30, 59,
+    control(L"STATIC", L"Vulkan community preview 0.5.7  |  Hover or click ? for help", 0, 30, 59,
             620, 25);
-    updatesButton = control(L"BUTTON", L"Updates...", BS_PUSHBUTTON | WS_TABSTOP, 675, 59, 313, 30, 39);
+    updatesButton =
+        control(L"BUTTON", L"Updates...", BS_PUSHBUTTON | WS_TABSTOP, 675, 59, 313, 30, 39);
     savedLabel = control(L"STATIC", L"Your choices are restored on startup", 0, 665, 25, 330, 40);
     control(L"STATIC", L"X-Plane folder", 0, 30, 96, 145, 22);
     helpIcon(hwnd, 200, 170, 91);
@@ -254,14 +259,14 @@ static void createMainControls(HWND hwnd) {
             20);
     control(L"BUTTON", L"Launch native for comparison", BS_PUSHBUTTON | WS_TABSTOP, 330, 610, 285,
             44, 21);
-    control(L"BUTTON", L"Advanced graphics...", BS_PUSHBUTTON | WS_TABSTOP, 30, 675, 190, 34, 35);
-    control(L"BUTTON", L"Restore last graphics change", BS_PUSHBUTTON | WS_TABSTOP, 230, 675, 235,
+    control(L"BUTTON", L"Restore last graphics change", BS_PUSHBUTTON | WS_TABSTOP, 30, 675, 370,
             34, 107);
-    control(L"BUTTON", L"Sim setup...", BS_PUSHBUTTON | WS_TABSTOP, 475, 675, 140, 34, 33);
+    control(L"BUTTON", L"Sim setup...", BS_PUSHBUTTON | WS_TABSTOP, 415, 675, 200, 34, 33);
     control(L"STATIC",
-            L"Required: MSAA Off, FXAA Off. Native AA = Full; upscaling = below Full.\r\n"
+            L"FSR: FXAA Off. MSAA optional (experimental). Native AA = Full; upscaling = below "
+            L"Full.\r\n"
             L"Choose a preset with X-Plane closed. See Sim setup for the full checklist.",
-            0, 30, 729, 610, 44);
+            0, 30, 767, 610, 44);
     control(L"STATIC", L"Live simulator status", 0, 675, 96, 280, 24);
     helpIcon(hwnd, 209, 963, 91);
     injectionBanner = control(L"STATIC", L"", SS_CENTER, 675, 129, 313, 72);
@@ -272,17 +277,15 @@ static void createMainControls(HWND hwnd) {
                 L"FSR processing.\r\n\r\nThe cockpit-screen fix needs live alignment testing; "
                 L"see its ? help for supported aircraft.\r\n"
                 L"camera-derived motion does not fix every moving object or cloud.",
-                ES_MULTILINE | ES_READONLY | WS_VSCROLL, 675, 214, 313, 290, 30);
-    control(L"BUTTON", L"AA check", BS_PUSHBUTTON | WS_TABSTOP, 675, 525, 150, 34, 34);
-    control(L"BUTTON", L"FG check", BS_PUSHBUTTON | WS_TABSTOP, 838, 525, 150, 34, 36);
-    control(L"BUTTON", L"Ghosting check", BS_PUSHBUTTON | WS_TABSTOP, 675, 573, 150, 34, 37);
-    control(L"BUTTON", L"View comparison", BS_PUSHBUTTON | WS_TABSTOP, 838, 573, 150, 34, 38);
-    control(L"BUTTON", L"Open renderer log", BS_PUSHBUTTON | WS_TABSTOP, 675, 625, 313, 34, 31);
-    control(L"BUTTON", L"Remove camera plugin", BS_PUSHBUTTON | WS_TABSTOP, 675, 675, 313, 34, 32);
-    control(L"STATIC",
-            L"GPU checks run separately from the simulator.\r\nThey do not validate live visual "
-            L"quality.",
-            0, 675, 729, 320, 44);
+                ES_MULTILINE | ES_READONLY | WS_VSCROLL, 675, 214, 313, 142, 30);
+    createGraphicsControls(hwnd);
+    control(L"BUTTON", L"AA check", BS_PUSHBUTTON | WS_TABSTOP, 675, 657, 150, 34, 34);
+    control(L"BUTTON", L"FG check", BS_PUSHBUTTON | WS_TABSTOP, 838, 657, 150, 34, 36);
+    control(L"BUTTON", L"Ghosting check", BS_PUSHBUTTON | WS_TABSTOP, 675, 699, 150, 34, 37);
+    control(L"BUTTON", L"View comparison", BS_PUSHBUTTON | WS_TABSTOP, 838, 699, 150, 34, 38);
+    control(L"BUTTON", L"Open renderer log", BS_PUSHBUTTON | WS_TABSTOP, 675, 741, 313, 34, 31);
+    control(L"BUTTON", L"Remove camera plugin", BS_PUSHBUTTON | WS_TABSTOP, 30, 719, 585, 34, 32);
+    control(L"STATIC", L"GPU checks do not validate live-flight quality.", 0, 675, 787, 320, 24);
     controlsReady = true;
     NOTIFYICONDATAW tray{sizeof(tray)};
     tray.hWnd = hwnd;
@@ -294,8 +297,10 @@ static void createMainControls(HWND hwnd) {
     Shell_NotifyIconW(NIM_ADD, &tray);
     runtimeBanner(launcher::RuntimeState::stopped, {});
     SetTimer(hwnd, 1, 1000, nullptr);
-    autoCheckUpdates = launcher::readSetting(appDirectory / L"settings.ini", L"Updates", L"AutomaticChecks", L"1") != L"0";
-    previewUpdates = launcher::readSetting(appDirectory / L"settings.ini", L"Updates", L"PreviewReleases", L"1") != L"0";
+    autoCheckUpdates = launcher::readSetting(appDirectory / L"settings.ini", L"Updates",
+                                             L"AutomaticChecks", L"1") != L"0";
+    previewUpdates = launcher::readSetting(appDirectory / L"settings.ini", L"Updates",
+                                           L"PreviewReleases", L"1") != L"0";
     SetTimer(hwnd, 3, 1500, nullptr);
     SetTimer(hwnd, 4, 500, nullptr);
 }
@@ -327,7 +332,15 @@ static LRESULT CALLBACK procedure(HWND hwnd, UINT message, WPARAM w, LPARAM l) {
                 }
                 return 0;
             }
+            if (((id == 110 || id == 112 || id == 113) && event == CBN_SELCHANGE) ||
+                (id == 111 && event == BN_CLICKED)) {
+                editGraphics();
+                return 0;
+            }
             switch (id) {
+            case 106:
+                applyCustomGraphics();
+                break;
             case 11: {
                 BROWSEINFOW info{};
                 info.hwndOwner = window;
@@ -351,6 +364,7 @@ static LRESULT CALLBACK procedure(HWND hwnd, UINT message, WPARAM w, LPARAM l) {
                 break;
             case 21:
                 saveChoices();
+                applyRememberedGraphics(text(pathBox));
                 launch(text(pathBox), text(argsBox), true);
                 break;
             case 22: {
@@ -364,9 +378,7 @@ static LRESULT CALLBACK procedure(HWND hwnd, UINT message, WPARAM w, LPARAM l) {
             }
             case 40:
                 if (event == CBN_SELCHANGE) {
-                    clearPreset();
-                    preferences.manualApplied = false;
-                    saveChoices();
+                    editGraphics();
                 }
                 break;
             case 41:
@@ -416,9 +428,6 @@ static LRESULT CALLBACK procedure(HWND hwnd, UINT message, WPARAM w, LPARAM l) {
             case 34:
                 checkAA();
                 break;
-            case 35:
-                showGraphics();
-                break;
             case 36:
                 checkFG();
                 break;
@@ -445,7 +454,8 @@ static LRESULT CALLBACK procedure(HWND hwnd, UINT message, WPARAM w, LPARAM l) {
     case WM_TIMER:
         if (w == 3) {
             KillTimer(hwnd, 3);
-            if (autoCheckUpdates) startUpdateCheck();
+            if (autoCheckUpdates)
+                startUpdateCheck();
         } else if (w == 4) {
             pollUpdate();
         } else if (w == 2) {
@@ -461,11 +471,13 @@ static LRESULT CALLBACK procedure(HWND hwnd, UINT message, WPARAM w, LPARAM l) {
     case WM_CTLCOLORBTN:
     case WM_CTLCOLORSTATIC:
         SetTextColor(reinterpret_cast<HDC>(w), GetSysColor(COLOR_WINDOWTEXT));
-        SetBkMode(reinterpret_cast<HDC>(w), TRANSPARENT);
+        SetBkColor(reinterpret_cast<HDC>(w), GetSysColor(COLOR_WINDOW));
+        SetBkMode(reinterpret_cast<HDC>(w), OPAQUE);
         if (reinterpret_cast<HWND>(l) == injectionBanner) {
             bool active = bannerState == launcher::RuntimeState::active;
             SetTextColor(reinterpret_cast<HDC>(w), active ? RGB(15, 95, 48) : RGB(75, 75, 75));
-            SetBkMode(reinterpret_cast<HDC>(w), TRANSPARENT);
+            SetBkColor(reinterpret_cast<HDC>(w), GetSysColor(COLOR_WINDOW));
+            SetBkMode(reinterpret_cast<HDC>(w), OPAQUE);
             return reinterpret_cast<LRESULT>(GetSysColorBrush(COLOR_WINDOW));
         }
         return reinterpret_cast<LRESULT>(GetSysColorBrush(COLOR_WINDOW));

@@ -56,6 +56,11 @@ production temporal shader with readback assertions. `Test-FrameGeneration.ps1`
 also tests sRGB presentation and checks steady generated frames for black output.
 These checks do not establish live-flight quality or frame pacing.
 
+`Test.ps1 -Msaa` also renders Off/2x/4x/8x MSAA scenes through the real layer,
+using attachment and explicit color resolves. Repeat with XPFSR24_PROVIDER=4.1.2
+for the ML provider. `Test-Stability.ps1` exercises distinct sample depths and
+invalid values in both depth conventions. See docs/MSAA.md for capture limits.
+
 `Test-Cockpit.ps1 -Aircraft '<your SR22 path>\Cirrus SR22.acf'` additionally checks
 the runtime geometry parser against an installed aircraft without copying its
 assets into the project. GPU fixtures do not start X-Plane. They cannot verify

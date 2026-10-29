@@ -1,4 +1,19 @@
-# Validation status and limitations
+# 0.5.7 custom graphics and MSAA preview
+
+Graphics controls now live on the main screen. Custom editing/apply/restore
+preserves FSR and FG providers; pending graphics choices survive app restarts.
+Preset selection remains an explicit full configuration and sets FG/MSAA/FXAA Off.
+The launcher permits MSAA with FSR and retains the FXAA/native-only launch check.
+
+The renderer preserves 2x/4x/8x source depth samples, tracks resolved scene color
+and packs nearest valid geometry depth into single-sample FSR inputs. This needs
+a matching dynamic-rendering scene, a transfer-readable depth attachment and a
+sampled private image supported by the device. Other simulator paths can bypass;
+check live FSR ACTIVE and use MSAA Off when capture is unavailable.
+
+See [MSAA integration](MSAA.md) for rationale, verification and live-test limits.
+
+## Validation status and limitations
 
 Current milestone: 0.5.6-alpha, frame-generation synchronization and temporal history corrections,
 with the independent SR22 current-frame Vulkan compositor from 0.5.0.

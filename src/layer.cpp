@@ -11,6 +11,7 @@
 #include "pacing.hpp"
 #include "shared.hpp"
 #include "temporal_spv.hpp"
+#include "temporal_msaa_spv.hpp"
 #include <algorithm>
 #include <array>
 #include <bcrypt.h>
@@ -201,7 +202,7 @@ struct Device {
     app::Telemetry status{};
     VkDescriptorSetLayout packLayout{};
     VkPipelineLayout packPipelineLayout{};
-    VkPipeline packPipeline{};
+    VkPipeline packPipeline{}, packMsaaPipeline{};
     VkSampler sampler{};
     Mode mode = Mode::Observe;
     std::array<uint32_t, 6> activeContext{};
@@ -404,7 +405,7 @@ struct DepthCapture {
         c.format = source.create.format;
         c.extent = {width, height, 1};
         c.mipLevels = c.arrayLayers = 1;
-        c.samples = VK_SAMPLE_COUNT_1_BIT;
+        c.samples = source.create.samples;
         c.tiling = VK_IMAGE_TILING_OPTIMAL;
         c.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
                   VK_IMAGE_USAGE_TRANSFER_DST_BIT;
@@ -843,22 +844,27 @@ void setupPack(Device &d) {
     check(d.fn<PFN_vkCreatePipelineLayout>("vkCreatePipelineLayout")(d.handle, &pi, nullptr,
                                                                      &d.packPipelineLayout),
           "Pack pipeline layout");
-    VkShaderModule module{};
-    VkShaderModuleCreateInfo si{VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO};
-    si.codeSize = sizeof(temporalSpv);
-    si.pCode = temporalSpv;
-    check(d.fn<PFN_vkCreateShaderModule>("vkCreateShaderModule")(d.handle, &si, nullptr, &module),
-          "Pack shader");
-    VkComputePipelineCreateInfo ci{VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO};
-    ci.layout = d.packPipelineLayout;
-    ci.stage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-    ci.stage.stage = VK_SHADER_STAGE_COMPUTE_BIT;
-    ci.stage.module = module;
-    ci.stage.pName = "main";
-    auto result = d.fn<PFN_vkCreateComputePipelines>("vkCreateComputePipelines")(
-        d.handle, VK_NULL_HANDLE, 1, &ci, nullptr, &d.packPipeline);
-    d.fn<PFN_vkDestroyShaderModule>("vkDestroyShaderModule")(d.handle, module, nullptr);
-    check(result, "Pack pipeline");
+    auto createPackPipeline = [&](const uint32_t *words, size_t bytes, VkPipeline &pipeline) {
+        VkShaderModule module{};
+        VkShaderModuleCreateInfo si{VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO};
+        si.codeSize = bytes;
+        si.pCode = words;
+        check(
+            d.fn<PFN_vkCreateShaderModule>("vkCreateShaderModule")(d.handle, &si, nullptr, &module),
+            "Pack shader");
+        VkComputePipelineCreateInfo ci{VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO};
+        ci.layout = d.packPipelineLayout;
+        ci.stage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+        ci.stage.stage = VK_SHADER_STAGE_COMPUTE_BIT;
+        ci.stage.module = module;
+        ci.stage.pName = "main";
+        auto result = d.fn<PFN_vkCreateComputePipelines>("vkCreateComputePipelines")(
+            d.handle, VK_NULL_HANDLE, 1, &ci, nullptr, &pipeline);
+        d.fn<PFN_vkDestroyShaderModule>("vkDestroyShaderModule")(d.handle, module, nullptr);
+        check(result, "Pack pipeline");
+    };
+    createPackPipeline(temporalSpv, sizeof(temporalSpv), d.packPipeline);
+    createPackPipeline(temporalMsaaSpv, sizeof(temporalMsaaSpv), d.packMsaaPipeline);
     VkSamplerCreateInfo sampler{VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO};
     sampler.magFilter = sampler.minFilter = VK_FILTER_NEAREST;
     sampler.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
@@ -1297,8 +1303,7 @@ bool replace(Device &d, VkCommandBuffer cb, Command &command) {
             command.capturedDepths.at(image)->frame == d.camera.frame && depth.fullArea &&
             (depth.colors.count(inView->second.create.image) ||
              command.depthOrigins[inView->second.create.image].count(image)) &&
-            c.extent.width == rw && c.extent.height == rh && c.samples == VK_SAMPLE_COUNT_1_BIT &&
-            (c.usage & VK_IMAGE_USAGE_SAMPLED_BIT))
+            c.extent.width == rw && c.extent.height == rh)
             candidates.push_back(depth);
     }
     // Follow the scene's actual render order, then disprove clear/invalid
@@ -1331,7 +1336,15 @@ bool replace(Device &d, VkCommandBuffer cb, Command &command) {
                     log(" attached color=%p", reinterpret_cast<void *>(color));
             }
         }
-        d.bypass(candidates.empty() ? "Waiting for scene depth matching the FSR input"
+        bool multisampleDepth =
+            std::any_of(depthMap.begin(), depthMap.end(), [&](const auto &entry) {
+                auto image = d.images.find(entry.first);
+                return image != d.images.end() &&
+                       image->second.create.samples != VK_SAMPLE_COUNT_1_BIT;
+            });
+        d.bypass(candidates.empty() ? multisampleDepth
+                                          ? "MSAA depth/resolve capture unavailable; try MSAA Off"
+                                          : "Waiting for scene depth matching the FSR input"
                                     : "Scene depth is ambiguous; native rendering active");
         return false;
     }
@@ -1450,7 +1463,10 @@ bool replace(Device &d, VkCommandBuffer cb, Command &command) {
             transition(d, cb, *target, VK_IMAGE_LAYOUT_GENERAL);
         auto bindPipeline = d.fn<PFN_vkCmdBindPipeline>("vkCmdBindPipeline");
         auto bindSets = d.fn<PFN_vkCmdBindDescriptorSets>("vkCmdBindDescriptorSets");
-        bindPipeline(cb, VK_PIPELINE_BIND_POINT_COMPUTE, d.packPipeline);
+        bindPipeline(cb, VK_PIPELINE_BIND_POINT_COMPUTE,
+                     d.images.at(depth.image).create.samples == VK_SAMPLE_COUNT_1_BIT
+                         ? d.packPipeline
+                         : d.packMsaaPipeline);
         bindSets(cb, VK_PIPELINE_BIND_POINT_COMPUTE, d.packPipelineLayout, 0, 1, &f.set, 0,
                  nullptr);
         d.fn<PFN_vkCmdDispatch>("vkCmdDispatch")(cb, (rw + 7) / 8, (rh + 7) / 8, 1);
@@ -1980,6 +1996,8 @@ static VKAPI_ATTR void VKAPI_CALL L_DestroyDevice(VkDevice device,
         (unsigned long long)d->dispatchLookups.load());
     if (d->packPipeline)
         d->fn<PFN_vkDestroyPipeline>("vkDestroyPipeline")(device, d->packPipeline, nullptr);
+    if (d->packMsaaPipeline)
+        d->fn<PFN_vkDestroyPipeline>("vkDestroyPipeline")(device, d->packMsaaPipeline, nullptr);
     if (d->packPipelineLayout)
         d->fn<PFN_vkDestroyPipelineLayout>("vkDestroyPipelineLayout")(device, d->packPipelineLayout,
                                                                       nullptr);
@@ -2993,10 +3011,15 @@ static VKAPI_ATTR void VKAPI_CALL L_CmdBeginRendering(VkCommandBuffer cb,
                 if (previous != command.depths.end() && previous->second.epoch == depth.epoch)
                     depth = previous->second;
                 for (uint32_t i = 0; i < c->colorAttachmentCount; ++i) {
-                    auto color = d->views.find(c->pColorAttachments[i].imageView);
-                    if (color != d->views.end()) {
-                        depth.colors.insert(color->second.create.image);
-                        command.depthOrigins[color->second.create.image].insert(depth.image);
+                    for (auto handle : {c->pColorAttachments[i].imageView,
+                                        c->pColorAttachments[i].resolveMode != VK_RESOLVE_MODE_NONE
+                                            ? c->pColorAttachments[i].resolveImageView
+                                            : VK_NULL_HANDLE}) {
+                        auto color = d->views.find(handle);
+                        if (color != d->views.end()) {
+                            depth.colors.insert(color->second.create.image);
+                            command.depthOrigins[color->second.create.image].insert(depth.image);
+                        }
                     }
                 }
                 depth.layout = c->pDepthAttachment->imageLayout;
@@ -3013,7 +3036,9 @@ static VKAPI_ATTR void VKAPI_CALL L_CmdBeginRendering(VkCommandBuffer cb,
                 auto source = d->images.find(depth.image);
                 if (d->mode != Mode::Observe && d->enabled && d->camera.valid && depth.fullArea &&
                     source != d->images.end() &&
-                    source->second.create.samples == VK_SAMPLE_COUNT_1_BIT &&
+                    (source->second.create.samples &
+                     (VK_SAMPLE_COUNT_1_BIT | VK_SAMPLE_COUNT_2_BIT | VK_SAMPLE_COUNT_4_BIT |
+                      VK_SAMPLE_COUNT_8_BIT)) &&
                     source->second.create.arrayLayers == 1 &&
                     (source->second.create.usage & VK_IMAGE_USAGE_TRANSFER_SRC_BIT) &&
                     !(c->flags & VK_RENDERING_SUSPENDING_BIT) &&
@@ -3373,6 +3398,28 @@ static VKAPI_ATTR void VKAPI_CALL L_CmdCopyImage2(VkCommandBuffer cb, const VkCo
         fn = d->fn<PFN_vkCmdCopyImage2>("vkCmdCopyImage2KHR");
     fn(cb, c);
 }
+static VKAPI_ATTR void VKAPI_CALL L_CmdResolveImage(VkCommandBuffer cb, VkImage src,
+                                                    VkImageLayout sl, VkImage dst, VkImageLayout dl,
+                                                    uint32_t count, const VkImageResolve *regions) {
+    auto d = deviceFor(cb);
+    if (!sdkNesting) {
+        std::lock_guard<std::recursive_mutex> guard(d->lock);
+        copyOrigins(*d, cb, src, dst);
+    }
+    d->fn<PFN_vkCmdResolveImage>("vkCmdResolveImage")(cb, src, sl, dst, dl, count, regions);
+}
+static VKAPI_ATTR void VKAPI_CALL L_CmdResolveImage2(VkCommandBuffer cb,
+                                                     const VkResolveImageInfo2 *info) {
+    auto d = deviceFor(cb);
+    if (!sdkNesting) {
+        std::lock_guard<std::recursive_mutex> guard(d->lock);
+        copyOrigins(*d, cb, info->srcImage, info->dstImage);
+    }
+    auto fn = d->fn<PFN_vkCmdResolveImage2>("vkCmdResolveImage2");
+    if (!fn)
+        fn = d->fn<PFN_vkCmdResolveImage2>("vkCmdResolveImage2KHR");
+    fn(cb, info);
+}
 static VKAPI_ATTR void VKAPI_CALL L_CmdBlitImage(VkCommandBuffer cb, VkImage src, VkImageLayout sl,
                                                  VkImage dst, VkImageLayout dl, uint32_t count,
                                                  const VkImageBlit *regions, VkFilter filter) {
@@ -3591,6 +3638,9 @@ XP_GetDeviceProcAddr(VkDevice device, const char *name) {
     HOOK("vkCmdCopyImage", L_CmdCopyImage);
     HOOK("vkCmdCopyImage2", L_CmdCopyImage2);
     HOOK("vkCmdCopyImage2KHR", L_CmdCopyImage2);
+    HOOK("vkCmdResolveImage", L_CmdResolveImage);
+    HOOK("vkCmdResolveImage2", L_CmdResolveImage2);
+    HOOK("vkCmdResolveImage2KHR", L_CmdResolveImage2);
     HOOK("vkCmdBlitImage", L_CmdBlitImage);
     HOOK("vkCmdBlitImage2", L_CmdBlitImage2);
     HOOK("vkCmdBlitImage2KHR", L_CmdBlitImage2);

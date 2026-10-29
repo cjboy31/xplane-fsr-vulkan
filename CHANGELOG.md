@@ -1,5 +1,22 @@
 # Changes
 
+## 0.5.7-alpha
+
+- Move MSAA, FXAA, input scale, output resolution and Apply graphics onto the
+  main screen. Remove the Advanced graphics window.
+- Keep FSR and frame-generation selections when switching to Custom, editing,
+  applying or restoring graphics. Remember pending edits across app restarts.
+- Add experimental 2x/4x/8x MSAA depth capture and nearest-depth resolve for FSR
+  3/4. Track dynamic-rendering color resolves and explicit resolve commands.
+  The SDK still receives single-sample inputs. Unsupported captures bypass FSR
+  and suggest MSAA Off. FXAA remains native-only and never silently resets FSR/FG.
+- Add per-sample GPU resolve checks in both depth conventions, MSAA layer
+  integration scenes, and custom-edit/provider persistence regressions.
+
+MSAA can increase GPU cost and does not fix cloud/texture aliasing. Synthetic
+checks do not prove live-flight quality or the full MSAA + FG presentation path.
+Use MSAA Off for the first test; try 2x next and check live FSR ACTIVE status.
+
 ## 0.5.6-alpha
 
 - Serialize SDK frame preparation, presentation and game-queue submissions to

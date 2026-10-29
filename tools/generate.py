@@ -1,9 +1,13 @@
 """Generate shader words and sizes for safely copying known Vulkan pNext nodes."""
 import pathlib,struct,sys,xml.etree.ElementTree as ET
-source,headers,binary=map(pathlib.Path,sys.argv[1:])
+source,headers,binary=map(pathlib.Path,sys.argv[1:4])
 data=binary.read_bytes()
 words=struct.unpack('<%dI'%(len(data)//4),data)
 (source/'temporal_spv.hpp').write_text('#pragma once\n#include <cstdint>\nstatic const uint32_t temporalSpv[]={\n'+',\n'.join(','.join('0x%08xu'%v for v in words[i:i+8]) for i in range(0,len(words),8))+'\n};\n')
+if len(sys.argv)>4:
+    msdata=pathlib.Path(sys.argv[4]).read_bytes()
+    mswords=struct.unpack('<%dI'%(len(msdata)//4),msdata)
+    (source/'temporal_msaa_spv.hpp').write_text('#pragma once\n#include <cstdint>\nstatic const uint32_t temporalMsaaSpv[]={\n'+',\n'.join(','.join('0x%08xu'%v for v in mswords[i:i+8]) for i in range(0,len(mswords),8))+'\n};\n')
 core=(headers/'include/vulkan/vulkan_core.h').read_text()
 root=ET.parse(headers/'registry/vk.xml').getroot()
 cases=[]

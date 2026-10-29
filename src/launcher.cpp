@@ -204,8 +204,9 @@ static void launch(const fs::path &root, const std::wstring &arguments, bool nat
         auto graphics = graphics::current(root);
         auto selected = SendMessageW(modeBox, CB_GETCURSEL, 0, 0);
         if (selected > 0) {
-            ensure(graphics.msaa == 0 && graphics.fxaa == 0,
-                   "Choose a preset, or open Advanced graphics and turn MSAA and FXAA Off");
+            ensure(graphics.fxaa == 0,
+                   "FXAA is supported for native comparison only. Turn FXAA Off on the main screen "
+                   "and Apply graphics; your FSR and frame gen choices will be retained.");
             ensure((selected == 1 || selected == 3) ? graphics.scale == 0 : graphics.scale > 0,
                    "Choose a matching preset: Native AA needs Full scale; upscaling needs a lower "
                    "rendering scale");
@@ -570,7 +571,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, LPWSTR, int show) {
     auto hwnd =
         CreateWindowExW(0, c.lpszClassName, L"FSR 3/4 + Frame Gen for X-Plane - Community Preview",
                         WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX, CW_USEDEFAULT,
-                        CW_USEDEFAULT, 1040, 830, nullptr, nullptr, instance, nullptr);
+                        CW_USEDEFAULT, 1040, 860, nullptr, nullptr, instance, nullptr);
     ShowWindow(hwnd, show);
     UpdateWindow(hwnd);
     MSG message{};

@@ -119,16 +119,19 @@ older ABI 3 publisher before replacing it, and refuses unknown existing builds.
 Its Vulkan layer is scoped to the child process; no global Vulkan registration
 or driver installation is performed. Other renderer mods/proxies must be disabled.
 
-For normal Native AA use Full internal resolution, MSAA Off and FXAA Off.
+For Native AA use Full internal resolution and FXAA Off. Start with MSAA Off.
 Upscaling needs a lower internal scale and the desired **output** resolution.
-Manual MSAA/FXAA are available for native-simulator launches. Presets support one
+MSAA Off/2x/4x/8x is on the main screen and may be combined with FSR 3/4 as an experimental option. FXAA is available for native-simulator launches only. Presets support one
 X-Plane monitor on the primary display and show only advertised output sizes.
 
 All launcher choices save automatically to `settings.ini` beside the app. The
 saved preset is checked/reapplied with backups before the next FSR launch, so a
 simulator preference reset does not silently discard it. Custom manual changes
-use **Advanced graphics > Apply and save**. Unsaved manual edits are explicitly
-marked pending. The title area reports save failures rather than claiming success.
+use the main-screen **MSAA**, **FXAA**, **Input scale** and **Output** controls,
+then **Apply graphics** with X-Plane closed. Pending edits are remembered across
+app restarts and applied at the next launch. Custom changes preserve the selected
+FSR and frame-generation modes; incompatible FXAA or input-scale choices are
+explained at launch instead of silently changing providers. The title area reports save failures rather than claiming success.
 Old launchers saved only the folder; choose a preset once after upgrading.
 Keep the app in a writable folder. Click or hover a **?** for what a setting does
 and its best use. Enabling FG turns cockpit restore/tint Off; enabling restore

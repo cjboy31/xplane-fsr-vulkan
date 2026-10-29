@@ -8,10 +8,10 @@ struct OutputChoice {
     const wchar_t *label;
 };
 inline constexpr std::array<OutputChoice, 4> outputChoices{
-    {{0, 0, L"Keep current X-Plane output"},
-     {1920, 1080, L"1920 x 1080 fullscreen (1080p)"},
-     {2560, 1440, L"2560 x 1440 fullscreen (1440p)"},
-     {3840, 2160, L"3840 x 2160 fullscreen (4K)"}}};
+    {{0, 0, L"Keep current output"},
+     {1920, 1080, L"1920 x 1080 (1080p)"},
+     {2560, 1440, L"2560 x 1440 (1440p)"},
+     {3840, 2160, L"3840 x 2160 (4K)"}}};
 struct Preset {
     const char *id;
     const wchar_t *label;

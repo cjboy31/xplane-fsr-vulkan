@@ -51,6 +51,30 @@ int wmain(int argc, wchar_t **argv) {
         launcher::save(file, custom);
         require(launcher::serialized(launcher::load(file)) == launcher::serialized(custom),
                 "Custom AA/output/quote-only argument persistence");
+        for (int mode = 0; mode <= 4; ++mode)
+            for (int fg = 0; fg <= 2; ++fg)
+                for (int msaa = 0; msaa <= 3; ++msaa) {
+                    custom.mode = mode;
+                    custom.frameGeneration = fg;
+                    custom.presetId = "4k-quality";
+                    graphics::Options edit{msaa, 0, 2, 2560, 1440};
+                    launcher::customGraphics(custom, edit, false);
+                    require(custom.mode == mode && custom.frameGeneration == fg &&
+                                custom.presetId.empty(),
+                            "Custom edits must never change FSR / FG selections");
+                    launcher::save(file, custom);
+                    auto pending = launcher::load(file);
+                    require(pending.manualPending && !pending.manualApplied &&
+                                pending.mode == mode && pending.frameGeneration == fg &&
+                                pending.manual.msaa == msaa,
+                            "Pending custom edits and providers must survive restart");
+                    launcher::customGraphics(pending, edit, true);
+                    launcher::save(file, pending);
+                    auto applied = launcher::load(file);
+                    require(applied.manualApplied && !applied.manualPending &&
+                                applied.mode == mode && applied.frameGeneration == fg,
+                            "Applied custom edits must preserve providers after restart");
+                }
         auto newFile = dir / L"new-settings.ini";
         launcher::save(newFile, custom);
         require(launcher::serialized(launcher::load(newFile)) == launcher::serialized(custom),

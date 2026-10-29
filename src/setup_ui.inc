@@ -11,9 +11,12 @@ static std::wstring setupReport() {
            L"ACTIVE.\r\n\r\n"
         << L"REQUIRED GRAPHICS SETTINGS\r\n"
         << L"Mode                       Internal rendering scale          MSAA / FXAA\r\n"
-        << L"Native AA (FSR 3 or 4)      Full resolution                   Both Off\r\n"
-        << L"Quality upscaling          Quality (1.5x)                    Both Off\r\n"
-        << L"Performance upscaling      Performance (2x)                  Both Off\r\n\r\n"
+        << L"Native AA (FSR 3 or 4)      Full resolution                   FXAA Off; MSAA "
+           L"optional\r\n"
+        << L"Quality upscaling          Quality (1.5x)                    FXAA Off; MSAA "
+           L"optional\r\n"
+        << L"Performance upscaling      Performance (2x)                  FXAA Off; MSAA "
+           L"optional\r\n\r\n"
         << L"The simulator's Rendering Resolution / FSR scale sets INPUT size. The launcher "
            L"selects the FSR provider. "
            L"Upscaling requires below Full; Native AA requires Full.\r\n"
@@ -56,7 +59,9 @@ static std::wstring setupReport() {
         }
         int mode = int(SendMessageW(modeBox, CB_GETCURSEL, 0, 0));
         if (mode > 0) {
-            out << (current.msaa == 0 ? L"[OK] MSAA Off" : L"[CHANGE] MSAA must be Off") << L"\r\n"
+            out << (current.msaa == 0 ? L"[OK] MSAA Off"
+                                      : L"[PREVIEW] MSAA enabled; costs GPU time/memory")
+                << L"\r\n"
                 << (current.fxaa == 0 ? L"[OK] FXAA Off" : L"[CHANGE] FXAA must be Off") << L"\r\n";
             bool nativeAA = mode == 1 || mode == 3;
             bool matching =
@@ -110,7 +115,7 @@ static std::wstring setupReport() {
            L"injection. "
            L"Use the main live-status panel for actual renderer input/output sizes after loading a "
            L"flight.\r\n"
-        << L"To correct a mismatch: close X-Plane, select a preset or use Advanced graphics > "
+        << L"To correct a mismatch: close X-Plane, select a preset or use the main-screen "
            L"Apply and save, then relaunch. "
            L"Open the full guide for limitations, backups and removal.";
     return out.str();

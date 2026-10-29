@@ -27,7 +27,7 @@ Laminar Research product, and is not a complete solution to ghosting or stutter.
 - Fourteen presets on the main screen: seven resolution/AA choices each for
   FSR 3 and FSR 4, with backups and selective restoration.
 - Automatically saved presets, provider, frame generation, checkboxes, simulator
-  folder and arguments; manual AA/output choices are saved when applied.
+  folder and arguments; custom AA/output choices and pending edits are remembered without changing FSR/FG.
 - Hover/click help beside settings and a live injection banner. Green FSR ACTIVE
   requires recent renderer activity; a one-time Windows notification is requested.
 - **Sim setup...** provides the required AA/input/output configuration and a
@@ -37,6 +37,7 @@ Laminar Research product, and is not a complete solution to ghosting or stutter.
   after temporal reconstruction, with jitter correction, depth checks, edge
   erosion and an alignment tint. Initial target: default Cirrus SR22 PFD/MFD.
 - Camera-pose stability checks and a separate IPC ABI for the new publisher.
+- Main-screen MSAA, FXAA, input scale and output controls, with experimental 2x/4x/8x MSAA depth capture for FSR 3/4. FXAA remains native-only.
 - CPU source-pacing diagnostics and isolated AA/FG/cockpit GPU tests.
 
 The cockpit-screen fix currently requires **frame generation Off** and supports

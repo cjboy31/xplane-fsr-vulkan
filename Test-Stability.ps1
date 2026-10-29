@@ -23,3 +23,12 @@ foreach($name in @('core_tests','temporal_tests')) {
   if($LASTEXITCODE -ne 0){throw "Stability regression failed: $name"}
  }finally{foreach($key in $saved.Keys){[Environment]::SetEnvironmentVariable($key,$saved[$key],'Process')}}
 }
+
+& $Glslang '-V' '--target-env' 'vulkan1.2' '-S' 'comp' '-DDEPTH_MSAA=1' (Join-Path $PSScriptRoot 'src\temporal.comp') '-o' (Join-Path $build 'temporal-msaa.spv')
+if($LASTEXITCODE -ne 0){throw 'MSAA production shader failed to compile'}
+& $Glslang '-V' '--target-env' 'vulkan1.2' '-S' 'comp' (Join-Path $PSScriptRoot 'src\msaa_input.comp') '-o' (Join-Path $build 'msaa-input.spv')
+if($LASTEXITCODE -ne 0){throw 'MSAA test input shader failed to compile'}
+foreach($samples in @(2,4,8)) {
+ & (Join-Path $build 'temporal_tests.exe') (Join-Path $build 'temporal-msaa.spv') $samples (Join-Path $build 'msaa-input.spv')
+ if($LASTEXITCODE -ne 0){throw "MSAA production packing failed: $samples samples"}
+}
