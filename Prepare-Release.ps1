@@ -34,7 +34,7 @@ Copy-Item -LiteralPath $Instructions -Destination (Join-Path $output 'INSTALLATI
 $utf8 = [Text.UTF8Encoding]::new($false)
 [IO.File]::WriteAllText((Join-Path $output 'SHA256SUMS.txt'), "$hash  $archiveName`n", $utf8)
 $notes = @"
-## FSR for X-Plane $Version
+## FSR Ghosting Fix for X-Plane $Version
 
 Experimental Windows Vulkan community preview. Original project code is MIT
 licensed; packaged third-party runtimes retain their separate notices.
@@ -55,7 +55,8 @@ INSTALLATION-AND-USE.txt before starting the simulator.
 The attached archive passed integrity, extraction, payload hashes,
 install/update/uninstall and saved-choice preservation checks. Source commit:
 $sourceCommit. A passing fixture does not establish live-flight visual quality.
-The SR22 cockpit compositor still requires frame generation Off. SDK runtimes
+Cockpit-screen restoration still requires frame generation Off and currently
+supports only the default Cirrus SR22. SDK runtimes
 are included under their binary redistribution terms; simulator assets and user
 data are excluded. Keep all supplied license notices with the installation.
 

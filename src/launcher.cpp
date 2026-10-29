@@ -215,8 +215,7 @@ static void launch(const fs::path &root, const std::wstring &arguments, bool nat
     auto cockpitRestore = SendMessageW(cockpitBox, BM_GETCHECK, 0, 0) == BST_CHECKED;
     auto alignmentTint = SendMessageW(tintBox, BM_GETCHECK, 0, 0) == BST_CHECKED;
     ensure(native || !cockpitRestore || SendMessageW(fgBox, CB_GETCURSEL, 0, 0) == 0,
-           "Turn frame generation Off for the SR22 cockpit-restore preview, or turn cockpit "
-           "restore Off");
+           "Turn frame generation Off for FSR Ghosting Fix cockpit screens, or turn that fix Off");
     SetEnvironmentVariableW(L"XPFSR24_COCKPIT_RESTORE",
                             !native && cockpitRestore ? (alignmentTint ? L"2" : L"1") : nullptr);
     SetEnvironmentVariableW(L"XPFSR24_GHOST_REDUCTION",
@@ -396,8 +395,8 @@ static void refresh() {
         SetWindowTextW(
             statusBox,
             checkingCockpit ? (result ? L"Cockpit GPU check failed. Read cockpit-check/run.txt."
-                                      : L"Cockpit GPU check passed. Open the cockpit comparison. "
-                                        L"Live SR22 alignment still needs inspection.")
+                                      : L"Ghosting-fix GPU check passed. Open the comparison. "
+                                        L"Live screen alignment still needs inspection.")
             : checkingFG
                 ? (result ? L"Frame generation check failed. Read fg-check\\run.txt."
                           : L"Frame generation check passed. See fg-check\\metrics.json for "
@@ -567,7 +566,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, LPWSTR, int show) {
     c.hbrBackground = reinterpret_cast<HBRUSH>(COLOR_WINDOW + 1);
     RegisterClassW(&c);
     auto hwnd =
-        CreateWindowExW(0, c.lpszClassName, L"FSR for X-Plane - Community Preview",
+        CreateWindowExW(0, c.lpszClassName, L"FSR Ghosting Fix for X-Plane - Community Preview",
                         WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX, CW_USEDEFAULT,
                         CW_USEDEFAULT, 1040, 830, nullptr, nullptr, instance, nullptr);
     ShowWindow(hwnd, show);

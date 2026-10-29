@@ -9,7 +9,8 @@ static HWND control(const wchar_t *type, const wchar_t *label, DWORD style, int 
     return c;
 }
 static void error(const std::exception &e) {
-    MessageBoxW(window, wide(e.what()).c_str(), L"FSR for X-Plane", MB_OK | MB_ICONERROR);
+    MessageBoxW(window, wide(e.what()).c_str(), L"FSR Ghosting Fix for X-Plane",
+                MB_OK | MB_ICONERROR);
 }
 struct SettingHelp {
     int id;
@@ -51,12 +52,12 @@ static constexpr SettingHelp settingHelp[] = {
      L"be changed during flight. It does not remove the loaded Vulkan layer.\n\nBest use: compare "
      L"native rendering with FSR. The live status explicitly shows paused processing when "
      L"unchecked."},
-    {206, L"Reduce ghosting",
+    {206, L"FSR 3 history tuning",
      L"Uses more conservative temporal history for FSR 3.1.6. This can reduce trails but can "
      L"increase shimmer. It has no effect on the FSR 4 provider.\n\nBest use: try it for trails in "
      L"compatibility mode. It cannot provide complete motion for clouds, moving aircraft or "
      L"propellers. Restart to apply."},
-    {207, L"Restore SR22 cockpit screens",
+    {207, L"FSR Ghosting Fix - cockpit screens",
      L"Experimental compositor for the default Cirrus SR22 PFD and MFD. It restores current-scene "
      L"screen pixels after FSR, with depth and view-stability checks. It does not extract a "
      L"native-resolution avionics texture or fix scenery/cloud ghosting.\n\nBest use: test the "
@@ -171,8 +172,8 @@ static void runtimeBanner(launcher::RuntimeState state, const app::Telemetry &st
     SetWindowTextW(injectionBanner, message);
     InvalidateRect(injectionBanner, nullptr, TRUE);
     SetWindowTextW(window, state == launcher::RuntimeState::active
-                               ? L"FSR ACTIVE - FSR for X-Plane"
-                               : L"FSR for X-Plane - Community Preview");
+                               ? L"FSR ACTIVE - FSR Ghosting Fix for X-Plane"
+                               : L"FSR Ghosting Fix for X-Plane - Community Preview");
     if (state == launcher::RuntimeState::active && !activeNotificationSent) {
         NOTIFYICONDATAW info{sizeof(info)};
         info.hWnd = window;
@@ -196,9 +197,9 @@ static void createMainControls(HWND hwnd) {
                        CLEARTYPE_QUALITY, 0, L"Segoe UI");
     titleFont = CreateFontW(-25, 0, 0, 0, FW_SEMIBOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET, 0, 0,
                             CLEARTYPE_QUALITY, 0, L"Segoe UI");
-    auto title = control(L"STATIC", L"FSR for X-Plane", 0, 28, 18, 610, 38);
+    auto title = control(L"STATIC", L"FSR Ghosting Fix for X-Plane", 0, 28, 18, 610, 38);
     SendMessageW(title, WM_SETFONT, reinterpret_cast<WPARAM>(titleFont), TRUE);
-    control(L"STATIC", L"Vulkan community preview 0.5.1  |  Hover or click ? for help", 0, 30, 59,
+    control(L"STATIC", L"Vulkan community preview 0.5.2  |  Hover or click ? for help", 0, 30, 59,
             620, 25);
     savedLabel = control(L"STATIC", L"Your choices are restored on startup", 0, 665, 25, 330, 40);
     control(L"STATIC", L"X-Plane folder", 0, 30, 96, 145, 22);
@@ -240,9 +241,9 @@ static void createMainControls(HWND hwnd) {
     };
     toggle = checkbox(L"Enable FSR processing (can be toggled during flight)", 449, 22,
                       preferences.enabled, 205);
-    ghostBox = checkbox(L"Reduce ghosting - FSR 3 only (restart to apply)", 485, 42,
+    ghostBox = checkbox(L"FSR 3 history tuning - reduce trails (restart to apply)", 485, 42,
                         preferences.ghostReduction, 206);
-    cockpitBox = checkbox(L"Restore default SR22 cockpit screens (preview; FG Off)", 521, 43,
+    cockpitBox = checkbox(L"FSR Ghosting Fix - cockpit screens (preview; FG Off)", 521, 43,
                           preferences.cockpitRestore, 207);
     tintBox = checkbox(L"Green screen-alignment tint (restart to apply)", 557, 44,
                        preferences.alignmentTint, 208);
@@ -265,12 +266,13 @@ static void createMainControls(HWND hwnd) {
     statusBox =
         control(L"EDIT",
                 L"Select a preset, then launch X-Plane here.\r\nLoad a flight to confirm active "
-                L"FSR processing.\r\n\r\nThe SR22 screen compositor needs live alignment testing; "
+                L"FSR processing.\r\n\r\nThe cockpit-screen fix needs live alignment testing; "
+                L"see its ? help for supported aircraft.\r\n"
                 L"camera-derived motion does not fix every moving object or cloud.",
                 ES_MULTILINE | ES_READONLY | WS_VSCROLL, 675, 214, 313, 290, 30);
     control(L"BUTTON", L"AA check", BS_PUSHBUTTON | WS_TABSTOP, 675, 525, 150, 34, 34);
     control(L"BUTTON", L"FG check", BS_PUSHBUTTON | WS_TABSTOP, 838, 525, 150, 34, 36);
-    control(L"BUTTON", L"Cockpit check", BS_PUSHBUTTON | WS_TABSTOP, 675, 573, 150, 34, 37);
+    control(L"BUTTON", L"Ghosting check", BS_PUSHBUTTON | WS_TABSTOP, 675, 573, 150, 34, 37);
     control(L"BUTTON", L"View comparison", BS_PUSHBUTTON | WS_TABSTOP, 838, 573, 150, 34, 38);
     control(L"BUTTON", L"Open renderer log", BS_PUSHBUTTON | WS_TABSTOP, 675, 625, 313, 34, 31);
     control(L"BUTTON", L"Remove camera plugin", BS_PUSHBUTTON | WS_TABSTOP, 675, 675, 313, 34, 32);
@@ -285,7 +287,7 @@ static void createMainControls(HWND hwnd) {
     tray.uFlags = NIF_ICON | NIF_TIP | NIF_MESSAGE;
     tray.uCallbackMessage = WM_APP + 1;
     tray.hIcon = LoadIconW(GetModuleHandleW(nullptr), MAKEINTRESOURCEW(101));
-    wcscpy_s(tray.szTip, L"FSR for X-Plane - open for injection status");
+    wcscpy_s(tray.szTip, L"FSR Ghosting Fix - open for injection status");
     Shell_NotifyIconW(NIM_ADD, &tray);
     runtimeBanner(launcher::RuntimeState::stopped, {});
     SetTimer(hwnd, 1, 1000, nullptr);

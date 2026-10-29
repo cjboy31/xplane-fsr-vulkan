@@ -1,17 +1,19 @@
-# Install and inspect the SR22 Vulkan cockpit preview
+# Install and inspect FSR Ghosting Fix
 
 Use the complete release package or build `app/` as described in BUILDING.md.
 Close X-Plane and the previous launcher before installing/updating anything.
 
 1. Run the launcher and select the folder containing `X-Plane.exe`.
-2. Run **Native AA check**, then **Run cockpit check**. View the analytical
+2. Run **AA check**, then **Ghosting check**. View the analytical
    cockpit comparison; it is a GPU regression fixture, not live-simulator proof.
 3. Choose a **Resolution and FSR preset** on the main screen. Both FSR 3 and
    FSR 4 have Native AA, Quality and 4K Performance choices. `FSR 4 - 4K Quality`
    selects the 4.1.2 ML-preview provider, 2560x1440 input and 3840x2160 fullscreen
    output. Presets apply immediately and back up changes while X-Plane is closed.
    MSAA/FXAA and FG are set Off. Your choice is saved and restored when reopening.
-4. Keep **Restore SR22 cockpit screens** enabled and **frame generation Off**.
+4. Keep **FSR Ghosting Fix - cockpit screens** enabled and **frame generation Off**.
+   Its current supported aircraft is the default Cirrus SR22; this naming update
+   does not add other aircraft or fix scenery/cloud ghosting.
 5. Enable **Green screen-alignment tint**, then **Launch X-Plane with FSR**
    with the default Cirrus SR22. Check that any green coverage is limited to the
    PFD/MFD screen interiors. An inactive status can mean geometry, stability or

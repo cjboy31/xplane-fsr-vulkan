@@ -1,5 +1,18 @@
 # Changes
 
+## 0.5.2-alpha
+
+- Rename the app to FSR Ghosting Fix for X-Plane and the cockpit option to
+  FSR Ghosting Fix - cockpit screens. Use the same naming in the guide, metadata
+  and diagnostics messages.
+- Call the separate compatibility option FSR 3 history tuning to distinguish it
+  from cockpit-screen restoration.
+- Keep current aircraft support and FG-Off requirements explicit in help/docs.
+  Only the default Cirrus SR22 cockpit-screen profile is currently supported.
+
+Naming update only: rendering, settings keys, aircraft support and the saved
+choices behavior are unchanged from 0.5.1. No new ghosting/stutter fix is claimed.
+
 ## 0.5.1-alpha
 
 - Save launcher choices immediately and restore them on startup. Preserve legacy

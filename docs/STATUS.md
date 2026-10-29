@@ -1,7 +1,11 @@
 # Validation status and limitations
 
-Current milestone: 0.5.1-alpha, saved main-screen presets and renderer status,
+Current milestone: 0.5.2-alpha, FSR Ghosting Fix naming, saved presets and renderer status,
 with the independent SR22 current-frame Vulkan compositor from 0.5.0.
+
+0.5.2 changes visible naming only. Renderer/plugin binaries, saved setting keys
+and aircraft coverage are unchanged. The cockpit-screen fix still supports only
+the default Cirrus SR22. See its help for compatibility and validation limits.
 
 ## Completed checks
 

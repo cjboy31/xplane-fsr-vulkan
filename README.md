@@ -1,6 +1,6 @@
 <img src="assets/app-icon.png" width="96" alt="Original aircraft and temporal-pixel icon">
 
-# FSR Vulkan for X-Plane 12
+# FSR Ghosting Fix for X-Plane 12
 
 An experimental Windows Vulkan integration for AMD FSR Native AA, upscaling and
 frame generation, with a new current-frame cockpit-screen compositor for the
@@ -22,13 +22,16 @@ Laminar Research product, and is not a complete solution to ghosting or stutter.
   folder and arguments; manual AA/output choices are saved when applied.
 - Hover/click help beside settings and a live injection banner. Green FSR ACTIVE
   requires recent renderer activity; a one-time Windows notification is requested.
-- An independent Vulkan cockpit compositor: replays current-scene screen pixels
+- **FSR Ghosting Fix - cockpit screens**, an independent Vulkan compositor:
+  replays current-scene screen pixels
   after temporal reconstruction, with jitter correction, depth checks, edge
   erosion and an alignment tint. Initial target: default Cirrus SR22 PFD/MFD.
 - Camera-pose stability checks and a separate IPC ABI for the new publisher.
 - CPU source-pacing diagnostics and isolated AA/FG/cockpit GPU tests.
 
-The cockpit compositor currently requires **frame generation Off**. It restores
+The cockpit-screen fix currently requires **frame generation Off** and supports
+only the **default Cirrus SR22 PFD/MFD**. The generic feature name does not extend
+aircraft compatibility. It restores
 pixels from the current rendered scene; it does not extract the native-resolution
 G1000 texture. Upscaled screen detail therefore remains limited by input
 resolution. Clouds, props, other aircraft and generated-frame UI are separate
