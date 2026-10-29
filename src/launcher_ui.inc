@@ -205,7 +205,7 @@ static void createMainControls(HWND hwnd) {
                             CLEARTYPE_QUALITY, 0, L"Segoe UI");
     auto title = control(L"STATIC", L"FSR 3/4 + Frame Gen for X-Plane", 0, 28, 18, 610, 38);
     SendMessageW(title, WM_SETFONT, reinterpret_cast<WPARAM>(titleFont), TRUE);
-    control(L"STATIC", L"Vulkan community preview 0.5.7  |  Hover or click ? for help", 0, 30, 59,
+    control(L"STATIC", L"Vulkan community preview 0.5.8  |  Hover or click ? for help", 0, 30, 59,
             620, 25);
     updatesButton =
         control(L"BUTTON", L"Updates...", BS_PUSHBUTTON | WS_TABSTOP, 675, 59, 313, 30, 39);

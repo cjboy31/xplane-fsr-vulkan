@@ -9,9 +9,10 @@ int wmain(int argc, wchar_t **argv) {
         ensure(argc == 4, "launcher_install_tests APP_DIR PREVIOUS_PLUGIN FRESH_FIXTURE");
         fs::path source = argv[1], previous = argv[2], fixture = argv[3];
         ensure(!fs::exists(fixture), "Fresh workspace fixture required");
-        const std::string oldHash =
-            "6b0b17f2d315b5d50018dd167e896cd54a814ad11aa03ad6d94d2a14ed882e3a";
-        ensure(hash(previous) == oldHash, "Previous plugin is not the verified 0.5.5 binary");
+        const std::string oldHash = hash(previous);
+        ensure(oldHash == "6b0b17f2d315b5d50018dd167e896cd54a814ad11aa03ad6d94d2a14ed882e3a" ||
+                   oldHash == "5fb87828f94aca906601703d49f0626aeac85e38ebf7b068b00867cd18535720",
+               "Previous plugin is not a verified published binary");
         appDirectory = fixture / L"app";
         for (auto relative :
              {L"layer/XPFSR24Layer.dll", L"layer/XPFSR24Layer.json", L"plugin/64/win.xpl",

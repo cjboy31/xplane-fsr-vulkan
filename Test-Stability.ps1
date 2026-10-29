@@ -10,7 +10,7 @@ New-Item -ItemType Directory -Force -Path $build | Out-Null
 $includes=@(('-I'+(Join-Path $VulkanHeaders 'include')),('-I'+(Join-Path $FsrSdk 'Kits\FidelityFX\api\include')),('-I'+(Join-Path $FsrSdk 'Kits\FidelityFX\upscalers\include')))
 & $Glslang '-V' '--target-env' 'vulkan1.2' '-S' 'comp' (Join-Path $PSScriptRoot 'src\temporal.comp') '-o' (Join-Path $build 'temporal-stability.spv')
 if($LASTEXITCODE -ne 0){throw 'Production temporal shader failed to compile'}
-foreach($name in @('core_tests','temporal_tests')) {
+foreach($name in @('core_tests','motion_math_tests','temporal_tests')) {
  $exe=Join-Path $build ($name+'.exe')
  $flags=@('-std=c++17','-O2','-static','-DWIN32_LEAN_AND_MEAN','-DNOMINMAX')
  if($name -eq 'temporal_tests'){$flags+='-municode'}

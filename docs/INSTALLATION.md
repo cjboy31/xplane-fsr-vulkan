@@ -1,5 +1,12 @@
 # Install FSR 3/4 + Frame Gen for X-Plane
 
+0.5.8 optimizes the existing camera/cockpit motion path and adds numerical/GPU
+verification. There is no extra motion plugin to install. It does not supply
+complete vectors for independently moving aircraft, propellers, clouds or
+transparent effects, and cannot guarantee zero ghosting. GPU benchmark savings
+refer only to motion packing, not total frame time. Restart X-Plane after updating
+so the launcher can replace its recognized owned publisher with a backup.
+
 Use the complete release package or build `app/` as described in BUILDING.md.
 Close X-Plane and the previous launcher before installing/updating anything.
 

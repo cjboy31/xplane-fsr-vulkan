@@ -20,7 +20,7 @@ void main(){
     ivec2 xy=ivec2(gl_GlobalInvocationID.xy),size=imageSize(depthOut);
     if(any(greaterThanEqual(xy,size)))return;
     vec2 uv=(vec2(xy)+0.5)/vec2(size);
-    float depth=texelFetch(nativeDepth,ivec3(xy,0),0).r;
+    float depth;
 #ifdef DEPTH_MSAA
     // Resolve nearest covered geometry, not an average across unrelated surfaces.
     // Keep the same depth convention as the camera and the FSR context.
@@ -33,32 +33,34 @@ void main(){
         depth=p.planes.x>0.5?max(depth,z):min(depth,z);
     }
     if(!validSample)depth=uintBitsToFloat(0x7fc00000u);
+#else
+    depth=texelFetch(nativeDepth,ivec3(xy,0),0).r;
 #endif
     bool invalidDepth=isnan(depth)||isinf(depth)||depth<0||depth>1;
     if(invalidDepth)depth=p.planes.x>0.5?0.0:1.0;
     vec2 unjittered=uv-p.jitter.xy/vec2(size);
     vec4 clip=vec4(unjittered*2.0-1.0,depth,1.0);
     clip.y*=p.jitter.z;
-    vec4 previous=p.reprojection*clip;
-    bool invalidProjection=previous.w<=1e-7||any(isnan(previous))||any(isinf(previous));
-    vec2 oldUv=previous.xy/max(abs(previous.w),1e-7)*sign(previous.w);
-    oldUv.y*=p.jitter.z;oldUv=oldUv*0.5+0.5;
-    vec2 motion=(oldUv-unjittered)*vec2(size);
-    vec4 eye=p.inverseProjection*clip;
-    vec3 position=eye.xyz/max(abs(eye.w),1e-7)*sign(eye.w);
     bool sky=p.planes.x>0.5?depth<1e-7:depth>0.9999999;
-    float reactive=invalidDepth?1.0:0.0;
-    bool cockpit=!sky&&p.jitter.w>0.5&&length(position)<4.0;
-    if(cockpit&&p.planes.y>0.5){
-        // Aircraft-relative model-view matrices avoid treating the cabin as
-        // stationary scenery while the aircraft and camera move together.
-        vec4 bodyPrevious=p.bodyReprojection*clip;
-        invalidProjection=bodyPrevious.w<=1e-7||any(isnan(bodyPrevious))||any(isinf(bodyPrevious));
-        vec2 bodyUv=bodyPrevious.xy/max(abs(bodyPrevious.w),1e-7)*sign(bodyPrevious.w);
-        bodyUv.y*=p.jitter.z;bodyUv=bodyUv*.5+.5;
-        motion=(bodyUv-unjittered)*vec2(size);
-        reactive=max(reactive,invalidProjection?1.0:.05);
-    }else if(cockpit)reactive=1;
+    bool cockpit=false, invalidEye=false;
+    // Exterior scenery needs one reprojection only. Reconstruct eye position
+    // only inside the cockpit; compare homogeneous squared distances without
+    // a perspective divide or square root.
+    if(!sky&&p.jitter.w>0.5){
+        vec4 eye=p.inverseProjection*clip;
+        invalidEye=any(isnan(eye))||any(isinf(eye));
+        cockpit=!invalidEye&&dot(eye.xyz,eye.xyz)<16.0*eye.w*eye.w;
+    }
+    bool body=cockpit&&p.planes.y>0.5;
+    vec4 previous=(body?p.bodyReprojection:p.reprojection)*clip;
+    bool invalidProjection=previous.w<=1e-7||any(isnan(previous))||any(isinf(previous))||invalidEye;
+    vec2 motion=vec2(0);
+    if(!invalidProjection){
+        vec2 oldUv=previous.xy/previous.w;
+        oldUv.y*=p.jitter.z;oldUv=oldUv*0.5+0.5;
+        motion=(oldUv-unjittered)*vec2(size);
+    }
+    float reactive=invalidDepth?1.0:body?.05:cockpit?1.0:0.0;
     // A radius around the aircraft also contains runway/terrain in external
     // views. It cannot identify aircraft pixels, so never discard world history
     // using that sphere. Keep scenery/sky reconstruction continuous while panning.

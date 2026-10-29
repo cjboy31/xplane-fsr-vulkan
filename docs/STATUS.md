@@ -1,4 +1,17 @@
-# 0.5.7 custom graphics and MSAA preview
+# 0.5.8 motion optimization
+
+Motion packing and camera algebra are optimized without changing camera/control
+ownership or ABI 4. Projection inverses are cached; affine view/body inversion
+uses exact double-precision cofactors, with a full inverse fallback. The kernel
+projects only the selected world/body transform and avoids external-view eye
+reconstruction and per-pixel square roots. Invalid eye transforms reject history.
+
+See [motion-vector research and measurements](MOTION-VECTORS.md). The current
+source is still camera-derived with a distance-based cockpit heuristic, not
+renderer-native per-object motion. Native SSR inputs are a researched future
+backend; they are not integrated or claimed active in this release.
+
+## 0.5.7 custom graphics and MSAA preview
 
 Graphics controls now live on the main screen. Custom editing/apply/restore
 preserves FSR and FG providers; pending graphics choices survive app restarts.

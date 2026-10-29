@@ -38,6 +38,7 @@ Laminar Research product, and is not a complete solution to ghosting or stutter.
   erosion and an alignment tint. Initial target: default Cirrus SR22 PFD/MFD.
 - Camera-pose stability checks and a separate IPC ABI for the new publisher.
 - Main-screen MSAA, FXAA, input scale and output controls, with experimental 2x/4x/8x MSAA depth capture for FSR 3/4. FXAA remains native-only.
+- Optimized camera/cockpit motion packing with measured GPU timings and numerical scene-flow tests; see [research and limits](docs/MOTION-VECTORS.md).
 - CPU source-pacing diagnostics and isolated AA/FG/cockpit GPU tests.
 
 The cockpit-screen fix currently requires **frame generation Off** and supports

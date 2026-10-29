@@ -68,3 +68,12 @@ real cockpit alignment or the simulator's matrix timing.
 
 Do not install a development build into a live flight. Close X-Plane first and
 keep a known-working package. See docs/INSTALLATION.md for the launcher workflow.
+
+`Test-Stability.ps1` also runs the camera-math equivalence/CPU benchmark. Its GPU
+checks compare motion to independently projected 3D points, including zoom and
+viewport orientation. `Test-MotionPerformance.ps1 -BaselineSingle '<old.spv>'
+-BaselineMsaa '<old-msaa.spv>'` alternates old/new shader order at 1440p/4K and
+records timestamp averages; compare per-case medians. Compile the baseline from
+v0.5.7-alpha's temporal.comp with/without DEPTH_MSAA=1 using the same glslang.
+The current harness must first be built with Test-Stability.ps1. These measurements
+cover packing only; they exclude FSR, frame generation and simulator rendering.

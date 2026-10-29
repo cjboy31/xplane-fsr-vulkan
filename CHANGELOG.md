@@ -1,5 +1,24 @@
 # Changes
 
+## 0.5.8-alpha
+
+- Reduce motion packing to one selected world/body reprojection. Reconstruct
+  eye position only inside the cockpit, using a squared-distance test without
+  a per-pixel square root/divide. Preserve the FSR current-to-previous convention.
+- Cache unchanged projection inverses; factor perspective and affine view/body
+  transforms in double precision. Remove the unused aircraft-sphere dataref reads.
+- Reject invalid internal-view eye transforms instead of retaining history with
+  an unusable camera matrix. Keep existing view-cut and invalid-motion guards.
+- Add independent perspective scene-flow tests for pan/rotation, zoom, body/world
+  selection, normal/reverse Z and viewport orientation, plus repeatable GPU timing
+  and large-world camera-math tests. Preserve ABI 4 and owned-plugin upgrades.
+
+On the development R9700, five alternating-order paired runs measured about
+8-15% less GPU packing time (1440p/4K, single-sample/4x MSAA, exterior/interior).
+At 4K without MSAA the pass measured about 0.067/0.083 ms exterior/interior.
+These synthetic pass timings are not a flight FPS gain. Complete moving-object,
+propeller, cloud and transparency vectors remain unavailable; see docs/MOTION-VECTORS.md.
+
 ## 0.5.7-alpha
 
 - Move MSAA, FXAA, input scale, output resolution and Apply graphics onto the
