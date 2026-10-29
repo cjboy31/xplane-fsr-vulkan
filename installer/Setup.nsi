@@ -34,7 +34,7 @@ Var ParentProcess
 
 !define MUI_ABORTWARNING
 !define MUI_WELCOMEPAGE_TITLE "FSR 3/4 + Frame Gen for X-Plane 12"
-!define MUI_WELCOMEPAGE_TEXT "Install the experimental Native AA, upscaling and optional frame-generation launcher.$\r$\n$\r$\nClose X-Plane and the FSR launcher before continuing. This preview can produce visual artifacts and is not a production-ready graphics upgrade.$\r$\n$\r$\nSetup installs for your Windows account. The camera plugin is installed by the launcher on first use."
+!define MUI_WELCOMEPAGE_TEXT "Install the experimental Native AA and upscaling launcher. Built-in frame generation is temporarily suspended in this regular release.$\r$\n$\r$\nClose X-Plane and the FSR launcher before continuing. This preview can produce visual artifacts and is not a production-ready graphics upgrade.$\r$\n$\r$\nSetup installs for your Windows account. The camera plugin is installed by the launcher on first use."
 !insertmacro MUI_PAGE_WELCOME
 Page custom SimulatorPage SimulatorLeave
 !define MUI_DIRECTORYPAGE_TEXT_TOP "Choose an empty writable folder for the application, or a folder installed by this setup. Keep the default for a normal per-user installation. Do not select X-Plane's plugins folder."

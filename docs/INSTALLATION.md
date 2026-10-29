@@ -1,5 +1,17 @@
 # Install FSR 3/4 + Frame Gen for X-Plane
 
+0.6.1-alpha temporarily suspends built-in frame generation in regular releases.
+The disabled selector shows **Off — Temporarily suspended**; its help explains
+why. Old settings and environment variables cannot enable it. FSR 3/4 Native AA
+and upscaling still work. Keep using the same application folder when updating;
+your other choices are preserved. Previous FG choices are retained when saving
+unrelated settings, but this build launches with FG Off.
+
+Fresh regular installers omit FrameGenCheck.exe and the AMD FG runtime. Older
+owned installations may retain unused copies; this launcher/layer do not load
+or enable that path. FG remains development-only on the separate experimental
+branch and should not be used as a remedy for unstable base frame times.
+
 0.6.0 introduces a redesigned charcoal/champagne launcher. Presets, AA, input
 scale and output controls remain on the main screen; resize or scroll when
 needed. Launch actions and live status stay in the footer. Your existing saved
@@ -67,11 +79,11 @@ Rendering/AA and frame rate can change while the safeguard is active. It is a
 precaution for the reported ground-level pan artifacts, not a verified cure for
 every aircraft, cloud or view. It requires the updated bundled publisher.
 
-0.5.6 contains frame-generation synchronization/source-frame guards and temporal
-history corrections. Close X-Plane before updating; the launcher updates its
-owned camera publisher on the next FSR launch. If FG produces black flashes,
-turn it Off and retain the renderer log. Confirm stable rendering with FG Off
-before retrying FG 3 and then FG 4. Frame generation does not repair antialiasing.
+Regular 0.6.1-alpha keeps FG disabled while these reports are investigated.
+Close X-Plane before updating; the launcher updates its owned camera publisher
+on the next FSR launch. If artifacts persist with FG Off, retain the renderer
+log. FG testing belongs to the separate experimental branch; do not enable it
+as a remedy for poor base frame times. Frame generation does not repair AA.
 For airborne edge shimmer, compare Native AA at Full rendering scale against
 Quality upscaling, with MSAA/FXAA Off. The fixes require live confirmation and do
 not supply complete motion for clouds, propellers or all aircraft.

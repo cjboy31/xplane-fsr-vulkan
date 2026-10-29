@@ -51,8 +51,10 @@ static void updatePresetSummary() {
         SetWindowTextW(
             presetNote,
             (preferences.manualApplied || preferences.manualPending)
-                ? L"Custom graphics remembered. Apply graphics with X-Plane closed. FSR / FG stay "
-                  L"selected."
+                ? (app::frameGenerationAvailable
+                       ? L"Custom graphics remembered. Apply with X-Plane closed. FSR / FG stay "
+                         L"selected."
+                       : L"Custom graphics remembered. Apply with X-Plane closed. FG is suspended.")
                 : L"Choose a preset to configure output, AA and FSR automatically. FG defaults "
                   L"Off.");
         return;
@@ -198,6 +200,8 @@ static void createGraphicsControls(HWND parent) {
     graphicsStatus = control(L"STATIC",
                              preferences.manualPending
                                  ? L"Edits saved · Apply graphics before launch"
-                                 : L"Custom edits retain FSR and frame generation selections",
+                                 : (app::frameGenerationAvailable
+                                        ? L"Custom edits retain FSR and frame generation selections"
+                                        : L"Custom edits retain FSR mode · FG is suspended"),
                              0, 0, 0, 600, 22, 538);
 }

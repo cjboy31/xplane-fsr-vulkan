@@ -1,5 +1,27 @@
 # Changes
 
+## 0.6.1-alpha
+
+- Temporarily suspend built-in frame generation in regular releases. Show
+  **Off — Temporarily suspended**, disable its diagnostic action, and explain
+  the suspension through the setting's help. Keep the existing application name.
+- Force FG Off at launch and in the Vulkan layer, including old saved choices,
+  inherited environment variables and stale FG-control files. The public layer
+  uses native presentation and does not create the SDK frame-generation swapchain.
+- Exclude the frame-generation runtime and diagnostic executable from fresh
+  regular installation packages. Keep FSR 3/4 AA/upscaling, other saved choices,
+  cockpit restoration and the ground-camera safeguard. Retain the old FG choice
+  in settings for experimental use when saving unrelated settings.
+- Keep FG development and its existing release on the separate experimental
+  branch. Document the source/pacing/UI work and live validation needed before
+  bringing frame generation back, with links to Lossless Scaling's public design
+  notes. No Lossless Scaling code, models or binaries are incorporated.
+
+This suspends the reported problematic path; it is not a new interpolation
+algorithm or a claim to fix other sources of ghosting/stutter. Existing owned
+installations can retain unused files from older releases; the new regular
+launcher and layer do not enable them.
+
 ## 0.6.0-alpha
 
 - Redesign the native Windows launcher with a charcoal palette, champagne

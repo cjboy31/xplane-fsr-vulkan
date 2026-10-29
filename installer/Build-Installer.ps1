@@ -32,12 +32,11 @@ function Add-Payload([string]$Source,[string]$Relative,[string]$License) {
   Copy-Item -LiteralPath $Source -Destination $dest -Force
   $entries.Add([pscustomobject]@{path=$Relative.Replace('\','/');sha256=(Get-FileHash -LiteralPath $dest).Hash.ToLowerInvariant();bytes=(Get-Item -LiteralPath $dest).Length;licenseGroup=$License})
 }
-$originalFiles = @('XPlaneFSR24.exe','NativeAACheck.exe','FrameGenCheck.exe','CockpitRestoreCheck.exe','layer\XPFSR24Layer.dll','layer\XPFSR24Layer.json','plugin\64\win.xpl') + $AdditionalOriginalFiles
+$originalFiles = @('XPlaneFSR24.exe','NativeAACheck.exe','CockpitRestoreCheck.exe','layer\XPFSR24Layer.dll','layer\XPFSR24Layer.json','plugin\64\win.xpl') + $AdditionalOriginalFiles
 foreach($relative in $originalFiles){ Add-Payload (Join-Path $app $relative) $relative 'Original MIT; API/compiler-runtime notices in licenses' }
 $expectedRuntime = @{
  'amd_fidelityfx_loader_vk.dll'='38a56a01fb3565c0757d9f5c1e4e69de4b65e5f2e5769b323b200dc1f142bab9'
  'amd_fidelityfx_upscaler_vk.dll'='4a7e895af6e0b615d40a84d59eb8c2b1054ad91cdd0c739567940270d51bdab7'
- 'amd_fidelityfx_framegeneration_vk.dll'='d002dabff8c5e71eaa715fc99438cd4dc81230262a7897b16bc402efec3498b4'
 }
 foreach($name in ($expectedRuntime.Keys | Sort-Object)){
   $source = Join-Path $app ('runtime\'+$name)

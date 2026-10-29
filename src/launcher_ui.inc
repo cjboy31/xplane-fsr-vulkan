@@ -140,6 +140,11 @@ static void helpIcon(HWND parent, int id, int x, int y) {
 }
 #include "launcher_help.inc"
 static bool showHelp(HWND parent, int id) {
+    if (id == 204 && !app::frameGenerationAvailable) {
+        modernHelp(parent, L"Frame generation temporarily suspended",
+                   app::frameGenerationSuspension);
+        return true;
+    }
     auto *h = helpById(id);
     if (!h)
         return false;
@@ -150,7 +155,9 @@ static void collectChoices() {
     preferences.simulator = text(pathBox);
     preferences.arguments = text(argsBox);
     preferences.mode = int(SendMessageW(modeBox, CB_GETCURSEL, 0, 0));
-    preferences.frameGeneration = int(SendMessageW(fgBox, CB_GETCURSEL, 0, 0));
+    // Preserve the earlier choice for experimental builds; public effective state is always Off.
+    if (app::frameGenerationAvailable)
+        preferences.frameGeneration = int(SendMessageW(fgBox, CB_GETCURSEL, 0, 0));
     preferences.enabled = SendMessageW(toggle, BM_GETCHECK, 0, 0) == BST_CHECKED;
     preferences.ghostReduction = SendMessageW(ghostBox, BM_GETCHECK, 0, 0) == BST_CHECKED;
     preferences.cockpitRestore = SendMessageW(cockpitBox, BM_GETCHECK, 0, 0) == BST_CHECKED;
@@ -387,6 +394,10 @@ static LRESULT CALLBACK procedure(HWND hwnd, UINT message, WPARAM w, LPARAM l) {
                 }
                 break;
             case 41:
+                if (!app::frameGenerationAvailable) {
+                    SendMessageW(fgBox, CB_SETCURSEL, 0, 0);
+                    break;
+                }
                 if (event == CBN_SELCHANGE) {
                     int selected = int(SendMessageW(fgBox, CB_GETCURSEL, 0, 0));
                     if (running() && selected && selected != launchedFG) {

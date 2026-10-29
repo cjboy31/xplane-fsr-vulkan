@@ -42,8 +42,11 @@ $prefsBefore = if(Test-Path -LiteralPath $prefs){(Get-FileHash -LiteralPath $pre
 $code = Run-Setup ('/S /TEST=1 /XPLANE="'+$simulator+'" /D='+$installed)
 if($code -ne 0){throw "Installation failed: $code"}
 $manifest = Get-Content -LiteralPath (Join-Path $installed 'PAYLOAD-MANIFEST.json') -Raw | ConvertFrom-Json
-foreach($required in @('XPlaneFSR24.exe','NativeAACheck.exe','FrameGenCheck.exe','CockpitRestoreCheck.exe','layer/XPFSR24Layer.dll','plugin/64/win.xpl')){
+foreach($required in @('XPlaneFSR24.exe','NativeAACheck.exe','CockpitRestoreCheck.exe','layer/XPFSR24Layer.dll','plugin/64/win.xpl')){
   if($required -notin $manifest.files.path){throw "Required app component absent from installer: $required"}
+}
+foreach($excluded in @('FrameGenCheck.exe','runtime/amd_fidelityfx_framegeneration_vk.dll')){
+ if($excluded -in $manifest.files.path -or (Test-Path -LiteralPath (Join-Path $installed $excluded))){throw ('Suspended FG component was packaged: '+$excluded)}
 }
 foreach($file in $manifest.files){
   $path = Join-Path $installed $file.path

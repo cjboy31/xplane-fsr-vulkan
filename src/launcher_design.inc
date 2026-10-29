@@ -291,7 +291,14 @@ static void createMainControls(HWND hwnd) {
     for (auto *label :
          {L"Off · Recommended first", L"FSR 3.1.6 · 2x frames", L"FSR 4.0.2 · 2x frames (ML)"})
         SendMessageW(fgBox, CB_ADDSTRING, 0, LPARAM(label));
-    SendMessageW(fgBox, CB_SETCURSEL, preferences.frameGeneration, 0);
+    SendMessageW(fgBox, CB_SETCURSEL, app::effectiveFrameGeneration(preferences.frameGeneration),
+                 0);
+    if (!app::frameGenerationAvailable) {
+        SendMessageW(fgBox, CB_RESETCONTENT, 0, 0);
+        SendMessageW(fgBox, CB_ADDSTRING, 0, LPARAM(L"Off · Temporarily suspended"));
+        SendMessageW(fgBox, CB_SETCURSEL, 0, 0);
+        EnableWindow(fgBox, FALSE);
+    }
 #ifdef XPFSR_NATIVE_MOTION
     motionBox = combo(45);
     for (auto *label : {L"Camera-derived · Default", L"Native renderer · EXPERIMENTAL"})
@@ -331,6 +338,8 @@ static void createMainControls(HWND hwnd) {
                       {31, L"Renderer log"},
                       {32, L"Remove camera plugin"}})
         make(L"BUTTON", item.second, BS_PUSHBUTTON | WS_TABSTOP, item.first);
+    if (!app::frameGenerationAvailable)
+        EnableWindow(designControl(36), FALSE);
     auto disclaimer = make(L"STATIC", L"Test the same scene before judging quality.", 0, 540);
     small(disclaimer);
     footerStatus = make(L"STATIC", L"NOT RUNNING\r\nLaunch from this app", 0, 541);

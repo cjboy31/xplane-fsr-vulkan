@@ -6,6 +6,7 @@
 #include "dispatch_cache.hpp"
 #include "feature_sizes.hpp"
 #include "framegen.hpp"
+#include "framegen_policy.hpp"
 #include "frame_sequence.hpp"
 #include "fsr24.hpp"
 #include "pacing.hpp"
@@ -44,6 +45,8 @@ struct SwapchainGeneration {
     bool retired{};
 };
 std::string requestedFrameGeneration() {
+    if (!app::frameGenerationAvailable)
+        return {};
     wchar_t mode[32]{};
     GetEnvironmentVariableW(L"XPFSR24_FG", mode, 32);
     if (!wcscmp(mode, L"3.1.6"))
@@ -1970,6 +1973,13 @@ static VKAPI_ATTR VkResult VKAPI_CALL L_CreateDevice(VkPhysicalDevice physical,
     state->instance = instance;
     state->featuresReady = cloned;
     state->mode = selectedMode();
+    if (!app::frameGenerationAvailable) {
+        strncpy(state->status.fgReason,
+                "Suspended in regular releases; native presentation; FSR AA/upscaling retained",
+                159);
+        log("Frame generation suspended in public build; ignoring saved/environment FG requests; "
+            "no SDK presentation replacement");
+    }
     wchar_t cockpitSetting[8]{};
     if (GetEnvironmentVariableW(L"XPFSR24_COCKPIT_RESTORE", cockpitSetting, 8)) {
         state->cockpitRequested = wcscmp(cockpitSetting, L"0") != 0;

@@ -16,6 +16,10 @@ Laminar Research product, and is not a complete solution to ghosting or stutter.
 
 ## Features
 
+- **Frame generation is temporarily suspended in regular releases starting with
+  0.6.1-alpha.** Old FG selections are ignored at runtime. FSR AA/upscaling remain
+  available. Development stays on the separate experimental branch; see the
+  [FG review and return criteria](docs/FRAME-GENERATION-REVIEW.md).
 - Modern charcoal/champagne native launcher with rounded panels, clear focus
   states, resizing/scrolling, accessible field names and persistent launch/status
   controls. Presets and MSAA/FXAA remain on the main screen.
@@ -32,7 +36,8 @@ Laminar Research product, and is not a complete solution to ghosting or stutter.
   Install 0.5.4 or later once to enable this feature.
 - Explicit Vulkan layer enabled only for X-Plane started by the launcher.
 - FSR 3.1.6 compatibility and 4.1.2 ML-preview AA/upscaling providers.
-- Optional FSR frame generation with SDK-controlled presentation.
+- FSR frame-generation development with SDK-controlled presentation on the
+  separate experimental branch; suspended in regular releases.
 - Fourteen presets on the main screen: seven resolution/AA choices each for
   FSR 3 and FSR 4, with backups and selective restoration.
 - Automatically saved presets, provider, frame generation, checkboxes, simulator

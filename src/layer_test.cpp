@@ -689,6 +689,15 @@ int wmain(int argc, wchar_t **argv) {
                 --expected;
             require(app::readStatus(shared, status) && status.recordings == expected,
                     "Layer replacement/toggle count differs");
+            wchar_t publicFg[8]{};
+            if (GetEnvironmentVariableW(L"XPFSR24_EXPECT_NO_FG", publicFg, 8)) {
+                require(!status.fgActive && !status.fgPrepared && !status.fgGenerated &&
+                            !status.displayedPresents && !status.fgProvider[0] &&
+                            strstr(status.fgReason, "Suspended in regular releases"),
+                        "Public build must not prepare or activate FG despite forced requests");
+                require(GetModuleHandleW(L"amd_fidelityfx_framegeneration_vk.dll") == nullptr,
+                        "Public build loaded the suspended FG runtime");
+            }
             if (staleCamera && frame == 12 && !observe)
                 require(!status.active && strstr(status.reason, "camera frame mismatch"),
                         "Stale scene must explain native fallback");

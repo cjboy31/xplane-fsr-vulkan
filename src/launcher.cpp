@@ -5,6 +5,7 @@
 #include "runtime_status.hpp"
 #include "session_logs.hpp"
 #include "launcher_theme.hpp"
+#include "framegen_policy.hpp"
 #include <algorithm>
 #include <bcrypt.h>
 #include <commctrl.h>
@@ -123,9 +124,10 @@ static void preflight(const fs::path &root, bool native = false) {
     ensure(hash(appDirectory / L"runtime/amd_fidelityfx_upscaler_vk.dll") ==
                "4a7e895af6e0b615d40a84d59eb8c2b1054ad91cdd0c739567940270d51bdab7",
            "AMD upscaler is missing or differs from the verified SDK 2.4 package");
-    ensure(hash(appDirectory / L"runtime/amd_fidelityfx_framegeneration_vk.dll") ==
-               "d002dabff8c5e71eaa715fc99438cd4dc81230262a7897b16bc402efec3498b4",
-           "AMD frame generation DLL is missing or differs from SDK 2.4");
+    if (app::frameGenerationAvailable)
+        ensure(hash(appDirectory / L"runtime/amd_fidelityfx_framegeneration_vk.dll") ==
+                   "d002dabff8c5e71eaa715fc99438cd4dc81230262a7897b16bc402efec3498b4",
+               "AMD frame generation DLL is missing or differs from SDK 2.4");
     ensure(!fs::exists(root / L"vulkan-1.dll"), "A local vulkan-1.dll proxy is installed. Disable "
                                                 "the other rendering mod before testing FSR Alpha");
     for (auto *name : {L"LuminaXP", L"MotionVectors"})
@@ -254,7 +256,7 @@ static void launch(const fs::path &root, const std::wstring &arguments, bool nat
     SetEnvironmentVariableW(L"XPFSR24_GHOST_REDUCTION",
                             SendMessageW(ghostBox, BM_GETCHECK, 0, 0) == BST_CHECKED ? L"1" : L"0");
     auto mode = SendMessageW(modeBox, CB_GETCURSEL, 0, 0);
-    auto fg = SendMessageW(fgBox, CB_GETCURSEL, 0, 0);
+    auto fg = app::effectiveFrameGeneration(int(SendMessageW(fgBox, CB_GETCURSEL, 0, 0)));
     ensure(native || !fg || mode > 0,
            "Select Native AA or upscaling before enabling frame generation");
     if (!native && fg)
@@ -346,6 +348,8 @@ static void checkAA() {
                    L"Running the isolated Native AA check: 48 small, fenced GPU frames...");
 }
 static void checkFG() {
+    ensure(app::frameGenerationAvailable,
+           "Built-in frame generation is suspended in regular releases");
     checkingCockpit = false;
     checkingFG = true;
     ensure(!running(), "Close the simulator before running the isolated Native AA check");

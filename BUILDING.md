@@ -1,5 +1,13 @@
 # Building on Windows x64
 
+Regular releases starting with 0.6.1-alpha enforce the public FG suspension in
+the launcher and Vulkan layer. The build may produce standalone FG diagnostics
+for development, but the regular installer excludes them and the FG runtime.
+Use the separate experimental branch for FG development; public builds must
+retain the default framegen_policy.hpp policy. Test-PublicFrameGeneration.ps1
+exercises the production layer with a forced FG request and a runtime folder
+containing only the loader and upscaler.
+
 The launcher links the Windows system GDI+, DWM and accessibility libraries for
 native styling, DPI handling and field annotations. No browser runtime, bundled
 font or third-party UI framework is added. These are launcher-only dependencies;
