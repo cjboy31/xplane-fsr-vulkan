@@ -1,7 +1,7 @@
 # Native renderer motion: separate experimental option
 
 Branch: `experimental/native-motion-vectors`.
-Version: `0.5.9-experimental.2`. The regular `0.5.9-alpha` release remains available.
+Version: `0.6.0-experimental.1`. The regular `0.6.0-alpha` release remains available.
 
 This update shares the regular release's per-process log reset, immutable
 camera-frame checks and ground-camera safeguard. With the aircraft on the

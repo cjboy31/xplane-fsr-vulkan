@@ -1,12 +1,27 @@
 // SPDX-License-Identifier: MIT
 static HWND control(const wchar_t *type, const wchar_t *label, DWORD style, int x, int y, int w,
                     int h, int id = 0, HWND parent = nullptr) {
-    auto c =
-        CreateWindowExW(std::wstring(type) == L"EDIT" ? WS_EX_CLIENTEDGE : 0, type, label,
-                        WS_CHILD | WS_VISIBLE | style, x, y, w, h, parent ? parent : window,
-                        reinterpret_cast<HMENU>(INT_PTR(id)), GetModuleHandleW(nullptr), nullptr);
+    auto c = CreateWindowExW(
+        0, type, label,
+        WS_CHILD | WS_VISIBLE | style |
+            (std::wstring(type) == L"COMBOBOX" ? CBS_OWNERDRAWFIXED | CBS_HASSTRINGS : 0) |
+            (std::wstring(type) == L"STATIC" ? SS_NOPREFIX : 0),
+        x, y, w, h, parent ? parent : window, reinterpret_cast<HMENU>(INT_PTR(id)),
+        GetModuleHandleW(nullptr), nullptr);
     SendMessageW(c, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
+    theme::apply(c, type);
     return c;
+}
+static HWND scaledControl(const wchar_t *type, const wchar_t *label, DWORD style, int x, int y,
+                          int w, int h, int id = 0, HWND parent = nullptr) {
+    return control(type, label, style, theme::px(x), theme::px(y), theme::px(w), theme::px(h), id,
+                   parent);
+}
+static SIZE modalSize(int width, int height) {
+    RECT work;
+    SystemParametersInfoW(SPI_GETWORKAREA, 0, &work, 0);
+    return {std::min(theme::px(width), int(work.right - work.left) - 32),
+            std::min(theme::px(height), int(work.bottom - work.top) - 32)};
 }
 static void error(const std::exception &e) {
     MessageBoxW(window, wide(e.what()).c_str(), L"FSR 3/4 + Frame Gen for X-Plane",
@@ -123,6 +138,7 @@ static const SettingHelp *helpById(int id) {
 static void helpIcon(HWND parent, int id, int x, int y) {
     auto button = control(L"BUTTON", L"?", BS_PUSHBUTTON | WS_TABSTOP, x, y, 25, 25, id, parent);
     auto *h = helpById(id);
+    theme::name(button, (std::wstring(L"Help: ") + h->title).c_str());
     auto tip = CreateWindowExW(WS_EX_TOPMOST, TOOLTIPS_CLASSW, nullptr, WS_POPUP | TTS_ALWAYSTIP, 0,
                                0, 0, 0, parent, nullptr, GetModuleHandleW(nullptr), nullptr);
     TOOLINFOW tool{sizeof(tool)};
@@ -134,11 +150,12 @@ static void helpIcon(HWND parent, int id, int x, int y) {
     SendMessageW(tip, TTM_SETMAXTIPWIDTH, 0, 480);
     SendMessageW(tip, TTM_SETDELAYTIME, TTDT_AUTOPOP, 30000);
 }
+#include "launcher_help.inc"
 static bool showHelp(HWND parent, int id) {
     auto *h = helpById(id);
     if (!h)
         return false;
-    MessageBoxW(parent, h->body, h->title, MB_OK | MB_ICONINFORMATION);
+    modernHelp(parent, h->title, h->body);
     return true;
 }
 static void collectChoices() {
@@ -165,12 +182,14 @@ static void saveChoices() {
         return;
     collectChoices();
     if (motionSetupNote)
-        SetWindowTextW(motionSetupNote, motionSetupText());
+        SetWindowTextW(motionSetupNote, designSetupHint());
     try {
         launcher::save(appDirectory / L"settings.ini", preferences);
         SetWindowTextW(savedLabel, L"Choices saved automatically");
+        theme::tone(savedLabel, theme::green);
     } catch (...) {
         SetWindowTextW(savedLabel, L"Choices NOT saved - check folder permissions");
+        theme::tone(savedLabel, theme::red);
         throw;
     }
 }
@@ -203,7 +222,17 @@ static void runtimeBanner(launcher::RuntimeState state, const app::Telemetry &st
     }
     bannerState = state;
     SetWindowTextW(injectionBanner, message);
-    InvalidateRect(injectionBanner, nullptr, TRUE);
+    InvalidateRect(injectionBanner, nullptr, FALSE);
+    if (footerStatus)
+        SetWindowTextW(footerStatus, message);
+    auto tone =
+        state == launcher::RuntimeState::active ? theme::green
+        : state == launcher::RuntimeState::groundSafety || state == launcher::RuntimeState::paused
+            ? theme::gold
+            : theme::muted;
+    theme::tone(injectionBanner, tone);
+    if (footerStatus)
+        theme::tone(footerStatus, tone);
     SetWindowTextW(window, state == launcher::RuntimeState::active
                                ? L"FSR ACTIVE - FSR 3/4 + Frame Gen for X-Plane"
                                : L"FSR 3/4 + Frame Gen for X-Plane - Native Motion EXPERIMENTAL");
@@ -226,120 +255,82 @@ static void runtimeBanner(launcher::RuntimeState state, const app::Telemetry &st
 #include "graphics_ui.inc"
 #include "setup_ui.inc"
 #include "update_ui.inc"
-static void createMainControls(HWND hwnd) {
-    window = hwnd;
-    font = CreateFontW(-16, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET, 0, 0,
-                       CLEARTYPE_QUALITY, 0, L"Segoe UI");
-    titleFont = CreateFontW(-25, 0, 0, 0, FW_SEMIBOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET, 0, 0,
-                            CLEARTYPE_QUALITY, 0, L"Segoe UI");
-    auto title = control(L"STATIC", L"FSR 3/4 + Frame Gen for X-Plane", 0, 28, 18, 610, 38);
-    SendMessageW(title, WM_SETFONT, reinterpret_cast<WPARAM>(titleFont), TRUE);
-    control(L"STATIC", L"0.5.9 experimental.2 | Separate native-motion test channel", 0, 30, 59,
-            620, 25);
-    updatesButton =
-        control(L"BUTTON", L"Updates...", BS_PUSHBUTTON | WS_TABSTOP, 675, 59, 313, 30, 39);
-    savedLabel = control(L"STATIC", L"Your choices are restored on startup", 0, 665, 25, 330, 40);
-    control(L"STATIC", L"X-Plane folder", 0, 30, 96, 145, 22);
-    helpIcon(hwnd, 200, 170, 91);
-    pathBox = control(L"EDIT", preferences.simulator.c_str(), ES_AUTOHSCROLL | WS_TABSTOP, 30, 122,
-                      490, 30, 10);
-    control(L"BUTTON", L"Browse...", BS_PUSHBUTTON | WS_TABSTOP, 530, 121, 85, 32, 11);
-    control(L"STATIC", L"Optional launch arguments", 0, 30, 165, 210, 22);
-    helpIcon(hwnd, 201, 242, 160);
-    argsBox = control(L"EDIT", preferences.arguments.c_str(), ES_AUTOHSCROLL | WS_TABSTOP, 30, 191,
-                      585, 30, 12);
-    control(L"STATIC", L"Resolution and FSR preset", 0, 30, 238, 210, 24);
-    helpIcon(hwnd, 202, 242, 233);
-    presetBox = control(L"COMBOBOX", L"", CBS_DROPDOWNLIST | WS_TABSTOP | WS_VSCROLL, 30, 267, 585,
-                        340, 109);
-    populatePresets();
-    presetNote = control(L"STATIC", L"", 0, 30, 302, 585, 43);
-    updatePresetSummary();
-    control(L"STATIC", L"FSR mode", 0, 30, 361, 95, 24);
-    modeBox = control(L"COMBOBOX", L"", CBS_DROPDOWNLIST | WS_TABSTOP, 130, 355, 485, 180, 40);
-    for (auto *label : {L"Diagnostics only - FSR processing Off", L"FSR 3.1.6 - Native AA",
-                        L"FSR 3.1.6 - Upscaling", L"FSR 4.1.2 - Native AA (ML preview)",
-                        L"FSR 4.1.2 - Upscaling (ML preview)"})
-        SendMessageW(modeBox, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(label));
-    SendMessageW(modeBox, CB_SETCURSEL, preferences.mode, 0);
-    helpIcon(hwnd, 203, 625, 355);
-    control(L"STATIC", L"Frame gen", 0, 30, 405, 95, 24);
-    fgBox = control(L"COMBOBOX", L"", CBS_DROPDOWNLIST | WS_TABSTOP, 130, 399, 485, 160, 41);
-    for (auto *label : {L"Off - recommended for the first flight", L"FSR 3.1.6 - 2x compatibility",
-                        L"FSR 4.0.2 - 2x ML preview"})
-        SendMessageW(fgBox, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(label));
-    SendMessageW(fgBox, CB_SETCURSEL, preferences.frameGeneration, 0);
-    helpIcon(hwnd, 204, 625, 399);
-    control(L"STATIC", L"Motion", 0, 30, 449, 95, 24);
-    motionBox = control(L"COMBOBOX", L"", CBS_DROPDOWNLIST | WS_TABSTOP, 130, 443, 485, 160, 45);
-    for (auto *label :
-         {L"Camera-derived - current default", L"Native renderer motion - EXPERIMENTAL"})
-        SendMessageW(motionBox, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(label));
-    SendMessageW(motionBox, CB_SETCURSEL, preferences.motionSource, 0);
-    helpIcon(hwnd, 214, 625, 443);
-    auto checkbox = [&](const wchar_t *label, int y, int id, bool checked, int help) {
-        auto c = control(L"BUTTON", label, BS_AUTOCHECKBOX | WS_TABSTOP, 30, y, 585, 26, id);
-        SendMessageW(c, BM_SETCHECK, checked ? BST_CHECKED : BST_UNCHECKED, 0);
-        helpIcon(hwnd, help, 625, y);
-        return c;
-    };
-    toggle = checkbox(L"Enable FSR processing (can be toggled during flight)", 493, 22,
-                      preferences.enabled, 205);
-    ghostBox = checkbox(L"FSR 3 history tuning - reduce trails (restart to apply)", 529, 42,
-                        preferences.ghostReduction, 206);
-    cockpitBox = checkbox(L"FSR Ghosting Fix - cockpit screens (preview; FG Off)", 565, 43,
-                          preferences.cockpitRestore, 207);
-    tintBox = checkbox(L"Green screen-alignment tint (restart to apply)", 601, 44,
-                       preferences.alignmentTint, 208);
-    control(L"BUTTON", L"Launch X-Plane with FSR", BS_DEFPUSHBUTTON | WS_TABSTOP, 30, 654, 285, 44,
-            20);
-    control(L"BUTTON", L"Launch native for comparison", BS_PUSHBUTTON | WS_TABSTOP, 330, 654, 285,
-            44, 21);
-    control(L"BUTTON", L"Restore last graphics change", BS_PUSHBUTTON | WS_TABSTOP, 30, 719, 370,
-            34, 107);
-    control(L"BUTTON", L"Sim setup...", BS_PUSHBUTTON | WS_TABSTOP, 415, 719, 200, 34, 33);
-    motionSetupNote = control(L"STATIC", motionSetupText(), 0, 30, 811, 610, 44);
-    control(L"STATIC", L"Live simulator status", 0, 675, 96, 280, 24);
-    helpIcon(hwnd, 209, 963, 91);
-    injectionBanner = control(L"STATIC", L"", SS_CENTER, 675, 129, 313, 72);
-    SendMessageW(injectionBanner, WM_SETFONT, reinterpret_cast<WPARAM>(titleFont), TRUE);
-    statusBox =
-        control(L"EDIT",
-                L"Select a preset, then launch X-Plane here.\r\nLoad a flight to confirm active "
-                L"FSR processing.\r\n\r\nThe cockpit-screen fix needs live alignment testing; "
-                L"see its ? help for supported aircraft.\r\n"
-                L"camera-derived motion does not fix every moving object or cloud.",
-                ES_MULTILINE | ES_READONLY | WS_VSCROLL, 675, 214, 313, 142, 30);
-    createGraphicsControls(hwnd);
-    control(L"BUTTON", L"AA check", BS_PUSHBUTTON | WS_TABSTOP, 675, 657, 150, 34, 34);
-    control(L"BUTTON", L"FG check", BS_PUSHBUTTON | WS_TABSTOP, 838, 657, 150, 34, 36);
-    control(L"BUTTON", L"Ghosting check", BS_PUSHBUTTON | WS_TABSTOP, 675, 699, 150, 34, 37);
-    control(L"BUTTON", L"View comparison", BS_PUSHBUTTON | WS_TABSTOP, 838, 699, 150, 34, 38);
-    control(L"BUTTON", L"Open renderer log", BS_PUSHBUTTON | WS_TABSTOP, 675, 741, 313, 34, 31);
-    control(L"BUTTON", L"Remove camera plugin", BS_PUSHBUTTON | WS_TABSTOP, 30, 763, 585, 34, 32);
-    control(L"STATIC", L"GPU checks do not validate live-flight quality.", 0, 675, 787, 320, 24);
-    controlsReady = true;
-    NOTIFYICONDATAW tray{sizeof(tray)};
-    tray.hWnd = hwnd;
-    tray.uID = 1;
-    tray.uFlags = NIF_ICON | NIF_TIP | NIF_MESSAGE;
-    tray.uCallbackMessage = WM_APP + 1;
-    tray.hIcon = LoadIconW(GetModuleHandleW(nullptr), MAKEINTRESOURCEW(101));
-    wcscpy_s(tray.szTip, L"FSR 3/4 + Frame Gen - open for injection status");
-    Shell_NotifyIconW(NIM_ADD, &tray);
-    runtimeBanner(launcher::RuntimeState::stopped, {});
-    SetTimer(hwnd, 1, 1000, nullptr);
-    autoCheckUpdates = launcher::readSetting(appDirectory / L"settings.ini", L"Updates",
-                                             L"AutomaticChecks", L"1") != L"0";
-    previewUpdates = launcher::readSetting(appDirectory / L"settings.ini", L"Updates",
-                                           L"PreviewReleases", L"1") != L"0";
-    SetTimer(hwnd, 3, 1500, nullptr);
-    SetTimer(hwnd, 4, 500, nullptr);
-}
+#include "launcher_design.inc"
 static LRESULT CALLBACK procedure(HWND hwnd, UINT message, WPARAM w, LPARAM l) {
     switch (message) {
     case WM_CREATE:
         createMainControls(hwnd);
+        return 0;
+    case WM_PAINT:
+        designPaint(hwnd);
+        return 0;
+    case WM_ERASEBKGND:
+        return 1;
+    case WM_SIZE:
+        designLayout(hwnd);
+        return 0;
+    case WM_MOUSEWHEEL:
+        designWheel(hwnd, GET_WHEEL_DELTA_WPARAM(w));
+        return 0;
+    case WM_VSCROLL: {
+        SCROLLINFO si{sizeof(si), SIF_ALL};
+        GetScrollInfo(hwnd, SB_VERT, &si);
+        switch (LOWORD(w)) {
+        case SB_THUMBTRACK:
+            designScroll = si.nTrackPos;
+            break;
+        case SB_LINEUP:
+            designScroll -= 36;
+            break;
+        case SB_LINEDOWN:
+            designScroll += 36;
+            break;
+        case SB_PAGEUP:
+            designScroll -= designPage;
+            break;
+        case SB_PAGEDOWN:
+            designScroll += designPage;
+            break;
+        case SB_TOP:
+            designScroll = 0;
+            break;
+        case SB_BOTTOM:
+            designScroll = designBottom;
+            break;
+        }
+        designLayout(hwnd);
+        return 0;
+    }
+    case WM_GETMINMAXINFO: {
+        auto info = reinterpret_cast<MINMAXINFO *>(l);
+        RECT work;
+        SystemParametersInfoW(SPI_GETWORKAREA, 0, &work, 0);
+        info->ptMinTrackSize = {std::min(theme::px(840), int(work.right - work.left) - 16),
+                                std::min(theme::px(600), int(work.bottom - work.top) - 16)};
+        return 0;
+    }
+    case WM_DPICHANGED: {
+        theme::dpiChanged(hwnd, HIWORD(w));
+        font = theme::fonts[0];
+        titleFont = theme::fonts[1];
+        auto r = reinterpret_cast<RECT *>(l);
+        SetWindowPos(hwnd, nullptr, r->left, r->top, r->right - r->left, r->bottom - r->top,
+                     SWP_NOZORDER | SWP_NOACTIVATE);
+        designLayout(hwnd);
+        return 0;
+    }
+    case WM_DRAWITEM:
+        if (theme::drawItem(reinterpret_cast<DRAWITEMSTRUCT *>(l)))
+            return TRUE;
+        break;
+    case WM_MEASUREITEM:
+        if (auto item = reinterpret_cast<MEASUREITEMSTRUCT *>(l); item->CtlType == ODT_COMBOBOX) {
+            item->itemHeight = theme::px(30);
+            return TRUE;
+        }
+        break;
+    case WM_APP + 6:
+        designFocus(hwnd, reinterpret_cast<HWND>(l));
         return 0;
     case WM_COMMAND:
         if (!controlsReady)
@@ -370,6 +361,9 @@ static LRESULT CALLBACK procedure(HWND hwnd, UINT message, WPARAM w, LPARAM l) {
                 return 0;
             }
             switch (id) {
+            case 250:
+                platformHelp(hwnd);
+                break;
             case 106:
                 applyCustomGraphics();
                 break;
@@ -430,6 +424,10 @@ static LRESULT CALLBACK procedure(HWND hwnd, UINT message, WPARAM w, LPARAM l) {
                             << (selected ? '1' : '0');
                     lastFGSelection = selected;
                     saveChoices();
+                    if (!running())
+                        graphicsMessage(L"Frame generation choice saved. The selected FSR mode is "
+                                        L"retained. Restart X-Plane to apply the provider.",
+                                        L"Frame generation choice saved · Restart to apply");
                 }
                 break;
             case 45:
@@ -510,17 +508,9 @@ static LRESULT CALLBACK procedure(HWND hwnd, UINT message, WPARAM w, LPARAM l) {
         return 0;
     case WM_CTLCOLORBTN:
     case WM_CTLCOLORSTATIC:
-        SetTextColor(reinterpret_cast<HDC>(w), GetSysColor(COLOR_WINDOWTEXT));
-        SetBkColor(reinterpret_cast<HDC>(w), GetSysColor(COLOR_WINDOW));
-        SetBkMode(reinterpret_cast<HDC>(w), OPAQUE);
-        if (reinterpret_cast<HWND>(l) == injectionBanner) {
-            bool active = bannerState == launcher::RuntimeState::active;
-            SetTextColor(reinterpret_cast<HDC>(w), active ? RGB(15, 95, 48) : RGB(75, 75, 75));
-            SetBkColor(reinterpret_cast<HDC>(w), GetSysColor(COLOR_WINDOW));
-            SetBkMode(reinterpret_cast<HDC>(w), OPAQUE);
-            return reinterpret_cast<LRESULT>(GetSysColorBrush(COLOR_WINDOW));
-        }
-        return reinterpret_cast<LRESULT>(GetSysColorBrush(COLOR_WINDOW));
+    case WM_CTLCOLOREDIT:
+    case WM_CTLCOLORLISTBOX:
+        return theme::colors(message, w, l);
     case WM_APP + 1:
         if (l == WM_LBUTTONDBLCLK || l == NIN_BALLOONUSERCLICK) {
             ShowWindow(hwnd, SW_RESTORE);
@@ -535,6 +525,7 @@ static LRESULT CALLBACK procedure(HWND hwnd, UINT message, WPARAM w, LPARAM l) {
             error(e);
             return 0;
         }
+        saveWindowSize(hwnd);
         DestroyWindow(hwnd);
         return 0;
     case WM_DESTROY: {
@@ -551,10 +542,7 @@ static LRESULT CALLBACK procedure(HWND hwnd, UINT message, WPARAM w, LPARAM l) {
             CloseHandle(child);
         if (aaChild)
             CloseHandle(aaChild);
-        if (font)
-            DeleteObject(font);
-        if (titleFont)
-            DeleteObject(titleFont);
+        theme::shutdown();
         PostQuitMessage(0);
         return 0;
     }

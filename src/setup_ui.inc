@@ -140,6 +140,11 @@ static LRESULT CALLBACK setupProcedure(HWND hwnd, UINT message, WPARAM w, LPARAM
         else if (LOWORD(w) == 142)
             DestroyWindow(hwnd);
         return 0;
+    case WM_CTLCOLORSTATIC:
+    case WM_CTLCOLOREDIT:
+    case WM_CTLCOLORBTN:
+    case WM_CTLCOLORLISTBOX:
+        return theme::colors(message, w, l);
     case WM_CLOSE:
         DestroyWindow(hwnd);
         return 0;
@@ -161,20 +166,28 @@ static void showSetup() {
     c.hInstance = GetModuleHandleW(nullptr);
     c.lpszClassName = L"XPFSR24SimulatorSetup";
     c.hCursor = LoadCursor(nullptr, IDC_ARROW);
-    c.hbrBackground = GetSysColorBrush(COLOR_WINDOW);
+    c.hbrBackground = theme::cardBrush;
     RegisterClassW(&c);
     setupWindow = CreateWindowExW(WS_EX_DLGMODALFRAME, c.lpszClassName,
                                   L"Simulator setup - required settings and read-only check",
                                   WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU, CW_USEDEFAULT,
-                                  CW_USEDEFAULT, 830, 720, window, nullptr, c.hInstance, nullptr);
+                                  CW_USEDEFAULT, modalSize(830, 720).cx, modalSize(830, 720).cy,
+                                  window, nullptr, c.hInstance, nullptr);
     ensure(setupWindow != nullptr, "Cannot open the simulator setup guide");
-    setupText = control(L"EDIT", setupReport().c_str(), ES_MULTILINE | ES_READONLY | WS_VSCROLL, 20,
-                        20, 775, 585, 139, setupWindow);
-    control(L"BUTTON", L"Check saved settings", BS_PUSHBUTTON | WS_TABSTOP, 20, 625, 245, 34, 140,
-            setupWindow);
-    control(L"BUTTON", L"Open full guide", BS_PUSHBUTTON | WS_TABSTOP, 285, 625, 245, 34, 141,
-            setupWindow);
-    control(L"BUTTON", L"Close", BS_PUSHBUTTON | WS_TABSTOP, 550, 625, 245, 34, 142, setupWindow);
+    theme::caption(setupWindow);
+    RECT rect;
+    GetClientRect(setupWindow, &rect);
+    int margin = theme::px(20), gap = theme::px(16), footer = rect.bottom - theme::px(60),
+        col = (rect.right - 2 * margin - 2 * gap) / 3;
+    setupText =
+        control(L"EDIT", setupReport().c_str(), ES_MULTILINE | ES_READONLY | WS_VSCROLL, margin,
+                margin, rect.right - 2 * margin, footer - margin - theme::px(16), 139, setupWindow);
+    control(L"BUTTON", L"Check saved settings", BS_PUSHBUTTON | WS_TABSTOP, margin, footer, col,
+            theme::px(36), 140, setupWindow);
+    control(L"BUTTON", L"Open full guide", BS_PUSHBUTTON | WS_TABSTOP, margin + col + gap, footer,
+            col, theme::px(36), 141, setupWindow);
+    control(L"BUTTON", L"Close", BS_PUSHBUTTON | WS_TABSTOP, margin + 2 * (col + gap), footer, col,
+            theme::px(36), 142, setupWindow);
     EnableWindow(window, FALSE);
     ShowWindow(setupWindow, SW_SHOW);
     SetFocus(setupText);

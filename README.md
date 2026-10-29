@@ -3,11 +3,11 @@
 # FSR 3/4 + Frame Gen for X-Plane 12
 
 **This is the separate native-motion experimental branch.**
-`0.5.9-experimental.1` adds an opt-in **Motion** selector; Camera-derived remains
+`0.6.0-experimental.1` includes the modern UI and an opt-in **Motion** selector; Camera-derived remains
 the default. Native renderer motion needs MSAA/FG/cockpit-screen restoration Off
 and can bypass on unsupported rendering paths. It has a separate installation
 and updater channel. Read the [experiment guide](docs/NATIVE-MOTION-EXPERIMENT.md)
-before testing. The regular 0.5.8-alpha release remains available.
+before testing. The regular 0.6.0-alpha release remains available.
 
 An experimental Windows Vulkan integration for AMD FSR Native AA, upscaling and
 frame generation, with a new current-frame cockpit-screen compositor for the
@@ -23,9 +23,15 @@ Laminar Research product, and is not a complete solution to ghosting or stutter.
 
 ## Features
 
-- Fresh per-process logs, stale camera-frame rejection and a temporary native
-  safeguard for a grounded external camera near terrain in experimental.2;
-  see [behavior and retest steps](docs/RENDERING-STABILITY.md).
+- Modern charcoal/champagne native launcher with rounded panels, clear focus
+  states, resizing/scrolling, accessible field names and persistent launch/status
+  controls. Presets and MSAA/FXAA remain on the main screen.
+- **Platform support:** current packages are Windows x64 only. Linux requires
+  a native port; macOS requires a separate Metal implementation. See the
+  [platform audit and port requirements](docs/PLATFORMS.md).
+- Fresh logs for every simulator process, stale camera-frame rejection and
+  temporary native rendering/FG pause for a grounded external camera near
+  terrain in 0.5.9. See [ground-camera behavior and testing](docs/RENDERING-STABILITY.md).
 - Frame-generation source matching/synchronization and safer temporal history
   handling in 0.5.6. See [stability changes and retest steps](docs/RENDERING-STABILITY.md).
 - Automatic startup checks for GitHub Releases, preview-channel selection and

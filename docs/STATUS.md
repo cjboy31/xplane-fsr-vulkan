@@ -1,4 +1,4 @@
-# 0.5.9-experimental.1: separate native renderer option
+# 0.6.0-experimental.1: separate native renderer option
 
 This branch adds an opt-in SSR-native motion implementation, separate from the
 unchanged default camera-derived path. The experimental installer and updater

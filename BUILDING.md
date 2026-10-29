@@ -9,7 +9,7 @@ an optional final `native-2d` or `native-array` argument (after mode, sample cou
 and resolve kind) to exercise the full loader -> SSR capture -> FSR path.
 Run the existing tests too: Camera-derived is still the default.
 
-This branch packages version 0.5.9-experimental.1, with a distinct per-user setup
+This branch packages version 0.6.0-experimental.1, with a distinct per-user setup
 identity and directory. Preserve licenses/xplane-fsr3-MIT.txt in source and
 binary packages; native_motion/shader_classify.* and native_motion.comp include
 MIT code adapted from JonathanOrr/xplane-fsr3 at the commit recorded in
@@ -19,6 +19,12 @@ inside ignored build directories.
 
 
 # Building on Windows x64
+
+The launcher links the Windows system GDI+, DWM and accessibility libraries for
+native styling, DPI handling and field annotations. No browser runtime, bundled
+font or third-party UI framework is added. These are launcher-only dependencies;
+the rendering layer and publisher do not initialize the UI. Other operating
+systems require a port; see [the platform audit](docs/PLATFORMS.md).
 
 Use PowerShell 7 with these dependencies installed locally:
 

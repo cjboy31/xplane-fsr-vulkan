@@ -1,5 +1,29 @@
 # Changes
 
+## 0.6.0-experimental.1
+
+- Redesign the native Windows launcher with a charcoal palette, champagne
+  accents, rounded cards, clearer typography, custom dropdown/button/toggle
+  styling and visible keyboard focus. Keep presets, FSR/FG, MSAA/FXAA, input
+  scale and output settings on the main screen.
+- Add responsive layout, vertical scrolling at smaller sizes, focus-driven
+  scrolling and per-monitor DPI handling. Keep launch actions and live status
+  visible in the footer. Annotate native field names for accessibility.
+- Restyle help, simulator setup and update windows. Keep real injection states,
+  ground-camera safety, saved-choice handling and update integrity checks.
+- Add a Platform support action and an evidence-based platform audit: current
+  packages are Windows x64 only. Linux is a porting target, not confirmed
+  compatible; macOS needs a separate Metal renderer implementation.
+
+Keep Camera-derived as the default and Native renderer as the opt-in second
+motion choice. Preserve the separate experimental installer identity and updater
+channel. Native motion still requires MSAA, FXAA, FG and screen restoration Off.
+
+The renderer algorithms, motion sources, bundled provider binaries and camera
+publisher are unchanged. No Linux/Mac package or new visual-quality claim is
+introduced. Existing installer/update identities and saved settings are retained.
+
+
 ## 0.5.9-experimental.2
 
 - Bring the regular 0.5.9 session-log reset and ground-camera safeguards to

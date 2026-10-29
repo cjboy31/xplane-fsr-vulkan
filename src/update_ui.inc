@@ -221,6 +221,11 @@ static LRESULT CALLBACK updateProcedure(HWND hwnd, UINT message, WPARAM w, LPARA
                         MB_OK | MB_ICONEXCLAMATION);
         }
         return 0;
+    case WM_CTLCOLORSTATIC:
+    case WM_CTLCOLOREDIT:
+    case WM_CTLCOLORBTN:
+    case WM_CTLCOLORLISTBOX:
+        return theme::colors(message, w, l);
     case WM_CLOSE: {
         std::lock_guard<std::mutex> guard(updateJob->mutex);
         if (updateJob->phase == UpdateJob::downloading || updateJob->phase == UpdateJob::ready)
@@ -246,32 +251,36 @@ static void showUpdates() {
     c.hInstance = GetModuleHandleW(nullptr);
     c.lpszClassName = L"XPFSR24Updates";
     c.hCursor = LoadCursor(nullptr, IDC_ARROW);
-    c.hbrBackground = GetSysColorBrush(COLOR_WINDOW);
+    c.hbrBackground = theme::cardBrush;
     RegisterClassW(&c);
     updateWindow = CreateWindowExW(WS_EX_DLGMODALFRAME, c.lpszClassName, L"Application updates",
                                    WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU, CW_USEDEFAULT,
-                                   CW_USEDEFAULT, 700, 490, window, nullptr, c.hInstance, nullptr);
+                                   CW_USEDEFAULT, modalSize(700, 490).cx, modalSize(700, 490).cy,
+                                   window, nullptr, c.hInstance, nullptr);
     ensure(updateWindow != nullptr, "Could not open application updates");
-    autoCheckBox = control(L"BUTTON", L"Automatically check for updates when the app opens",
-                           BS_AUTOCHECKBOX | WS_TABSTOP, 20, 20, 645, 28, 150, updateWindow);
-    previewCheckBox = control(L"BUTTON", L"Include native-motion experimental prereleases",
-                              BS_AUTOCHECKBOX | WS_TABSTOP, 20, 54, 645, 28, 151, updateWindow);
+    autoCheckBox = scaledControl(L"BUTTON", L"Automatically check for updates when the app opens",
+                                 BS_AUTOCHECKBOX | WS_TABSTOP, 20, 20, 645, 28, 150, updateWindow);
+    previewCheckBox =
+        scaledControl(L"BUTTON", L"Include native-motion experimental prereleases",
+                      BS_AUTOCHECKBOX | WS_TABSTOP, 20, 54, 645, 28, 151, updateWindow);
     SendMessageW(autoCheckBox, BM_SETCHECK, autoCheckUpdates ? BST_CHECKED : BST_UNCHECKED, 0);
     SendMessageW(previewCheckBox, BM_SETCHECK, previewUpdates ? BST_CHECKED : BST_UNCHECKED, 0);
-    control(L"STATIC",
-            L"Preview builds are experimental. Installation requires your click; it never "
-            L"interrupts a flight.",
-            0, 20, 92, 645, 40, 0, updateWindow);
-    updateText = control(L"EDIT", L"", ES_MULTILINE | ES_READONLY | WS_VSCROLL, 20, 140, 645, 195,
-                         0, updateWindow);
-    checkUpdateButton = control(L"BUTTON", L"Check now", BS_PUSHBUTTON | WS_TABSTOP, 20, 350, 145,
-                                36, 152, updateWindow);
-    releaseNotesButton = control(L"BUTTON", L"Open release", BS_PUSHBUTTON | WS_TABSTOP, 180, 350,
-                                 145, 36, 154, updateWindow);
-    installUpdateButton = control(L"BUTTON", L"Download and install", BS_PUSHBUTTON | WS_TABSTOP,
-                                  340, 350, 325, 36, 153, updateWindow);
-    control(L"BUTTON", L"Close / cancel download", BS_PUSHBUTTON | WS_TABSTOP, 420, 401, 245, 32,
-            155, updateWindow);
+    scaledControl(L"STATIC",
+                  L"Preview builds are experimental. Installation requires your click; it never "
+                  L"interrupts a flight.",
+                  0, 20, 92, 645, 40, 0, updateWindow);
+    updateText = scaledControl(L"EDIT", L"", ES_MULTILINE | ES_READONLY | WS_VSCROLL, 20, 140, 645,
+                               195, 0, updateWindow);
+    checkUpdateButton = scaledControl(L"BUTTON", L"Check now", BS_PUSHBUTTON | WS_TABSTOP, 20, 350,
+                                      145, 36, 152, updateWindow);
+    releaseNotesButton = scaledControl(L"BUTTON", L"Open release", BS_PUSHBUTTON | WS_TABSTOP, 180,
+                                       350, 145, 36, 154, updateWindow);
+    installUpdateButton =
+        scaledControl(L"BUTTON", L"Download and install", BS_PUSHBUTTON | WS_TABSTOP, 340, 350, 325,
+                      36, 153, updateWindow);
+    scaledControl(L"BUTTON", L"Close / cancel download", BS_PUSHBUTTON | WS_TABSTOP, 420, 401, 245,
+                  32, 155, updateWindow);
+    theme::caption(updateWindow);
     refreshUpdateUI();
     EnableWindow(window, FALSE);
     ShowWindow(updateWindow, SW_SHOW);

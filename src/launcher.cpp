@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: MIT
+#define XPFSR_NATIVE_MOTION 1
 #include "graphics_settings.hpp"
 #include "shared.hpp"
 #include "launcher_preferences.hpp"
 #include "runtime_status.hpp"
 #include "session_logs.hpp"
+#include "launcher_theme.hpp"
 #include <algorithm>
 #include <bcrypt.h>
 #include <commctrl.h>
@@ -22,7 +24,9 @@ static fs::path appDirectory, simulator;
 static std::wstring launcherWindowClass;
 static HWND window{}, pathBox{}, argsBox{}, statusBox{}, toggle{}, modeBox{}, fgBox{}, ghostBox{},
     cockpitBox{}, tintBox{}, motionBox{};
-static HWND presetBox{}, presetNote{}, savedLabel{}, injectionBanner{}, motionSetupNote{};
+static HWND presetBox{}, presetNote{}, savedLabel{}, injectionBanner{}, motionSetupNote{},
+    footerStatus{};
+static const wchar_t *designSetupHint();
 static launcher::Preferences preferences;
 static launcher::RuntimeMonitor runtimeMonitor;
 static launcher::RuntimeState bannerState{};
@@ -35,6 +39,29 @@ static int launchedFG{}, lastFGSelection{};
 static bool checkingFG{}, checkingCockpit{};
 static app::Shared *shared{};
 static HFONT font{}, titleFont{};
+static int preferredWindowSize(const wchar_t *key, int fallback, int minimum, int maximum) {
+    try {
+        return std::clamp(std::stoi(launcher::readSetting(appDirectory / L"settings.ini", L"Window",
+                                                          key, std::to_wstring(fallback).c_str())),
+                          minimum, maximum);
+    } catch (...) {
+        return fallback;
+    }
+}
+static void saveWindowSize(HWND h) {
+    if (IsIconic(h) || IsZoomed(h))
+        return;
+    RECT r;
+    GetClientRect(h, &r);
+    auto file = appDirectory / L"settings.ini";
+    int scroll = (GetWindowLongPtrW(h, GWL_STYLE) & WS_VSCROLL) ? theme::scrollbarWidth() : 0;
+    WritePrivateProfileStringW(L"Window", L"ClientWidth",
+                               std::to_wstring(MulDiv(r.right + scroll, 96, theme::dpi)).c_str(),
+                               file.c_str());
+    WritePrivateProfileStringW(L"Window", L"ClientHeight",
+                               std::to_wstring(MulDiv(r.bottom, 96, theme::dpi)).c_str(),
+                               file.c_str());
+}
 static std::wstring text(HWND control) {
     int n = GetWindowTextLengthW(control);
     std::wstring value(n + 1, L'\0');
@@ -526,6 +553,8 @@ static void refresh() {
 }
 #include "launcher_ui.inc"
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, LPWSTR, int show) {
+    theme::enableDpi();
+    theme::dpi = theme::systemDpi();
     CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
     wchar_t self[32768]{};
     GetModuleFileNameW(nullptr, self, 32768);
@@ -584,15 +613,25 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, LPWSTR, int show) {
     c.hIcon = LoadIconW(instance, MAKEINTRESOURCEW(101));
     c.hbrBackground = reinterpret_cast<HBRUSH>(COLOR_WINDOW + 1);
     RegisterClassW(&c);
-    auto hwnd = CreateWindowExW(
-        0, c.lpszClassName, L"FSR 3/4 + Frame Gen for X-Plane - Native Motion EXPERIMENTAL",
-        WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX, CW_USEDEFAULT, CW_USEDEFAULT,
-        1040, 910, nullptr, nullptr, instance, nullptr);
+    DWORD style = WS_OVERLAPPEDWINDOW | WS_VSCROLL | WS_CLIPCHILDREN;
+    RECT work;
+    SystemParametersInfoW(SPI_GETWORKAREA, 0, &work, 0);
+    RECT size{0, 0, theme::px(preferredWindowSize(L"ClientWidth", 1260, 840, 1800)),
+              theme::px(preferredWindowSize(L"ClientHeight", 1040, 600, 1800))};
+    AdjustWindowRectEx(&size, style, FALSE, 0);
+    int width = std::min(int(size.right - size.left), int(work.right - work.left) - theme::px(24));
+    int height = std::min(int(size.bottom - size.top), int(work.bottom - work.top) - theme::px(24));
+    auto hwnd = CreateWindowExW(0, c.lpszClassName,
+                                L"FSR 3/4 + Frame Gen for X-Plane - Native Motion EXPERIMENTAL",
+                                style, work.left + (work.right - work.left - width) / 2,
+                                work.top + (work.bottom - work.top - height) / 2, width, height,
+                                nullptr, nullptr, instance, nullptr);
     ShowWindow(hwnd, show);
     UpdateWindow(hwnd);
     MSG message{};
     while (GetMessageW(&message, nullptr, 0, 0) > 0) {
-        if (!IsDialogMessageW(hwnd, &message)) {
+        auto active = GetActiveWindow();
+        if (!active || !IsDialogMessageW(active, &message)) {
             TranslateMessage(&message);
             DispatchMessageW(&message);
         }

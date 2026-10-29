@@ -62,7 +62,7 @@ New-Item -ItemType Directory -Path (Join-Path $installed 'logs'),(Join-Path $ins
 Set-Content -LiteralPath (Join-Path $installed 'logs\keep.txt') -Value 'Test user log'
 Set-Content -LiteralPath (Join-Path $installed 'plugin-backups\keep.txt') -Value 'Test user backup'
 Set-Content -LiteralPath (Join-Path $installed 'user-file.txt') -Value 'Test unrelated user file'
-Add-Content -LiteralPath (Join-Path $installed 'settings.ini') -Value "`r`n[Launcher]`r`nPreset=fsr4-4k-quality`r`nMode=4`r`nMotionSource=1`r`nFrameGeneration=2`r`nCockpitRestore=0`r`nEnabled=1`r`nGhostReduction=0`r`nAlignmentTint=0"
+Add-Content -LiteralPath (Join-Path $installed 'settings.ini') -Value "`r`n[Launcher]`r`nPreset=fsr4-4k-quality`r`nMode=4`r`nMotionSource=1`r`nFrameGeneration=2`r`nCockpitRestore=0`r`nEnabled=1`r`nGhostReduction=0`r`nAlignmentTint=0`r`n[Window]`r`nClientWidth=900`r`nClientHeight=740"
 $savedChoiceBlock = (Get-Content -LiteralPath (Join-Path $installed 'settings.ini') -Raw) -split '\[Launcher\]',2 | Select-Object -Last 1
 $code = Run-Setup ('/S /TEST=1 /XPLANE="'+$simulator+'" /D='+$installed)
 if($code -ne 0){throw "Recognized update failed: $code"}
