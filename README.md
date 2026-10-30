@@ -13,7 +13,8 @@ Laminar Research product, and is not a complete solution to ghosting or stutter.
 
 ## Downloads and current source
 
-- **Windows:** [0.6.1-alpha installer and instructions](https://github.com/cjboy31/xplane-fsr-vulkan/releases/tag/v0.6.1-alpha). Built-in frame generation is suspended in regular releases.
+- **Windows:** [0.6.2-alpha installer and instructions](https://github.com/cjboy31/xplane-fsr-vulkan/releases/tag/v0.6.2-alpha). Built-in frame generation is suspended in regular releases.
+- **Feature video:** [Watch or download the 100-second narrated guide](https://github.com/cjboy31/xplane-fsr-vulkan/releases/download/v0.6.2-alpha/XPlane-FSR3-4-0.6.2-alpha-Feature-Guide.mp4). Fresh real Native AA comparison, setup help, captions and immediate Skip in the Windows launcher. [Versioned-video workflow](https://github.com/cjboy31/xplane-fsr-vulkan/blob/codex/saved-presets-and-status/docs/FEATURE-VIDEOS.md).
 - **Linux:** [Native FSR 3.1 preview downloads](https://github.com/cjboy31/xplane-fsr-vulkan/releases/tag/native-preview-2026.10.29.1) — requires MSAA off and FSR supersampling enabled; real-flight validation is pending.
 - **Mac:** [Universal compatibility-probe download](https://github.com/cjboy31/xplane-fsr-vulkan/releases/tag/native-preview-2026.10.29.1) — diagnostics only; **Mac FSR/Metal rendering is not implemented**.
 - **Combined Linux/Mac RAR:** [Download the native preview package](https://github.com/cjboy31/xplane-fsr-vulkan/releases/download/native-preview-2026.10.29.1/XPlane-FSR-Native-0.6.2-platform-preview.1.rar). Includes installation instructions and validation notes.
@@ -29,7 +30,7 @@ features are unavailable. Read the selected release's instructions and limitatio
 
 - Explicit Vulkan layer enabled only for X-Plane started by the launcher.
 - FSR 3.1.6 compatibility and 4.1.2 ML-preview AA/upscaling providers.
-- Optional FSR frame generation with SDK-controlled presentation.
+- Built-in frame generation is suspended in current regular releases; development stays experimental.
 - Seven resolution presets configuring output, internal scale and AA settings,
   with backups and selective restoration.
 - An independent Vulkan cockpit compositor: replays current-scene screen pixels
