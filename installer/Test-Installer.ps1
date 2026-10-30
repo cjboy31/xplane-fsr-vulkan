@@ -34,7 +34,14 @@ if(@(Get-ChildItem -LiteralPath $unrelated).Count -ne 1){throw 'Unrelated direct
 $code = Run-Setup ('/S /TEST=1 /XPLANE="'+(Join-Path $testRoot 'no-simulator')+'" /D='+$invalid)
 if($code -ne 3){throw "Invalid simulator path was not rejected with code 3: $code"}
 if(Test-Path -LiteralPath $invalid){throw 'Invalid-path installation created files'}
-$simulator = 'D:\X-Plane 12'
+$simulator = Join-Path $testRoot 'simulator fixture'
+$cameraFolder = Join-Path $simulator 'Resources\plugins\XPFSR24\64'
+$prefsFolder = Join-Path $simulator 'Output\preferences'
+New-Item -ItemType Directory -Force -Path $cameraFolder,$prefsFolder | Out-Null
+# Setup validates the filename only. These inert sentinels are never executed.
+Set-Content -LiteralPath (Join-Path $simulator 'X-Plane.exe') -Value 'Installer fixture only; not executable.'
+Set-Content -LiteralPath (Join-Path $cameraFolder 'win.xpl') -Value 'Preserve this fixture camera plugin.'
+Set-Content -LiteralPath (Join-Path $prefsFolder 'X-Plane.prf') -Value 'Preserve these fixture graphics preferences.'
 $camera = Join-Path $simulator 'Resources\plugins\XPFSR24\64\win.xpl'
 $cameraBefore = if(Test-Path -LiteralPath $camera){(Get-FileHash -LiteralPath $camera).Hash}else{''}
 $prefs = Join-Path $simulator 'Output\preferences\X-Plane.prf'
@@ -114,6 +121,7 @@ if($cameraBefore -and (Get-FileHash -LiteralPath $camera).Hash -ne $cameraBefore
 if($prefsBefore -and (Get-FileHash -LiteralPath $prefs).Hash -ne $prefsBefore){throw 'Simulator preferences changed'}
 $result = [ordered]@{status='PASS';testedAt=(Get-Date -Format o);archiveSha256=(Get-FileHash -LiteralPath $archive).Hash.ToLowerInvariant();archiveBytes=(Get-Item -LiteralPath $archive).Length;payloadHashesVerified=$manifest.files.Count;rarIntegrity='PASS';roundTripExtraction='PASS';invalidSimulatorRejected='PASS';unrelatedFolderRejected='PASS';silentInstall='PASS';recognizedUpdate='PASS';savedChoicesPreservedOnUpdate='PASS';userFilesPreservedOnUninstall='PASS';simulatorCameraUnchanged='PASS';simulatorPreferencesUnchanged='PASS';testMode='Per-user registry and shortcuts skipped; all test files confined to workspace';testFolder=$testRoot}
 $result.setupSha256=(Get-FileHash -LiteralPath $setup).Hash.ToLowerInvariant()
+$result.simulatorFixture='Workspace-only inert files; no live simulator installation used'
 $result.setupBytes=(Get-Item -LiteralPath $setup).Length
 $result.automaticUpdate='PASS'
 $result.automaticUpdateSettingsPreserved='PASS'

@@ -12,7 +12,9 @@ Use PackageVersion/WindowsVersion, ReleaseFolder/PackageFolder/ArchiveName and
 IconPath matching the release. Generated installer files stay under ignored
 installer/build-<version>. Run Test-Installer.ps1 against that exact RAR using
 the same WorkspaceRoot/PackageFolder/ArchiveName. Tests use isolated folders,
-skip registry/shortcuts via /TEST=1, and never start the simulator. The setup
+skip registry/shortcuts via /TEST=1, and never start the simulator. Simulator
+validation and preservation checks use inert workspace fixtures; test mode skips
+host simulator discovery. The setup
 included in that tested archive is the standalone asset passed to Prepare-Release.
 
 The launcher requests `/S /AUTOUPDATE=1 /PARENT=<pid> /D=<existing app folder>`.

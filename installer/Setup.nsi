@@ -67,9 +67,16 @@ Function .onInit
   StrCpy $InstallLock -1
   StrCpy $DesktopWanted 0
   StrCpy $XPlaneDir ""
-  IfFileExists "D:\X-Plane 12\X-Plane.exe" 0 +2
-    StrCpy $XPlaneDir "D:\X-Plane 12"
   ${GetParameters} $Parameters
+  ClearErrors
+  ${GetOptions} $Parameters "/TEST=" $0
+  ${If} $0 == "1"
+    StrCpy $TestMode 1
+  ${EndIf}
+  ${If} $TestMode != 1
+    IfFileExists "D:\X-Plane 12\X-Plane.exe" 0 +2
+      StrCpy $XPlaneDir "D:\X-Plane 12"
+  ${EndIf}
   ClearErrors
   ${GetOptions} $Parameters "/AUTOUPDATE=" $0
   ${If} $0 == "1"
@@ -99,11 +106,6 @@ Function .onInit
   ReadINIStr $0 "$INSTDIR\XPFSR24-Installation.ini" "Installation" "Product"
   ${If} $0 == "XPFSR24-community-alpha"
     ReadINIStr $DesktopWanted "$INSTDIR\XPFSR24-Installation.ini" "Installation" "DesktopShortcut"
-  ${EndIf}
-  ClearErrors
-  ${GetOptions} $Parameters "/TEST=" $0
-  ${If} $0 == "1"
-    StrCpy $TestMode 1
   ${EndIf}
   ClearErrors
   ${GetOptions} $Parameters "/XPLANE=" $0
