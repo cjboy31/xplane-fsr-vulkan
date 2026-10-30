@@ -13,10 +13,10 @@ default Cirrus SR22. Original project code and artwork are MIT licensed.
 The application is **FSR 3/4 + Frame Gen for X-Plane**. **FSR Ghosting Fix** is
 the optional cockpit-screen feature, not the application name.
 
-**Developer preview.** This project is being opened for community development.
-GPU fixtures pass on a Radeon AI PRO R9700; the new SR22 screen projection and
-visual quality still need live-flight validation. It is not an official AMD or
-Laminar Research product, and is not a complete solution to ghosting or stutter.
+**Community preview.** GPU fixtures and selected X-Plane 12.4.4 live tests pass
+on a Radeon AI PRO R9700. Broader aircraft, hardware, display and long-flight
+quality still need validation. This is not an official AMD or Laminar Research
+product, and is not a complete solution to ghosting or stutter.
 
 ## Downloads and current source
 
@@ -145,11 +145,11 @@ is read from the user's installed SR22 at runtime and is never embedded here.
 No endorsement by AMD, Laminar Research, X-Plane or reference-mod authors is claimed.
 
 
-The 0.6.4 source adds **Updates / Channel > Normal / Experimental**. Normal
-includes the project's alpha builds with FG disabled. Experimental installers
-are separate development packages; selecting a channel only checks availability.
+Use **Updates / Channel > Normal / Experimental** to select future updates.
+Starting with 0.7.1, both include all current NR, FG and compatibility options.
+Normal is recommended; Experimental receives future development builds.
 The app shows installed and selected channels separately and requires an explicit install action to change builds. Recognized installations use
 **Switch and install**; extracted copies use **Switch using setup...** with a
 verified installer and a folder-selection wizard. See [installation guidance](docs/INSTALLATION.md)
 and [release policy](docs/RELEASING.md). Both versioned downloads are listed above;
-selecting a channel never turns on FG in an already installed Normal build.
+selecting a channel does not install a build or enable a rendering option.
