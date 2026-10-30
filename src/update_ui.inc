@@ -187,6 +187,17 @@ static void pollUpdate() {
 }
 static LRESULT CALLBACK updateProcedure(HWND hwnd, UINT message, WPARAM w, LPARAM l) {
     switch (message) {
+    case WM_DRAWITEM:
+        if (theme::drawItem(reinterpret_cast<DRAWITEMSTRUCT *>(l)))
+            return TRUE;
+        break;
+    case WM_MEASUREITEM:
+        if (auto item = reinterpret_cast<MEASUREITEMSTRUCT *>(l);
+            item && item->CtlType == ODT_COMBOBOX) {
+            item->itemHeight = theme::px(30);
+            return TRUE;
+        }
+        break;
     case WM_COMMAND:
         try {
             switch (LOWORD(w)) {

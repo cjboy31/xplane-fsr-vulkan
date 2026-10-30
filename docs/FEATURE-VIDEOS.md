@@ -129,3 +129,12 @@ Background-only scripts publish only `capture.background_only`. Supply a local,
 ignored `--capture-config` JSON and matching private evidence to render them;
 these inputs are not released. Public provenance omits all local hardware,
 simulator/aircraft/resolution and evidence details for background-only films.
+
+
+The 0.6.5 dropdown maintenance patch reuses the owner-approved 0.6.4 guide
+byte-for-byte (SHA-256 `65b201e3334ee15712d9f5bbb7b3ce8830bdc8ece6b1cda85a652c61a476b546`).
+The film still identifies its original 0.6.4 feature brief. Versioned media
+manifests, source scripts and public provenance explicitly identify this reuse;
+release notes describe the dropdown correction separately. No revised narration,
+footage, caption or new rendering-benefit claim is introduced. Approval of new
+video revisions remains required.

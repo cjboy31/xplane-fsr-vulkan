@@ -1,5 +1,27 @@
 # Changes
 
+## 0.6.5-alpha
+
+- Fix the blank release-channel dropdown by forwarding the updater window's
+  owner-draw and item-measure messages to the shared theme renderer. Both Normal
+  and Experimental choices are now painted, including selection highlighting.
+- Verify the real updater window procedure against bitmap output at 100%, 125%,
+  150% and 200% display scaling, in both Normal and Experimental build variants.
+  Check row labels, background/text pixels, DPI height and persisted selection.
+  The regression fails on the previous missing draw-handler implementation.
+- Keep update/channel behavior, saved choices and renderer policies unchanged.
+  Normal still enforces FG Off. This maintenance patch includes the already
+  approved 0.6.4 channel/display video byte-for-byte, with explicit reuse
+  provenance and a matching package-version manifest; no film revision.
+
+## 0.6.5-experimental.1
+
+- Include the same release-channel dropdown drawing/measurement correction and
+  scaling regression checks in the separate frame-generation development build.
+- Preserve FG options and their existing experimental limitations. No renderer,
+  frame-generation or motion-vector algorithm changes are introduced.
+- Bundle the previously approved 0.6.4 guide unchanged, with reuse disclosed.
+
 ## 0.6.4-alpha
 
 - Replace the ambiguous preview checkbox with a saved **Normal / Experimental**
