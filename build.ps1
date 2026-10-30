@@ -4,13 +4,15 @@ param(
  [string]$Python='python',
  [Parameter(Mandatory)][string]$VulkanHeaders,
  [Parameter(Mandatory)][string]$XPlaneSdk,
- [Parameter(Mandatory)][string]$FsrSdk
+ [Parameter(Mandatory)][string]$FsrSdk,
+ [switch]$FrameGenerationDevelopment
 )
 $ErrorActionPreference='Stop'
 $root=$PSScriptRoot
 $source=Join-Path $root 'src'
 $bin=Join-Path $root 'app'
 $build=Join-Path $root 'build'
+[string[]]$channelFlags = if($FrameGenerationDevelopment){@('-DXPFSR_FG_DEVELOPMENT=1')}else{@()}
 New-Item -ItemType Directory -Force -Path $bin,$build,(Join-Path $bin 'layer'),(Join-Path $bin 'plugin\64'),(Join-Path $bin 'runtime'),(Join-Path $build 'generated') | Out-Null
 foreach($format in @('16','32')){
  $shaderArgs=@('-V','--target-env','vulkan1.2','-S','comp')
@@ -22,7 +24,7 @@ foreach($format in @('16','32')){
 if($LASTEXITCODE -ne 0){throw 'Cockpit shader embedding failed'}
 $resourceCompiler=Join-Path (Split-Path $Compiler -Parent) 'x86_64-w64-mingw32-windres.exe'
 Push-Location $source
-try{& $resourceCompiler 'app.rc' '-O' 'coff' '-o' (Join-Path $build 'app-icon.o');if($LASTEXITCODE -ne 0){throw 'App icon resource compilation failed'}}finally{Pop-Location}
+try{& $resourceCompiler @channelFlags 'app.rc' '-O' 'coff' '-o' (Join-Path $build 'app-icon.o');if($LASTEXITCODE -ne 0){throw 'App icon resource compilation failed'}}finally{Pop-Location}
 if(-not(Test-Path -LiteralPath (Join-Path $source 'fsr24.hpp'))){throw 'Missing source adapter: src\fsr24.hpp'}
 & $Glslang '-V' '--target-env' 'vulkan1.2' '-S' 'comp' (Join-Path $source 'temporal.comp') '-o' (Join-Path $build 'temporal.spv')
 if($LASTEXITCODE -ne 0){throw 'Shader compilation failed'}
@@ -31,12 +33,12 @@ if($LASTEXITCODE -ne 0){throw 'MSAA packing shader compilation failed'}
 & $Python (Join-Path $root 'tools\generate.py') (Join-Path $build 'generated') $VulkanHeaders (Join-Path $build 'temporal.spv') (Join-Path $build 'temporal-msaa.spv')
 if($LASTEXITCODE -ne 0){throw 'Header generation failed'}
 $includes=@(('-I'+(Join-Path $build 'generated')),('-I'+(Join-Path $VulkanHeaders 'include')),('-I'+(Join-Path $FsrSdk 'Kits\FidelityFX\api\include')),('-I'+(Join-Path $FsrSdk 'Kits\FidelityFX\upscalers\include')),('-I'+(Join-Path $FsrSdk 'Kits\FidelityFX\framegeneration\include')))
-& $Compiler '-std=c++17' '-O2' '-static' '-shared' '-Wl,--no-insert-timestamp' '-DWIN32_LEAN_AND_MEAN' '-DNOMINMAX' @includes (Join-Path $source 'layer.cpp') (Join-Path $source 'layer.def') '-lbcrypt' '-o' (Join-Path $bin 'layer\XPFSR24Layer.dll')
+& $Compiler '-std=c++17' '-O2' '-static' '-shared' '-Wl,--no-insert-timestamp' '-DWIN32_LEAN_AND_MEAN' '-DNOMINMAX' @channelFlags @includes (Join-Path $source 'layer.cpp') (Join-Path $source 'layer.def') '-lbcrypt' '-o' (Join-Path $bin 'layer\XPFSR24Layer.dll')
 if($LASTEXITCODE -ne 0){throw 'Layer build failed'}
 & $Compiler '-std=c++17' '-O2' '-static' '-shared' '-Wl,--no-insert-timestamp' '-DWIN32_LEAN_AND_MEAN' '-DNOMINMAX' ('-I'+(Join-Path $XPlaneSdk 'CHeaders\XPLM')) (Join-Path $source 'plugin.cpp') (Join-Path $XPlaneSdk 'Libraries\Win\XPLM_64.lib') '-o' (Join-Path $bin 'plugin\64\win.xpl')
 if($LASTEXITCODE -ne 0){throw 'Plugin build failed'}
 if(Test-Path (Join-Path $source 'launcher.cpp')){
- & $Compiler '-std=c++17' '-O2' '-static' '-municode' '-mwindows' '-Wl,--no-insert-timestamp' '-DWIN32_LEAN_AND_MEAN' '-DNOMINMAX' (Join-Path $source 'launcher.cpp') (Join-Path $build 'app-icon.o') '-lcomctl32' '-lshell32' '-lole32' '-lbcrypt' '-lwinhttp' '-lgdiplus' '-ldwmapi' '-luxtheme' '-loleacc' '-luuid' '-lmfuuid' '-loleaut32' '-o' (Join-Path $bin 'XPlaneFSR24.exe')
+ & $Compiler '-std=c++17' '-O2' '-static' '-municode' '-mwindows' '-Wl,--no-insert-timestamp' '-DWIN32_LEAN_AND_MEAN' '-DNOMINMAX' @channelFlags (Join-Path $source 'launcher.cpp') (Join-Path $build 'app-icon.o') '-lcomctl32' '-lshell32' '-lole32' '-lbcrypt' '-lwinhttp' '-lgdiplus' '-ldwmapi' '-luxtheme' '-loleacc' '-luuid' '-lmfuuid' '-loleaut32' '-o' (Join-Path $bin 'XPlaneFSR24.exe')
  if($LASTEXITCODE -ne 0){throw 'Launcher build failed'}
 }
 & $Compiler '-std=c++17' '-O2' '-static' '-municode' '-Wl,--no-insert-timestamp' '-DWIN32_LEAN_AND_MEAN' '-DNOMINMAX' @includes (Join-Path $source 'aa_test.cpp') '-o' (Join-Path $bin 'NativeAACheck.exe')

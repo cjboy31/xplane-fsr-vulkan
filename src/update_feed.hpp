@@ -9,7 +9,11 @@
 #include <tuple>
 #include <vector>
 namespace updates {
-inline constexpr char currentVersion[] = "0.6.3-alpha";
+#ifdef XPFSR_FG_DEVELOPMENT
+inline constexpr char currentVersion[] = "0.6.4-experimental.1";
+#else
+inline constexpr char currentVersion[] = "0.6.4-alpha";
+#endif
 inline constexpr char repository[] = "https://github.com/cjboy31/xplane-fsr-vulkan";
 inline void require(bool ok, const char *why) {
     if (!ok)
@@ -214,6 +218,7 @@ class Parser {
 };
 struct Version {
     int major{}, minor{}, patch{}, stage{3}, revision{};
+    bool experimental{};
     auto key() const { return std::make_tuple(major, minor, patch, stage, revision); }
 };
 inline Version version(std::string s) {
@@ -241,7 +246,8 @@ inline Version version(std::string s) {
         while (i < s.size() && s[i] != '.')
             ++i;
         auto stage = s.substr(b, i - b);
-        v.stage = stage == "alpha" ? 0 : stage == "beta" ? 1 : stage == "rc" ? 2 : -1;
+        v.experimental = stage == "experimental";
+        v.stage = stage == "alpha" || v.experimental ? 0 : stage == "beta" ? 1 : stage == "rc" ? 2 : -1;
         require(v.stage >= 0, "Unsupported update channel");
         if (i < s.size()) {
             ++i;
@@ -251,15 +257,30 @@ inline Version version(std::string s) {
     require(i == s.size(), "Invalid update version");
     return v;
 }
+enum class Channel { Normal, Experimental };
+inline Channel channel(const Version &v) {
+    return v.experimental ? Channel::Experimental : Channel::Normal;
+}
+inline Channel installedChannel() { return channel(version(currentVersion)); }
+inline const wchar_t *channelName(Channel c) {
+    return c == Channel::Experimental ? L"Experimental" : L"Normal";
+}
 struct Release {
     std::string tag, name, notes, url, assetURL, digest;
     uint64_t bytes{};
+    bool channelSwitch{};
     explicit operator bool() const { return !tag.empty(); }
 };
-inline Release select(const std::string &feed, const std::string &current, bool previews) {
+inline Release select(const std::string &feed, const std::string &current, Channel requested,
+                      bool allowChannelSwitch = false) {
     auto root = Parser(feed).parse();
     require(root.type == Json::array, "GitHub did not return a release list");
-    auto best = version(current);
+    auto installed = version(current);
+    bool switching = channel(installed) != requested;
+    if (switching && !allowChannelSwitch)
+        return {};
+    auto best = switching ? Version{} : installed;
+    bool haveBest = !switching;
     Release chosen;
     for (const auto &r : root.items) {
         if (r.at("draft").yes())
@@ -271,10 +292,11 @@ inline Release select(const std::string &feed, const std::string &current, bool 
         } catch (...) {
             continue;
         }
-        if (tag.empty() || tag[0] != 'v' || v.key() <= best.key())
+        if (tag.empty() || tag[0] != 'v' || channel(v) != requested ||
+            (haveBest && v.key() <= best.key()))
             continue;
         bool preview = r.at("prerelease").yes();
-        if (preview != (v.stage < 3) || (preview && !previews))
+        if (preview != (v.stage < 3))
             continue;
         auto url = std::string(repository) + "/releases/tag/" + tag;
         require(r.at("html_url").str() == url, "Update links to an unexpected repository");
@@ -313,6 +335,8 @@ inline Release select(const std::string &feed, const std::string &current, bool 
         }
         if (candidate) {
             best = v;
+            haveBest = true;
+            candidate.channelSwitch = switching;
             chosen = std::move(candidate);
         }
     }

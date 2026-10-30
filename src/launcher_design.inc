@@ -241,7 +241,8 @@ static void createMainControls(HWND hwnd) {
     designSubtitle =
         make(L"STATIC", L"Upscaling, antialiasing & frame generation for X-Plane 12", 0, 501);
     theme::tone(designSubtitle, theme::muted);
-    auto version = L"COMMUNITY PREVIEW  /  " + wide(updates::currentVersion);
+    auto version = std::wstring(updates::channelName(updates::installedChannel())) +
+                   L" build  /  " + wide(updates::currentVersion);
     designVersion = make(L"STATIC", version.c_str(), 0, 502);
     small(designVersion, theme::gold);
     for (auto h : {designHero, designSubtitle, designVersion})
@@ -397,8 +398,7 @@ static void createMainControls(HWND hwnd) {
     SetTimer(hwnd, 1, 1000, nullptr);
     autoCheckUpdates = launcher::readSetting(appDirectory / L"settings.ini", L"Updates",
                                              L"AutomaticChecks", L"1") != L"0";
-    previewUpdates = launcher::readSetting(appDirectory / L"settings.ini", L"Updates",
-                                           L"PreviewReleases", L"1") != L"0";
+    releaseChannel = updates::loadChannel(appDirectory / L"settings.ini");
     SetTimer(hwnd, 3, 1500, nullptr);
     SetTimer(hwnd, 4, 500, nullptr);
     SetTimer(hwnd, 5, 500, nullptr);

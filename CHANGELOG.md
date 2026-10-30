@@ -1,5 +1,51 @@
 # Changes
 
+## 0.6.4-alpha
+
+- Replace the ambiguous preview checkbox with a saved **Normal / Experimental**
+  release selector under **Updates / Channel**. Normal includes the project's
+  alpha/beta/RC releases; the Experimental channel accepts `experimental.N`
+  tags that the previous updater rejected.
+- Show the installed channel separately from the selected download channel.
+  Require an explicit **Switch and install** action for channel changes,
+  including switching to a numerically older build. Same-channel updates never
+  downgrade or repeatedly reinstall the current version. Preserve user choices.
+- Provide a separately compiled Experimental frame-generation build with both
+  SDK FG options and diagnostics. Normal retains the enforced FG suspension and
+  excludes the FG runtime. This exposes existing development code; no new FG
+  algorithm, artifact cure, pacing improvement or flight-quality claim is made.
+- Keep the simulator's current output resolution and window mode when launching
+  with a saved profile, including native comparison. Apply output only on a
+  deliberate preset selection or **Apply graphics**. Keep pending custom edits
+  pending until applied. UI scale/font remain under X-Plane's control.
+- Add repeated-launch display-preservation, channel discovery, switch-back,
+  persistence and installer channel-transition regression coverage. Include a
+  skippable guide to the two channels and the revised display workflow.
+
+The display policy removes a repeated launcher override. The report of UI
+resizing at the same preset still needs a matched live reproduction; do not
+claim every Windows/X-Plane DPI issue is resolved. Experimental FG retains the
+previously reported flicker/artifact limitations. Linux/Mac previews unchanged.
+
+## 0.6.4-experimental.1
+
+- Separate opt-in Windows frame-generation development package based on the
+  current FSR 3/4 camera/depth correction, with the saved Normal / Experimental
+  channel selector and deliberate display-setting behavior from 0.6.4-alpha.
+- Enable the existing FSR 3.1.6 and 4.0.2 FG options and include their GPU check
+  plus the unmodified, signed AMD SDK frame-generation runtime. Fresh settings
+  default FG Off. Cockpit-screen restoration requires FG Off.
+- Allow an explicit return to Normal through Updates / Channel. Recognized
+  channel switches preserve saved choices; the Normal installer removes the
+  two owned FG payload files and enforces FG Off.
+- Verify both FG providers with synthetic moving-image GPU readback, additional
+  SDK presents and swapchain recreation/retirement tests. These do not establish
+  in-flight quality, latency or scanout pacing. No new generation algorithm,
+  artifact fix or Lossless Scaling-equivalent quality is claimed. The older
+  native-motion experiment remains separate.
+- Include the same skippable channel/display feature guide. This package remains
+  prerelease; reported FG flicker/artifact limitations have not been resolved.
+
 ## 0.6.3-alpha
 
 - Improve FSR 3/4 camera-motion reconstruction by normalizing X-Plane's plugin

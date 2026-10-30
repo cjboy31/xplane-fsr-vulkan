@@ -22,7 +22,11 @@ static std::wstring setupReport() {
            L"Upscaling requires below Full; Native AA requires Full.\r\n"
         << L"OUTPUT size is separate: 4K Quality = 3840 x 2160 fullscreen output from 2560 x 1440 "
            L"input. "
-           L"A 1440p output stays 1440p. Choose a display-supported preset.\r\n\r\n"
+           L"A 1440p output stays 1440p. Choose a display-supported preset.\r\n"
+        << L"Launch keeps your current output, window mode and UI size. Only selecting a preset "
+           L"or Apply graphics changes output. For readable menus, use X-Plane Graphics / "
+           L"Accessibility: User Interface Size and Base Font Size. Apply pending edits before "
+           L"launch.\r\n\r\n"
         << L"FIRST-TEST OPTIONS\r\n"
         << L"Use one primary-display simulator window, 2D (VR Off). This build is Windows Vulkan "
            L"only; "
@@ -94,9 +98,10 @@ static std::wstring setupReport() {
             out << (width == std::to_string(expected.outputWidth) &&
                             height == std::to_string(expected.outputHeight) && fullscreen
                         ? L"[OK] "
-                        : L"[CHANGE] ")
-                << L"Saved output target: " << expected.outputWidth << L" x "
-                << expected.outputHeight << L" fullscreen\r\n";
+                        : L"[NOTE] ")
+                << L"Profile output target: " << expected.outputWidth << L" x "
+                << expected.outputHeight << L" fullscreen (launch keeps current display; "
+                   L"reselect / Apply to change it)\r\n";
         out << (graphics::get(screen, "num_monitors") == "1" &&
                         graphics::get(screen, "monitor/0/m_monitor") == "0"
                     ? L"[OK] Single primary-display simulator window"

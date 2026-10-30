@@ -93,3 +93,13 @@ records timestamp averages; compare per-case medians. Compile the baseline from
 v0.5.7-alpha's temporal.comp with/without DEPTH_MSAA=1 using the same glslang.
 The current harness must first be built with Test-Stability.ps1. These measurements
 cover packing only; they exclude FSR, frame generation and simulator rendering.
+
+
+For the separate Windows frame-generation development package, build from
+`experimental/frame-generation` using the same command plus
+`-FrameGenerationDevelopment`. This sets `XPFSR_FG_DEVELOPMENT` for both launcher
+and layer and embeds `0.6.4-experimental.1` in the app resource and updater.
+The default build embeds `0.6.4-alpha` and enforces FG Off. The installer rejects
+mismatched package/resource versions; only an `experimental.N` package includes
+the verified AMD FG DLL and FrameGenCheck. Do not enable this flag for Normal
+packages. The independent native-motion branch is unchanged.

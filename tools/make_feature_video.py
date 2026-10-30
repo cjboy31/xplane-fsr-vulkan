@@ -17,6 +17,8 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--project", type=Path, required=True)
     parser.add_argument("--captures", type=Path, required=True)
+    parser.add_argument("--capture-config", type=Path,
+                        help="Private, local capture configuration for background-only guides; never published")
     parser.add_argument("--speech-tools", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--reuse-narration", type=Path,
@@ -33,6 +35,11 @@ def main():
 
     root = Path(__file__).resolve().parents[1]
     project = json.loads(args.project.read_text(encoding="utf-8-sig"))
+    if project["capture"].get("background_only"):
+        if not args.capture_config:
+            raise ValueError("Background-only guides require a private --capture-config")
+        capture = json.loads(args.capture_config.read_text(encoding="utf-8-sig"))
+        project["capture"] = {**capture, **project["capture"]}
     args.output.mkdir(parents=True, exist_ok=False)
     ffmpeg = imageio_ffmpeg.get_ffmpeg_exe()
     preview_id = project.get("preview_id", "v2")
@@ -102,6 +109,7 @@ def main():
         return f"{ms//3600000:02}:{ms//60000%60:02}:{ms//1000%60:02},{ms%1000:03}"
     for i, scene in enumerate(project["scenes"]):
         if cached:
+            scene.update(start=elapsed, duration=cached["project"]["scenes"][i]["duration"])
             segments.append(scene)
             elapsed += scene["duration"]
             continue

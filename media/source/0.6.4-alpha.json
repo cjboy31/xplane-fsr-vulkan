@@ -1,0 +1,59 @@
+{
+  "version": "0.6.4-alpha",
+  "voice": "bm_george",
+  "speed": 1.0,
+  "capture": {
+    "background_only": true
+  },
+  "scenes": [
+    {
+      "kind": "welcome",
+      "chapter": "WELCOME",
+      "eyebrow": "0.6.4 / FLIGHT BRIEF",
+      "title": "Your flight.\nYour choice.",
+      "lines": [
+        "Normal and Experimental release channels",
+        "A more consistent start to every session"
+      ],
+      "narration": "This update gives you a clearer choice between Normal and Experimental releases, while keeping your simulator display settings in your hands."
+    },
+    {
+      "kind": "channels",
+      "chapter": "RELEASE CHANNELS",
+      "eyebrow": "01 / CHOOSE YOUR CHANNEL",
+      "title": "Choose. Check. Install.",
+      "lines": [
+        "Updates / Channel  >  Normal or Experimental",
+        "Normal includes alpha updates with frame generation Off",
+        "Experimental includes frame generation development options"
+      ],
+      "narration": "Open Updates and Channel. Choose Normal for the recommended configuration, or Experimental to test frame generation. Your choice is remembered. Select Switch and install to change builds."
+    },
+    {
+      "kind": "display",
+      "chapter": "A CONSISTENT START",
+      "eyebrow": "02 / YOUR DISPLAY STAYS YOURS",
+      "title": "Start with familiar menus.",
+      "lines": [
+        "Launch keeps current output and window mode",
+        "UI size and font remain controlled by X-Plane",
+        "Select a preset or Apply graphics to change output"
+      ],
+      "narration": "Launching now keeps your current output and window mode. Set menu and font size in X Plane. To change output deliberately, select a preset or click Apply graphics before launching."
+    },
+    {
+      "kind": "updates",
+      "chapter": "READY FOR FLIGHT",
+      "eyebrow": "03 / READY WHEN YOU ARE",
+      "title": "Stay in control.",
+      "lines": [
+        "Experimental frame generation remains a testing feature",
+        "Return to Normal from the same channel selector",
+        "Skip this guide immediately, or replay from What\u2019s new"
+      ],
+      "narration": "Experimental frame generation remains a testing feature. Return to Normal from the same selector. Installation waits for your click with X Plane closed. Skip this guide whenever you like, or replay it from Whats New."
+    }
+  ],
+  "edition": "Owner-approved 0.6.4 release-channel and display guide, approved October 30, 2026",
+  "preview_id": "v1"
+}

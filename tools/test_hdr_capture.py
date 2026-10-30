@@ -19,6 +19,15 @@ from capture_evidence import public_provenance, sha, verify_hdr_comparison
 
 
 class HdrCaptureTests(unittest.TestCase):
+    def test_background_guide_does_not_publish_capture_configuration(self):
+        private = {"project": {"version":"test", "scenes":[], "capture": {
+            "background_only":True, "simulator":"private", "gpu":"private",
+            "aircraft":"private", "resolution":[1,2], "crop":[1,2,3,4],
+            "evidence":"private.json", "caption":"private", "renderer_version":"private"}}}
+        result = public_provenance(private)
+        self.assertEqual(result["project"]["capture"], {"background_only":True})
+        self.assertNotIn("private", json.dumps(result))
+
     def test_release_provenance_excludes_private_capture_metadata(self):
         private = {"movie_sha256":"approved-video", "seconds":98, "frames":2947,
             "project":{"version":"0.6.3-alpha", "voice":"bm_george", "speed":1,

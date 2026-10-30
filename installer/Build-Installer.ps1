@@ -34,6 +34,10 @@ function Add-Payload([string]$Source,[string]$Relative,[string]$License) {
   $entries.Add([pscustomobject]@{path=$Relative.Replace('\','/');sha256=(Get-FileHash -LiteralPath $dest).Hash.ToLowerInvariant();bytes=(Get-Item -LiteralPath $dest).Length;licenseGroup=$License})
 }
 $originalFiles = @('XPlaneFSR24.exe','NativeAACheck.exe','CockpitRestoreCheck.exe','layer\XPFSR24Layer.dll','layer\XPFSR24Layer.json','plugin\64\win.xpl') + $AdditionalOriginalFiles
+$fgDevelopment = $PackageVersion -match '^\d+\.\d+\.\d+-experimental\.\d+$'
+if($fgDevelopment){$originalFiles += 'FrameGenCheck.exe'}
+$builtVersion = (Get-Item -LiteralPath (Join-Path $app 'XPlaneFSR24.exe')).VersionInfo.FileVersion
+if($builtVersion -ne $PackageVersion){throw "App resource version $builtVersion does not match package $PackageVersion"}
 foreach($relative in $originalFiles){ Add-Payload (Join-Path $app $relative) $relative 'Original MIT; API/compiler-runtime notices in licenses' }
 if([version](($PackageVersion -split '-')[0]) -ge [version]'0.6.2') {
   if(-not $FeatureVideoDirectory){throw 'A matching feature video is required for every Windows release starting with 0.6.2'}
@@ -54,6 +58,9 @@ if([version](($PackageVersion -split '-')[0]) -ge [version]'0.6.2') {
 $expectedRuntime = @{
  'amd_fidelityfx_loader_vk.dll'='38a56a01fb3565c0757d9f5c1e4e69de4b65e5f2e5769b323b200dc1f142bab9'
  'amd_fidelityfx_upscaler_vk.dll'='4a7e895af6e0b615d40a84d59eb8c2b1054ad91cdd0c739567940270d51bdab7'
+}
+if($fgDevelopment){
+ $expectedRuntime['amd_fidelityfx_framegeneration_vk.dll']='d002dabff8c5e71eaa715fc99438cd4dc81230262a7897b16bc402efec3498b4'
 }
 foreach($name in ($expectedRuntime.Keys | Sort-Object)){
   $source = Join-Path $app ('runtime\'+$name)
@@ -105,6 +112,7 @@ Write-Text (Join-Path $generated 'InstallFiles.nsh') ($install -join "`n")
 Write-Text (Join-Path $generated 'UninstallFiles.nsh') ($uninstall -join "`n")
 [string[]]$iconArguments = @()
 if($IconPath){$iconArguments += ('/DAPP_ICON='+(Resolve-Path -LiteralPath $IconPath).Path)}
+if($fgDevelopment){$iconArguments += '/DFG_DEVELOPMENT=1'}
 & $Nsis '/V3' ('/DPACKAGE='+$package) ('/DGENERATED='+$generated) ('/DPACKAGE_VERSION='+$PackageVersion) ('/DWINDOWS_VERSION='+$WindowsVersion) @iconArguments $SetupScript
 if($LASTEXITCODE -ne 0){throw 'NSIS compilation failed'}
 Copy-Item -LiteralPath (Join-Path $DocumentationFolder 'INSTALLATION-AND-USE.txt') -Destination (Join-Path $package 'READ-ME-FIRST.txt') -Force

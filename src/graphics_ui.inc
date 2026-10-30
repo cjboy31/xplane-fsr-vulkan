@@ -63,7 +63,7 @@ static void updatePresetSummary() {
     std::wstring summary = L"Saved: ";
     summary += p.label;
     summary += L". MSAA / FXAA Off. Output " + std::to_wstring(p.settings.outputWidth) + L" x " +
-               std::to_wstring(p.settings.outputHeight) + L" fullscreen.";
+               std::to_wstring(p.settings.outputHeight) + L" applied; launch keeps current display.";
     SetWindowTextW(presetNote, summary.c_str());
 }
 static void syncPresetSelection() {
@@ -124,18 +124,10 @@ static void selectResolutionPreset() {
 }
 static void applyRememberedGraphics(const fs::path &root) {
     ensure(!running(), "X-Plane is already running from this launcher");
-    if (!preferences.presetId.empty())
+    auto options = launcher::graphicsForLaunch(preferences);
+    if (!preferences.presetId.empty() || preferences.manualApplied)
         rememberGraphicsBackup(
-            graphics::apply(root, appDirectory / L"graphics-backups",
-                            graphics::presetById(preferences.presetId).settings));
-    else if (preferences.manualApplied || preferences.manualPending)
-        rememberGraphicsBackup(
-            graphics::apply(root, appDirectory / L"graphics-backups", preferences.manual));
-    if (preferences.manualPending) {
-        preferences.manualApplied = true;
-        preferences.manualPending = false;
-        saveChoices();
-    }
+            graphics::apply(root, appDirectory / L"graphics-backups", options));
 }
 static void restoreGraphics() {
     auto backup = launcher::readSetting(appDirectory / L"settings.ini", L"Graphics", L"LastBackup");

@@ -231,8 +231,24 @@ Section "Application"
   !insertmacro CheckUnlocked "layer\XPFSR24Layer.dll"
   !insertmacro CheckUnlocked "NativeAACheck.exe"
   !insertmacro CheckUnlocked "FrameGenCheck.exe"
+  !insertmacro CheckUnlocked "runtime\amd_fidelityfx_framegeneration_vk.dll"
   !insertmacro CheckUnlocked "CockpitRestoreCheck.exe"
   SetOverwrite on
+  !ifndef FG_DEVELOPMENT
+    ; Normal removes only the two FG components from a recognized owned install.
+    ; All payload locks and target ownership were validated above.
+    ClearErrors
+    ${If} ${FileExists} "$INSTDIR\FrameGenCheck.exe"
+      Delete "$INSTDIR\FrameGenCheck.exe"
+    ${EndIf}
+    ${If} ${FileExists} "$INSTDIR\runtime\amd_fidelityfx_framegeneration_vk.dll"
+      Delete "$INSTDIR\runtime\amd_fidelityfx_framegeneration_vk.dll"
+    ${EndIf}
+    ${If} ${Errors}
+      SetErrorLevel 7
+      Abort "Close frame-generation checks before returning to Normal."
+    ${EndIf}
+  !endif
   !include "${GENERATED}\InstallFiles.nsh"
   ${If} $XPlaneDir != ""
     WriteINIStr "$INSTDIR\settings.ini" "Application" "Simulator" "$XPlaneDir"

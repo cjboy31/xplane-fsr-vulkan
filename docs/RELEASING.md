@@ -55,3 +55,20 @@ Example after a separately tested installer has been built:
 This prepares ignored `dist/<version>/` assets. It does not create credentials,
 change repository permissions or bypass authentication. Use a connected GitHub
 release/upload API when available; otherwise use the normal release editor.
+
+
+For 0.6.4 and later, release channels are independent of GitHub's prerelease
+badge. `alpha`, `beta`, `rc` and final versions belong to Normal;
+`experimental.N` belongs to Experimental. Both alpha and experimental packages
+must be marked prerelease. Build Normal without flags; build Experimental from
+its separate branch with `-FrameGenerationDevelopment`. Keep their staged
+binaries, version resources, notices, video manifests and installer test evidence
+separate. Never upload a development binary under a Normal tag.
+
+After both installer checks pass, run `installer/Test-ReleaseChannels.ps1` with
+the exact two setup files. Verify Normal -> Experimental -> Normal transitions,
+settings preservation and removal of the two owned FG components on return.
+The selector must offer the published Experimental installer even if its version
+is older; same-channel automatic checks must never downgrade or cross channels.
+Do not remove old tagged releases. Keep the independent native-motion experiment
+separate from the FG development package.

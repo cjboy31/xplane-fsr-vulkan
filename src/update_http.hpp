@@ -180,11 +180,11 @@ inline void verify(const fs::path &file, const Release &release) {
     in.read(mz, 2);
     require(mz[0] == 'M' && mz[1] == 'Z', "The update is not a Windows installer");
 }
-inline Release check(const std::string &current, bool previews, std::atomic<bool> &cancel,
+inline Release check(const std::string &current, Channel requested, std::atomic<bool> &cancel,
                      std::atomic<uint64_t> &progress) {
     return select(
         transfer(L"https://api.github.com/repos/cjboy31/xplane-fsr-vulkan/releases?per_page=100",
                  {}, 0, cancel, progress),
-        current, previews);
+        current, requested, true);
 }
 } // namespace updates

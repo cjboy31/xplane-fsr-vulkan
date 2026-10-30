@@ -53,7 +53,10 @@ foreach($required in @('XPlaneFSR24.exe','NativeAACheck.exe','CockpitRestoreChec
   if($required -notin $manifest.files.path){throw "Required app component absent from installer: $required"}
 }
 foreach($excluded in @('FrameGenCheck.exe','runtime/amd_fidelityfx_framegeneration_vk.dll')){
- if($excluded -in $manifest.files.path -or (Test-Path -LiteralPath (Join-Path $installed $excluded))){throw ('Suspended FG component was packaged: '+$excluded)}
+ $expectedFG = $manifest.packageVersion -match '^\d+\.\d+\.\d+-experimental\.\d+$'
+ if($expectedFG){
+  if($excluded -notin $manifest.files.path -or -not(Test-Path -LiteralPath (Join-Path $installed $excluded))){throw ('Experimental FG component is missing: '+$excluded)}
+ }elseif($excluded -in $manifest.files.path -or (Test-Path -LiteralPath (Join-Path $installed $excluded))){throw ('Suspended FG component was packaged: '+$excluded)}
 }
 foreach($file in $manifest.files){
   $path = Join-Path $installed $file.path
@@ -89,7 +92,7 @@ foreach($file in $manifest.files){if((Get-FileHash -LiteralPath (Join-Path $inst
 $code = Run-Setup ('/S /TEST=1 /AUTOUPDATE=1 /D='+$unrelated)
 if($code -ne 5){throw "Automatic update accepted an unrelated target: $code"}
 $settings = Join-Path $installed 'settings.ini'
-Add-Content -LiteralPath $settings -Value "`r`n[Updates]`r`nAutomaticChecks=0`r`nPreviewReleases=0"
+Add-Content -LiteralPath $settings -Value "`r`n[Updates]`r`nAutomaticChecks=0`r`nPreviewReleases=0`r`nChannel=experimental"
 Add-Content -LiteralPath $settings -Value "`r`n[FeatureVideo]`r`nAutomatic=0`r`nMuted=1`r`nLastPresented=0.6.1-alpha"
 $settingsHash=(Get-FileHash -LiteralPath $settings).Hash
 $lockPath=Join-Path $installed 'launcher.lock'

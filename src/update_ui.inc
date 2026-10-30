@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 #include "update_http.hpp"
+#include "update_preferences.hpp"
 #include <mutex>
 #include <thread>
 struct UpdateJob {
@@ -8,6 +9,7 @@ struct UpdateJob {
     std::atomic<bool> cancel{};
     std::atomic<uint64_t> bytes{};
     updates::Release release;
+    updates::Channel channel{updates::installedChannel()};
     std::wstring message{L"Checks use this project's public GitHub Releases. No account required."};
     fs::path installer, directory;
     bool handedOff{};
@@ -21,9 +23,10 @@ struct UpdateJob {
     }
 };
 static std::shared_ptr<UpdateJob> updateJob = std::make_shared<UpdateJob>();
-static HWND updatesButton{}, updateWindow{}, updateText{}, autoCheckBox{}, previewCheckBox{},
+static HWND updatesButton{}, updateWindow{}, updateText{}, autoCheckBox{}, channelBox{},
     checkUpdateButton{}, installUpdateButton{}, releaseNotesButton{};
-static bool autoCheckUpdates{true}, previewUpdates{true};
+static bool autoCheckUpdates{true};
+static updates::Channel releaseChannel{updates::installedChannel()};
 static bool ownedInstallation() {
     return launcher::readSetting(appDirectory / L"XPFSR24-Installation.ini", L"Installation",
                                  L"Product") == L"XPFSR24-community-alpha";
@@ -33,18 +36,24 @@ static void refreshUpdateUI() {
     std::lock_guard<std::mutex> guard(j->mutex);
     bool busy = j->phase == UpdateJob::checking || j->phase == UpdateJob::downloading ||
                 j->phase == UpdateJob::ready;
-    std::wstring title = j->phase == UpdateJob::available ? L"Update available..." : L"Updates...";
+    std::wstring title = j->phase == UpdateJob::available ? L"Update available..." : L"Updates / Channel";
     SetWindowTextW(updatesButton, title.c_str());
     if (!updateWindow)
         return;
     auto message =
-        L"Installed version: " + wide(updates::currentVersion) + L"\r\n\r\n" + j->message;
+        L"Installed: " + wide(updates::currentVersion) + L" (" +
+        updates::channelName(updates::installedChannel()) + L")\r\nSelected channel: " +
+        updates::channelName(releaseChannel) + L"\r\n\r\n" + j->message;
     if (j->phase == UpdateJob::downloading)
         message += L"\r\nDownloaded " + std::to_wstring(j->bytes / 1024) + L" / " +
                    std::to_wstring(j->release.bytes / 1024) + L" KiB";
     if (j->release) {
         message += L"\r\n\r\nAvailable: " + wide(j->release.tag.c_str()) + L"\r\n" +
                    wide(j->release.name.c_str());
+        if (j->release.channelSwitch)
+            message += L"\r\nThis changes release channels and may install an older version. "
+                       L"Experimental FG may flicker or show artifacts; it is not a quality fix. "
+                       L"Switching requires the Switch and install button below.";
     }
     if (!ownedInstallation())
         message += L"\r\n\r\nFor automatic installation, first install the app using the official "
@@ -53,7 +62,9 @@ static void refreshUpdateUI() {
         SetWindowTextW(updateText, message.c_str());
     EnableWindow(checkUpdateButton, !busy);
     EnableWindow(autoCheckBox, !busy);
-    EnableWindow(previewCheckBox, !busy);
+    EnableWindow(channelBox, !busy);
+    SetWindowTextW(installUpdateButton,
+                   j->release.channelSwitch ? L"Switch and install" : L"Download and install");
     EnableWindow(installUpdateButton, j->phase == UpdateJob::available && ownedInstallation());
     EnableWindow(releaseNotesButton, bool(j->release));
 }
@@ -68,10 +79,10 @@ static void startUpdateCheck() {
     updateJob = j;
     j->phase = UpdateJob::checking;
     j->message = L"Checking GitHub Releases... You can keep using the launcher.";
-    bool previews = previewUpdates;
-    std::thread([j, previews] {
+    j->channel = releaseChannel;
+    std::thread([j] {
         try {
-            auto release = updates::check(updates::currentVersion, previews, j->cancel, j->bytes);
+            auto release = updates::check(updates::currentVersion, j->channel, j->cancel, j->bytes);
             std::lock_guard<std::mutex> guard(j->mutex);
             j->release = std::move(release);
             j->phase = j->release ? UpdateJob::available : UpdateJob::current;
@@ -80,7 +91,8 @@ static void startUpdateCheck() {
                                L"Download and install closes/reopens this launcher and preserves "
                                L"saved choices. Close every X-Plane and GPU-check process first."
                              : L"No newer compatible installer is published for your selected "
-                               L"channel. Updates never downgrade this installation.";
+                               L"channel. Ordinary updates never downgrade within a channel. "
+                               L"Normal includes this project's alpha releases; it keeps FG Off.";
         } catch (const std::exception &e) {
             std::lock_guard<std::mutex> guard(j->mutex);
             j->phase = UpdateJob::failed;
@@ -102,6 +114,7 @@ static void beginUpdateInstall() {
         std::lock_guard<std::mutex> guard(j->mutex);
         if (j->phase != UpdateJob::available)
             return;
+        ensure(j->channel == releaseChannel, "Check the selected channel again before installing");
         j->phase = UpdateJob::downloading;
         j->message = L"Downloading the installer over HTTPS. SHA-256 must match GitHub before it "
                      L"can run. Close this window to cancel.";
@@ -177,11 +190,9 @@ static LRESULT CALLBACK updateProcedure(HWND hwnd, UINT message, WPARAM w, LPARA
     case WM_COMMAND:
         try {
             switch (LOWORD(w)) {
-            case 150:
-            case 151: {
-                const wchar_t *key = LOWORD(w) == 150 ? L"AutomaticChecks" : L"PreviewReleases";
-                bool value = SendMessageW(LOWORD(w) == 150 ? autoCheckBox : previewCheckBox,
-                                          BM_GETCHECK, 0, 0) == BST_CHECKED;
+            case 150: {
+                const wchar_t *key = L"AutomaticChecks";
+                bool value = SendMessageW(autoCheckBox, BM_GETCHECK, 0, 0) == BST_CHECKED;
                 ensure(WritePrivateProfileStringW(L"Updates", key, value ? L"1" : L"0",
                                                   (appDirectory / L"settings.ini").c_str()),
                        "Could not save the update preference");
@@ -190,9 +201,17 @@ static LRESULT CALLBACK updateProcedure(HWND hwnd, UINT message, WPARAM w, LPARA
                 ensure(launcher::readSetting(appDirectory / L"settings.ini", L"Updates", key) ==
                            (value ? L"1" : L"0"),
                        "Saved update preference could not be verified");
-                (LOWORD(w) == 150 ? autoCheckUpdates : previewUpdates) = value;
-                if (LOWORD(w) == 151)
-                    startUpdateCheck();
+                autoCheckUpdates = value;
+                break;
+            }
+            case 151: {
+                if (HIWORD(w) != CBN_SELCHANGE) break;
+                auto selected = SendMessageW(channelBox, CB_GETCURSEL, 0, 0);
+                ensure(selected == 0 || selected == 1, "Choose a release channel");
+                auto next = selected == 1 ? updates::Channel::Experimental : updates::Channel::Normal;
+                updates::saveChannel(appDirectory / L"settings.ini", next);
+                releaseChannel = next;
+                startUpdateCheck();
                 break;
             }
             case 152:
@@ -215,8 +234,7 @@ static LRESULT CALLBACK updateProcedure(HWND hwnd, UINT message, WPARAM w, LPARA
         } catch (const std::exception &e) {
             SendMessageW(autoCheckBox, BM_SETCHECK, autoCheckUpdates ? BST_CHECKED : BST_UNCHECKED,
                          0);
-            SendMessageW(previewCheckBox, BM_SETCHECK, previewUpdates ? BST_CHECKED : BST_UNCHECKED,
-                         0);
+            SendMessageW(channelBox, CB_SETCURSEL, releaseChannel == updates::Channel::Experimental ? 1 : 0, 0);
             MessageBoxW(hwnd, wide(e.what()).c_str(), L"Application updates",
                         MB_OK | MB_ICONEXCLAMATION);
         }
@@ -255,30 +273,34 @@ static void showUpdates() {
     RegisterClassW(&c);
     updateWindow = CreateWindowExW(WS_EX_DLGMODALFRAME, c.lpszClassName, L"Application updates",
                                    WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU, CW_USEDEFAULT,
-                                   CW_USEDEFAULT, modalSize(700, 490).cx, modalSize(700, 490).cy,
+                                   CW_USEDEFAULT, modalSize(700, 550).cx, modalSize(700, 550).cy,
                                    window, nullptr, c.hInstance, nullptr);
     ensure(updateWindow != nullptr, "Could not open application updates");
     autoCheckBox = scaledControl(L"BUTTON", L"Automatically check for updates when the app opens",
                                  BS_AUTOCHECKBOX | WS_TABSTOP, 20, 20, 645, 28, 150, updateWindow);
-    previewCheckBox =
-        scaledControl(L"BUTTON", L"Include alpha / beta / release-candidate previews",
-                      BS_AUTOCHECKBOX | WS_TABSTOP, 20, 54, 645, 28, 151, updateWindow);
+    scaledControl(L"STATIC", L"Release channel", 0, 20, 60, 120, 24, 0, updateWindow);
+    channelBox = scaledControl(L"COMBOBOX", L"", CBS_DROPDOWNLIST | WS_TABSTOP,
+                               155, 54, 510, 150, 151, updateWindow);
+    SendMessageW(channelBox, CB_ADDSTRING, 0, LPARAM(L"Normal - recommended / frame generation Off"));
+    SendMessageW(channelBox, CB_ADDSTRING, 0, LPARAM(L"Experimental - frame generation development"));
     SendMessageW(autoCheckBox, BM_SETCHECK, autoCheckUpdates ? BST_CHECKED : BST_UNCHECKED, 0);
-    SendMessageW(previewCheckBox, BM_SETCHECK, previewUpdates ? BST_CHECKED : BST_UNCHECKED, 0);
+    SendMessageW(channelBox, CB_SETCURSEL, releaseChannel == updates::Channel::Experimental ? 1 : 0, 0);
+    theme::name(channelBox, L"Release channel: Normal or Experimental");
     scaledControl(L"STATIC",
-                  L"Preview builds are experimental. Installation requires your click; it never "
-                  L"interrupts a flight.",
-                  0, 20, 92, 645, 40, 0, updateWindow);
-    updateText = scaledControl(L"EDIT", L"", ES_MULTILINE | ES_READONLY | WS_VSCROLL, 20, 140, 645,
-                               195, 0, updateWindow);
-    checkUpdateButton = scaledControl(L"BUTTON", L"Check now", BS_PUSHBUTTON | WS_TABSTOP, 20, 350,
+                  L"Normal includes alpha updates with FG Off. Experimental offers development "
+                  L"builds with FG options; artifacts remain possible. Selecting a channel only "
+                  L"checks releases. Install explicitly, with X-Plane closed.",
+                  0, 20, 96, 645, 64, 0, updateWindow);
+    updateText = scaledControl(L"EDIT", L"", ES_MULTILINE | ES_READONLY | WS_VSCROLL, 20, 170, 645,
+                               220, 0, updateWindow);
+    checkUpdateButton = scaledControl(L"BUTTON", L"Check now", BS_PUSHBUTTON | WS_TABSTOP, 20, 408,
                                       145, 36, 152, updateWindow);
     releaseNotesButton = scaledControl(L"BUTTON", L"Open release", BS_PUSHBUTTON | WS_TABSTOP, 180,
-                                       350, 145, 36, 154, updateWindow);
+                                       408, 145, 36, 154, updateWindow);
     installUpdateButton =
-        scaledControl(L"BUTTON", L"Download and install", BS_PUSHBUTTON | WS_TABSTOP, 340, 350, 325,
+        scaledControl(L"BUTTON", L"Download and install", BS_PUSHBUTTON | WS_TABSTOP, 340, 408, 325,
                       36, 153, updateWindow);
-    scaledControl(L"BUTTON", L"Close / cancel download", BS_PUSHBUTTON | WS_TABSTOP, 420, 401, 245,
+    scaledControl(L"BUTTON", L"Close / cancel download", BS_PUSHBUTTON | WS_TABSTOP, 420, 463, 245,
                   32, 155, updateWindow);
     theme::caption(updateWindow);
     refreshUpdateUI();

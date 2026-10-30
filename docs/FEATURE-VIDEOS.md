@@ -116,3 +116,16 @@ separate; do not mislabel this guide as a native Mac rendering feature.
 Sources: [Microsoft Media Engine](https://learn.microsoft.com/en-us/windows/win32/api/mfmediaengine/nn-mfmediaengine-imfmediaengine),
 [Kokoro model card/license](https://huggingface.co/hexgrad/Kokoro-82M),
 [kokoro-onnx source](https://github.com/thewh1teagle/kokoro-onnx).
+
+
+The 0.6.4 guide explains release-channel switching and deliberate display changes.
+Its background still comes from the already approved 0.6.3 capture; it does not
+show frame generation or claim a new renderer-quality comparison. Both Windows
+channel packages carry the same editorial content with matching version manifests.
+New guide revisions still require the owner's private preview approval.
+
+
+Background-only scripts publish only `capture.background_only`. Supply a local,
+ignored `--capture-config` JSON and matching private evidence to render them;
+these inputs are not released. Public provenance omits all local hardware,
+simulator/aircraft/resolution and evidence details for background-only films.

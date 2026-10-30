@@ -21,6 +21,9 @@ def public_provenance(private):
         if key in capture}
     result["capture_sha256"] = {}
     result["capture_method"] = "Real sequential captures; identical HDR-to-SDR conversion and crop."
+    if capture.get("background_only"):
+        result["project"]["capture"] = {"background_only": True}
+        result["capture_method"] = "Previously reviewed background still; no new comparison or FG demonstration."
     result["publication_state"] = "Rendered; follow release workflow"
     return result
 

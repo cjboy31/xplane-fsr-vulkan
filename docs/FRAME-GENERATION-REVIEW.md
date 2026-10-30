@@ -62,3 +62,14 @@ Sources: [official announcements](https://steamcommunity.com/app/993090/announce
 Any replacement must undergo source/license review, synchronization and failure
 tests, then a separately labeled experimental release before regular enablement.
 No new frame-generation algorithm or LSFG-equivalent quality is claimed here.
+
+
+## Separate frame-generation channel (0.6.4)
+
+`experimental/frame-generation` carries the opt-in Windows FG development build
+based on the current camera/depth correction. It does not merge the older native
+motion experiment or introduce a new interpolation algorithm. The saved **Updates
+/ Channel** selector discovers `experimental.N` installers and supports an
+explicit return to Normal. Normal still excludes FG diagnostics/runtime and
+ignores FG requests. Synthetic GPU checks verify generation and proxy lifecycle;
+they do not satisfy the live-flight quality/pacing gates listed above.

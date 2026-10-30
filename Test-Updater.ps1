@@ -1,9 +1,10 @@
-param([Parameter(Mandatory)][string]$Compiler, [switch]$Live, [string]$DownloadTo='')
+param([Parameter(Mandatory)][string]$Compiler, [switch]$Live, [string]$DownloadTo='', [switch]$Experimental)
 $ErrorActionPreference='Stop'
 $build=Join-Path $PSScriptRoot 'build'
 New-Item -ItemType Directory -Force -Path $build | Out-Null
 $exe=Join-Path $build 'update_tests.exe'
-& $Compiler '-std=c++17' '-O2' '-static' '-municode' '-DWIN32_LEAN_AND_MEAN' '-DNOMINMAX' (Join-Path $PSScriptRoot 'src\update_tests.cpp') '-lwinhttp' '-lbcrypt' '-o' $exe
+[string[]]$channelFlags = if($Experimental){@('-DXPFSR_FG_DEVELOPMENT=1')}else{@()}
+& $Compiler '-std=c++17' '-O2' '-static' '-municode' '-DWIN32_LEAN_AND_MEAN' '-DNOMINMAX' @channelFlags (Join-Path $PSScriptRoot 'src\update_tests.cpp') '-lwinhttp' '-lbcrypt' '-o' $exe
 if($LASTEXITCODE -ne 0){throw 'Updater test compilation failed'}
 $arguments=@()
 if($Live){$arguments+='--live';if($DownloadTo){$arguments+=$DownloadTo}}

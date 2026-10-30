@@ -11,6 +11,16 @@ struct Preferences {
     graphics::Options manual{};
     bool manualApplied{}, manualPending{};
 };
+// Launch reapplies reconstruction inputs, never the saved display geometry.
+// A deliberate preset selection / Apply graphics remains the only output edit.
+inline graphics::Options graphicsForLaunch(const Preferences &p) {
+    graphics::require(!p.manualPending,
+                      "Click Apply graphics with X-Plane closed before launching. "
+                      "Launch preserves the simulator's current display and UI size.");
+    auto o = p.presetId.empty() ? p.manual : graphics::presetById(p.presetId).settings;
+    o.outputWidth = o.outputHeight = 0;
+    return o;
+}
 // Custom output/AA edits never select a reconstruction or FG provider for the user.
 inline void customGraphics(Preferences &p, const graphics::Options &options, bool applied) {
     p.manual = options;

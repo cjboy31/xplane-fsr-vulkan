@@ -227,3 +227,37 @@ Then close the launcher and run the package uninstaller. Backups/logs are retain
 
 Built-in FG is suspended. Development on the separate experimental branch includes UI in interpolation. VR, multiple windows, multi-GPU and complete
 object/cloud motion are unsupported. Read STATUS.md before contributing results.
+
+
+## Release channel and display behavior (0.6.4)
+
+Open **Updates / Channel**, choose **Normal** or **Experimental**, then **Check
+now**. Normal includes this project's alpha releases and keeps built-in frame
+generation disabled. Experimental offers development builds with frame-generation
+options. Choosing a channel only checks availability; **Switch and install**
+downloads, verifies and installs it with X-Plane and GPU checks closed. The
+installed channel/version and selected download channel are shown separately.
+The selection and rendering choices survive reopening and recognized updates.
+Return to Normal through the same selector. A channel switch may deliberately
+install an older build; ordinary updates within a channel cannot downgrade.
+
+Experimental FG uses the existing SDK development implementation. Flickering,
+artifacts and uneven pacing remain possible. It is not presented as fixed.
+FG stays Off on a fresh installation; enable it only for testing with stable
+base frame times. Cockpit-screen restoration requires FG Off. Selecting FG turns
+restoration Off; changing provider needs a simulator restart. FG Off is available
+during a flight. No Lossless Scaling or NVIDIA runtime/model is bundled.
+
+Selecting a resolution preset or clicking **Apply graphics** deliberately applies
+its output resolution. Later **Launch** actions preserve the simulator's current
+output, window mode and accessibility preferences, while applying the remembered
+AA/render-scale inputs. If you change output in X-Plane, the launcher leaves that
+choice in place. Reselect the preset to apply its original output again. Pending
+custom edits must be applied before launch. The preset name describes the saved
+profile, not a guarantee of the current live output; check the active status size.
+
+For menu readability, use X-Plane **Settings > Graphics > Accessibility > User
+Interface Size / Base Font Size**. A deliberate output-resolution change can
+change how large the interface appears. The mod does not force UI scale, edit
+Windows scaling, change DPI compatibility overrides or restore old preferences
+on simulator exit.

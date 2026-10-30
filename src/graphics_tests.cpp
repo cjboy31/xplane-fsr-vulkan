@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 #include "graphics_presets.hpp"
 #include "graphics_settings.hpp"
+#include "launcher_preferences.hpp"
 #include <iostream>
 #include <set>
 using namespace graphics;
@@ -114,6 +115,43 @@ int wmain(int argc, wchar_t **argv) {
                       << 'x' << preset.settings.outputHeight << " scale=" << preset.settings.scale
                       << '\n';
         }
+        // The original launch path restored the preset's fullscreen geometry.
+        // Test the same policy used by BOTH FSR and native-comparison buttons.
+        auto misc = prefs(root) / L"Miscellaneous.prf";
+        const std::string accessibility = "I\r\n1100 Version\r\npixel_multiplier 1.500000\r\nbase_font_size 18\r\n";
+        write(misc, accessibility);
+        auto ini = base / L"launcher.ini";
+        for (auto &preset : resolutionPresets) {
+            launcher::Preferences p;
+            p.presetId = preset.id;
+            p.mode = preset.launcherMode;
+            launcher::save(ini, p);
+            for (auto screenState : {windows, set(windows, "monitor/0/m_is_fullscreen", "wmgr_mode_fullscreen")}) {
+                write(main, original);
+                write(screen, screenState);
+                for (int restart = 0; restart != 3; ++restart) {
+                    auto reopened = launcher::load(ini);
+                    auto renderOnly = launcher::graphicsForLaunch(reopened);
+                    apply(root, base / L"backups", renderOnly, false);
+                    require(read(screen) == screenState && read(misc) == accessibility,
+                            "Repeated launches must preserve current window/output/UI bytes");
+                    require(current(root).scale == preset.settings.scale &&
+                                reopened.presetId == preset.id,
+                            "Preserving display must retain saved FSR and input scale");
+                }
+            }
+        }
+        launcher::Preferences pending;
+        pending.manualPending = true;
+        pending.manual = o;
+        rejects([&] { launcher::graphicsForLaunch(pending); });
+        pending.manualPending = false;
+        pending.manualApplied = true;
+        auto renderOnly = launcher::graphicsForLaunch(pending);
+        require(!renderOnly.outputWidth && !renderOnly.outputHeight && renderOnly.scale == o.scale,
+                "Applied custom graphics also preserve display geometry");
+        std::cout << "PASS: 84 reopened preset launches preserve window mode, output and UI scale; "
+                     "custom outputs stay remembered; unapplied edits require Apply graphics.\n";
         std::cout << "PASS: exact backups, MSAA/FXAA/scale/4K output, selective restore, "
                      "duplicate/missing keys, conflict refusal, multi-monitor refusal and rollback "
                      "after write failure. Only workspace fixture files changed.\n";

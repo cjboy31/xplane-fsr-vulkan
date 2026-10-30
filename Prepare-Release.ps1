@@ -63,11 +63,23 @@ if ($FeatureVideo) {
     $videoHash = (Get-FileHash -LiteralPath $FeatureVideo).Hash.ToLowerInvariant()
     [IO.File]::AppendAllText((Join-Path $output 'SHA256SUMS.txt'), "$videoHash  $videoName`n", $utf8)
 }
+$channelSummary = if($Version -match '-experimental\.'){
+    'Experimental channel: opt-in frame-generation development. FG artifacts/flicker remain possible; this is not a new interpolation or pacing fix. Use Updates / Channel to return to Normal.'
+}else{
+    'Normal channel: recommended project configuration, still an alpha preview. Built-in frame generation stays disabled. Use Updates / Channel to find the separate Experimental installer.'
+}
+$guideSummary = if([version](($Version -split '-')[0]) -ge [version]'0.6.4'){
+    'This 54-second guide explains Normal / Experimental switching and deliberate display changes. The background still is reused from the previously approved guide; it is not a new before/after comparison or an FG quality demonstration.'
+}else{
+    'It includes a fresh 1080p FSR 3.1.6 Native AA comparison captured in X-Plane 12.4.4. This is an individual detail example, not a benchmark or a general ghosting-fix claim.'
+}
 $notes = @"
 ## FSR 3/4 + Frame Gen for X-Plane $Version
 
 Experimental Windows Vulkan community preview. Original project code is MIT
 licensed; packaged third-party runtimes retain their separate notices.
+
+$channelSummary
 
 ### Changes
 
@@ -102,11 +114,9 @@ visuals retain their owners' rights. Keep all supplied license notices.
 ### Feature guide
 
 The captioned, narrated MP4 plays offline once per installed version. Skip it
-immediately, disable future videos, or replay from What's new. It includes a
-fresh 1080p FSR 3.1.6 Native AA comparison captured in X-Plane 12.4.4. This is an
-individual detail example, not a benchmark or a general ghosting-fix claim.
-The version-specific changes and validation scope are listed above. Built-in
-FG remains suspended, and the separate Linux/Mac preview packages are unchanged.
+immediately, disable future videos, or replay from What's new. $guideSummary
+The version-specific changes and validation scope are listed above.
+The separate Linux/Mac preview packages are unchanged.
 
 Installer SHA-256: $hash
 "@

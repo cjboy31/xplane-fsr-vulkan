@@ -43,7 +43,9 @@ static constexpr SettingHelp settingHelp[] = {
     {202, L"Resolution and FSR presets",
      L"A preset sets fullscreen OUTPUT resolution, internal rendering scale, the FSR provider and "
      L"AA mode. MSAA, FXAA and frame generation are set Off. It applies immediately while X-Plane "
-     L"is closed, backs up changes and is remembered for the next launch.\n\nBest use: Native AA "
+     L"is closed and backs up changes. Later launches keep the simulator's current output, "
+     L"window mode and UI size. Reselect the preset to deliberately apply its output again. "
+     L"Changing output resolution can affect X-Plane's interface sizing.\n\nBest use: Native AA "
      L"for sharper edges at full resolution; Quality for higher performance. 4K Quality renders at "
      L"1440p and outputs 4K. Only resolutions your primary display advertises appear. FSR 4 uses "
      L"the experimental 4.1.2 provider; hardware/driver support is checked by the runtime. Run the "
@@ -114,7 +116,10 @@ static constexpr SettingHelp settingHelp[] = {
      L"test. Set output resolution separately: selecting 1440p output does not produce 4K."},
     {213, L"Output resolution",
      L"The final fullscreen resolution shown by X-Plane. Keep current leaves window/output "
-     L"settings untouched. The launcher changes only supported single-monitor preferences and does "
+     L"settings untouched. Output changes happen only when selecting a preset or clicking Apply "
+     L"graphics with X-Plane closed. Ordinary launches keep your current output and window mode. "
+     L"Choose UI Size and Base Font Size in X-Plane's Graphics / Accessibility settings. "
+     L"The launcher changes only supported single-monitor preferences and does "
      L"not change Windows desktop modes or drivers.\n\nBest use: 3840 x 2160 output with Quality "
      L"scale for 2560 x 1440 input to 4K. Your primary display must advertise the output mode."}};
 static const SettingHelp *helpById(int id) {
