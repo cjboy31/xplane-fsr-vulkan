@@ -17,11 +17,16 @@ static HWND scaledControl(const wchar_t *type, const wchar_t *label, DWORD style
     return control(type, label, style, theme::px(x), theme::px(y), theme::px(w), theme::px(h), id,
                    parent);
 }
+static SIZE modalSizeForWorkArea(int width, int height,const RECT &work) {
+    return {std::clamp(theme::px(width),1,std::max(1,int(work.right-work.left)-32)),
+            std::clamp(theme::px(height),1,std::max(1,int(work.bottom-work.top)-32))};
+}
 static SIZE modalSize(int width, int height) {
-    RECT work;
-    SystemParametersInfoW(SPI_GETWORKAREA, 0, &work, 0);
-    return {std::min(theme::px(width), int(work.right - work.left) - 32),
-            std::min(theme::px(height), int(work.bottom - work.top) - 32)};
+    MONITORINFO monitor{sizeof(monitor)};
+    RECT work{0,0,GetSystemMetrics(SM_CXSCREEN),GetSystemMetrics(SM_CYSCREEN)};
+    if(GetMonitorInfoW(MonitorFromWindow(window,MONITOR_DEFAULTTONEAREST),&monitor))work=monitor.rcWork;
+    else SystemParametersInfoW(SPI_GETWORKAREA,0,&work,0);
+    return modalSizeForWorkArea(width,height,work);
 }
 static void error(const std::exception &e) {
     MessageBoxW(window, wide(e.what()).c_str(), L"FSR 3/4 + Frame Gen for X-Plane",

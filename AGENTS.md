@@ -67,3 +67,9 @@ an accessible X-Plane panel, live supported adjustments and activation compatibl
 with third-party launchers. Study documented behavior; implement original code
 and artwork without copying restricted LuminaXP internals. Distinguish plugin
 presence from confirmed renderer activity. See docs/IN-SIM-PLUGIN.md.
+
+After the in-sim panel, investigate multi-GPU options using Lossless Scaling's
+documented behavior as a reference. Evaluate explicit render/processing GPU
+selection, transfer/synchronization costs, device support and safe fallback.
+Implement original code and verify actual two-GPU behavior before claiming
+compatibility or performance benefits. Do not substitute this for the panel work.

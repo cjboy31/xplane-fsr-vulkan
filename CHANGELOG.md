@@ -2,6 +2,10 @@
 
 ## 0.7.1-alpha
 
+- Fit the live log viewer and its minimum size to the owner's monitor work area;
+  wrap footer controls on narrow/high-DPI displays. Cover small/secondary monitor
+  sizes and footer containment; caught by the first hosted Windows CI run.
+
 - Ship the current NR, FG and synchronized compatibility options in both
   Windows channels. Normal is the recommended full-feature release; channel
   selection controls future updates rather than access to these features.

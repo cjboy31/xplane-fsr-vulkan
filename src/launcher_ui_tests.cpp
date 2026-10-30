@@ -43,6 +43,10 @@ int wmain(int argc,wchar_t**argv) {
         EnumChildWindows(window,[](HWND h,LPARAM)->BOOL{SetWindowSubclass(h,countPaint,91,0);return TRUE;},0);
         for(UINT dpi:{96u,120u,144u,192u}) {
             theme::dpi=dpi;theme::makeFonts();
+            for(RECT work: {RECT{0,0,1024,728},RECT{-1280,100,0,800},RECT{2000,0,2800,568}}){
+                auto size=modalSizeForWorkArea(1100,760,work),minimum=modalSizeForWorkArea(720,350,work);
+                ensure(size.cx<=work.right-work.left&&size.cy<=work.bottom-work.top&&minimum.cx<=size.cx&&minimum.cy<=size.cy,"Modal size/minimum exceeds a small or secondary monitor");
+            }
             EnumChildWindows(window,[](HWND h,LPARAM)->BOOL{int n=int(INT_PTR(GetPropW(h,L"XPFSRFont")));SendMessageW(h,WM_SETFONT,WPARAM(theme::fonts[std::clamp(n,0,5)]),FALSE);return TRUE;},0);
             for(int width:{840,1260}) {
                 SetWindowPos(window,nullptr,0,0,theme::px(width),theme::px(740),SWP_NOZORDER|SWP_NOACTIVATE);
@@ -134,6 +138,16 @@ int wmain(int argc,wchar_t**argv) {
         showRendererLog();KillTimer(rendererLogWindow,1);
         RECT logBounds{};GetWindowRect(rendererLogWindow,&logBounds);MONITORINFO logMonitor{sizeof(logMonitor)};GetMonitorInfoW(MonitorFromWindow(window,MONITOR_DEFAULTTONEAREST),&logMonitor);
         ensure(contains(logMonitor.rcWork,logBounds),"Live log viewer opened outside the owner's monitor");
+        MINMAXINFO logLimits{};SendMessageW(rendererLogWindow,WM_GETMINMAXINFO,0,LPARAM(&logLimits));
+        ensure(logLimits.ptMinTrackSize.x<=logMonitor.rcWork.right-logMonitor.rcWork.left&&logLimits.ptMinTrackSize.y<=logMonitor.rcWork.bottom-logMonitor.rcWork.top,"Log minimum track size exceeds work area");
+        for(int logicalWidth:{460,620,1000}){
+            SetWindowPos(rendererLogWindow,nullptr,0,0,theme::px(logicalWidth),theme::px(420),SWP_NOMOVE|SWP_NOZORDER|SWP_NOACTIVATE);rendererLogLayout();
+            RECT client{};GetClientRect(rendererLogWindow,&client);std::vector<RECT> footer;
+            for(HWND h:{rendererLogFollow,GetDlgItem(rendererLogWindow,902),GetDlgItem(rendererLogWindow,903),GetDlgItem(rendererLogWindow,IDCANCEL)}){
+                auto bounds=relativeRect(h,rendererLogWindow);ensure(contains(client,bounds),"Log footer control clipped on narrow layout");
+                for(const auto &other:footer){RECT overlap{};ensure(!IntersectRect(&overlap,&bounds,&other),"Log footer controls overlap on narrow layout");}footer.push_back(bounds);
+            }
+        }
         ensure(rendererLogSnapshot.find(activeSessionToken)!=std::string::npos,"Live log did not show current session");
         {std::ofstream out(appDirectory/L"logs/renderer.log",std::ios::app);out<<"new-live-evidence\n";}
         SendMessageW(rendererLogWindow,WM_TIMER,1,0);

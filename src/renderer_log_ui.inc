@@ -20,16 +20,22 @@ static void refreshRendererLog(){
 static void rendererLogLayout(){
     RECT r;GetClientRect(rendererLogWindow,&r);theme::Layout layout;
     layout.place(rendererLogState,theme::px(20),theme::px(16),r.right-theme::px(40),theme::px(50));
-    layout.place(rendererLogText,theme::px(20),theme::px(76),r.right-theme::px(40),std::max(theme::px(60),int(r.bottom)-theme::px(146)));
-    layout.place(rendererLogFollow,theme::px(20),r.bottom-theme::px(52),theme::px(170),theme::px(32));
-    layout.place(GetDlgItem(rendererLogWindow,902),r.right-theme::px(420),r.bottom-theme::px(52),theme::px(112),theme::px(32));
-    layout.place(GetDlgItem(rendererLogWindow,903),r.right-theme::px(296),r.bottom-theme::px(52),theme::px(152),theme::px(32));
-    layout.place(GetDlgItem(rendererLogWindow,IDCANCEL),r.right-theme::px(132),r.bottom-theme::px(52),theme::px(112),theme::px(32));layout.commit(rendererLogWindow);
+    const bool wrap=r.right<theme::px(650);const int footer=theme::px(wrap?96:52);
+    layout.place(rendererLogText,theme::px(20),theme::px(76),r.right-theme::px(40),std::max(theme::px(20),int(r.bottom)-theme::px(94)-footer));
+    layout.place(rendererLogFollow,theme::px(20),r.bottom-footer,theme::px(170),theme::px(32));
+    if(wrap){
+        const int gap=theme::px(12),width=std::max(1,(int(r.right)-theme::px(40)-2*gap)/3);
+        int x=theme::px(20);for(int id:{902,903,IDCANCEL}){layout.place(GetDlgItem(rendererLogWindow,id),x,r.bottom-theme::px(52),width,theme::px(32));x+=width+gap;}
+    }else{
+        layout.place(GetDlgItem(rendererLogWindow,902),r.right-theme::px(420),r.bottom-theme::px(52),theme::px(112),theme::px(32));
+        layout.place(GetDlgItem(rendererLogWindow,903),r.right-theme::px(296),r.bottom-theme::px(52),theme::px(152),theme::px(32));
+        layout.place(GetDlgItem(rendererLogWindow,IDCANCEL),r.right-theme::px(132),r.bottom-theme::px(52),theme::px(112),theme::px(32));
+    }layout.commit(rendererLogWindow);
 }
 static LRESULT CALLBACK rendererLogProcedure(HWND h,UINT m,WPARAM w,LPARAM l){
     switch(m){
     case WM_SIZE:rendererLogLayout();return 0;
-    case WM_GETMINMAXINFO:{auto*p=reinterpret_cast<MINMAXINFO*>(l);p->ptMinTrackSize={theme::px(720),theme::px(350)};return 0;}
+    case WM_GETMINMAXINFO:{auto*p=reinterpret_cast<MINMAXINFO*>(l);auto s=modalSize(720,350);p->ptMinTrackSize={s.cx,s.cy};return 0;}
     case WM_TIMER:refreshRendererLog();return 0;
     case WM_COMMAND:if(LOWORD(w)==IDCANCEL){DestroyWindow(h);return 0;}
         if(LOWORD(w)==902||LOWORD(w)==901){refreshRendererLog();return 0;}
