@@ -168,4 +168,7 @@ into each simulator. Import preserves differing previous models with verified
 backups. Updates preserve local models; generated uninstall instructions delete
 only packaged files and leave user models/cache files. Returning to an older
 Normal/FG release leaves NR inactive; older installers may leave unused NR
-components in place. Remove local models yourself when no longer needed.
+components in place. NR preferences use a separate versioned INI section so an
+older Normal launcher can save its own settings without erasing them. Earlier
+prototype Launcher-section NR choices migrate on first save. Remove local
+models yourself when no longer needed.

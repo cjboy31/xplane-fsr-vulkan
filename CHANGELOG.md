@@ -11,6 +11,8 @@ Experimental NR release candidate; feature-guide publication review pending.
 - Make NR On/Off, artistic controls, style, history, passes and scene scope live.
   Prepare model/resolution changes in the background; retain contexts until
   their command buffers can safely release them. Add 33/50/67% budget profiles.
+- Store NR preferences independently so older Normal builds cannot erase them
+  when saving their own settings. Migrate earlier prototype NR choices.
 - Default to External only; offer Full scene for cockpit and exterior NR.
   Ground-camera safety remains active and temporal histories reset on changes.
   NR + FG requires an explicit experimental opt-in; FG provider changes still

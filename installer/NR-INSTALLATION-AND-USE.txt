@@ -60,6 +60,8 @@ buttons explain use and tradeoffs. Model/network and processing-resolution
 changes prepare in the background; FSR continues while NR is waiting. First
 compilation may take tens of seconds. Re-enabling a prepared model is quicker.
 Selections save automatically and return when reopening the app.
+NR choices are stored separately so they also survive an older Normal build
+saving its own settings before you return to this Experimental build.
 
 External views only is the default. Full scene includes the cockpit as well as
 the exterior. Changing scope resets temporal history. The near-ground external

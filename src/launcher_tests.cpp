@@ -89,6 +89,21 @@ int wmain(int argc, wchar_t **argv) {
         launcher::save(newFile, custom);
         require(launcher::serialized(launcher::load(newFile)) == launcher::serialized(custom),
                 "First-save Unicode INI round trip");
+        auto legacyNR=dir/L"legacy-nr.ini";
+        graphics::write(legacyNR,"[Launcher]\r\nNeuralRendering=4\r\nNRIntensity=39\r\nNRModelScale=33\r\nNRScope=1\r\nNRAllowFG=1\r\n");
+        auto migratedNR=launcher::load(legacyNR);
+        require(migratedNR.neuralRendering==4&&migratedNR.nr[xpfsr::nr::Intensity]==39&&migratedNR.nr[xpfsr::nr::Scope]==1,"Legacy NR choices did not migrate");
+        launcher::save(legacyNR,migratedNR);
+        auto nrBefore=migratedNR.nr;
+        // The public pre-NR Normal launcher uses this Windows API to replace
+        // its entire Launcher block, retaining independent sections.
+        const wchar_t oldNormalSection[]=L"Mode=2\0FrameGeneration=0\0Enabled=1\0";
+        require(WritePrivateProfileSectionW(L"Launcher",oldNormalSection,legacyNR.c_str())!=FALSE,"Older-Normal save fixture failed");
+        WritePrivateProfileStringW(nullptr,nullptr,nullptr,legacyNR.c_str());
+        auto returnedNR=launcher::load(legacyNR);
+        require(returnedNR.mode==2&&returnedNR.neuralRendering==4&&returnedNR.nr==nrBefore,"Older Normal save erased NR choices");
+        launcher::save(legacyNR,returnedNR);
+        require(launcher::load(legacyNR).nr==nrBefore,"Returned Experimental save erased NR choices");
         SetFileAttributesW(file.c_str(), FILE_ATTRIBUTE_READONLY);
         rejects([&] {
             custom.mode = 3;
@@ -98,6 +113,7 @@ int wmain(int argc, wchar_t **argv) {
         WritePrivateProfileStringW(L"Launcher", L"Mode", L"999", file.c_str());
         WritePrivateProfileStringW(L"Launcher", L"FrameGeneration", L"nonsense", file.c_str());
         WritePrivateProfileStringW(L"Launcher", L"NeuralRendering", L"999", file.c_str());
+        WritePrivateProfileStringW(L"NeuralRendering", L"Mode", L"999", file.c_str());
         WritePrivateProfileStringW(L"Launcher", L"Preset", L"unknown", file.c_str());
         auto invalid = launcher::load(file);
         require(invalid.mode == 0 && invalid.frameGeneration == 0 && invalid.neuralRendering == 0 && invalid.presetId.empty(),
@@ -139,6 +155,7 @@ int wmain(int argc, wchar_t **argv) {
         std::cout << "PASS: all 14 preset/provider round trips, Unicode/quoted arguments, "
                      "checkboxes, custom AA/output, legacy migration, backup preservation, write "
                      "failure, corrupt selectors and injection-state transitions.\n";
+        std::cout<<"PASS: legacy NR migration and NR choices retained across an older Normal section rewrite\n";
         return 0;
     } catch (const std::exception &e) {
         std::cerr << "FAIL: " << e.what() << '\n';
