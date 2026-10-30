@@ -51,8 +51,30 @@ int wmain(int argc, wchar_t **argv) {
             refused = true;
         }
         ensure(refused && hash(target) == unknown, "Upgrade overwrote an unrecognized plugin");
+        // Exercise the actual offline media gate without creating a player.
+        auto media = appDirectory / L"media";
+        fs::create_directories(media);
+        auto video = media / (wide(updates::currentVersion) + L".mp4");
+        ensure(!intro::mediaAvailable(), "Missing media must not trigger onboarding");
+        std::ofstream(video, std::ios::binary) << std::string(2048, 'v');
+        auto digest = hash(video);
+        auto manifest = media / L"feature-video.ini";
+        auto writeManifest = [&](const char *version, int bytes) {
+            std::ofstream(manifest) << "[Video]\nVersion=" << version << "\nBytes=" << bytes
+                                    << "\nSHA256=" << digest << '\n';
+        };
+        writeManifest(updates::currentVersion, 2048);
+        ensure(intro::mediaAvailable(), "Matching local manifest must pass integrity checks");
+        writeManifest("0.6.1-alpha", 2048);
+        ensure(!intro::mediaAvailable(), "An older guide must not claim to describe this update");
+        writeManifest(updates::currentVersion, 2049);
+        ensure(!intro::mediaAvailable(), "Wrong video length must fail");
+        writeManifest(updates::currentVersion, 2048);
+        std::ofstream(video, std::ios::binary) << std::string(2048, 'x');
+        ensure(!intro::mediaAvailable(), "Same-size altered video must fail its digest");
         std::cout << "PASS: previous owned camera publisher upgrades with verified backup, repeat install, "
-                     "owned removal and foreign-file refusal; no simulator was started\n";
+                     "owned removal, foreign-file refusal, and actual missing/version/length/hash media gates; "
+                     "no simulator or video decoder was started\n";
         return 0;
     } catch (const std::exception &e) {
         std::cerr << "FAIL: " << e.what() << '\n';

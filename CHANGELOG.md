@@ -1,5 +1,21 @@
 # Changes
 
+## 0.6.2-alpha
+
+- Add a captioned, locally narrated setup/feature video with a fresh matched
+  X-Plane 12.4.4 / FSR 3.1.6 Native AA capture. Clearly label the comparison's
+  1080p settings, sequential captures and experimental limits; no FPS or general
+  ghosting-fix claim. The renderer algorithms/providers are unchanged.
+- Show the verified bundled guide once per installed version. Add immediate
+  Skip/Continue, Escape/Close, replay from What's new, Pause and Mute. Remember
+  the user's automatic-video/mute choices independently of rendering settings.
+- Load the offline Windows decoder only for playback; missing optional media
+  components or corrupt/missing media do not prevent normal launcher use.
+- Require matching versioned video, transcript, captions, credits and provenance
+  during Windows packaging. Preserve settings through updates. Native Linux/Mac
+  preview packages are unchanged; Mac remains diagnostics only. Regular FG stays
+  suspended and NR stays canceled.
+
 ## 0.6.1-alpha
 
 - Temporarily suspend built-in frame generation in regular releases. Show

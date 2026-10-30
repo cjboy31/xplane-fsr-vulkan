@@ -52,6 +52,19 @@ foreach($file in $manifest.files){
   $path = Join-Path $installed $file.path
   if((Get-FileHash -LiteralPath $path).Hash.ToLowerInvariant() -ne $file.sha256){throw "Installed hash mismatch: $($file.path)"}
 }
+$featureVideo = $null
+if([version](($manifest.packageVersion -split '-')[0]) -ge [version]'0.6.2') {
+  $videoVersion = $manifest.packageVersion
+  foreach($name in @(($videoVersion+'.mp4'),'feature-video.ini','TRANSCRIPT.txt','CAPTIONS.srt','PROVENANCE.json','CREDITS-AND-LICENSES.txt')) {
+    if(('media/'+$name) -notin $manifest.files.path){throw ('Required feature guide file absent: '+$name)}
+  }
+  $videoFile = Join-Path $installed ('media\'+$videoVersion+'.mp4')
+  $featureVideo = @{version=$videoVersion;sha256=(Get-FileHash -LiteralPath $videoFile).Hash.ToLowerInvariant();bytes=(Get-Item -LiteralPath $videoFile).Length}
+  $videoManifest = [IO.File]::ReadAllText((Join-Path $installed 'media\feature-video.ini'))
+  foreach($line in @("Version=$($featureVideo.version)","SHA256=$($featureVideo.sha256)","Bytes=$($featureVideo.bytes)")) {
+    if($videoManifest -notmatch ('(?m)^'+[regex]::Escape($line)+'\r?$')){throw 'Installed feature-video manifest does not match payload'}
+  }
+}
 if((Get-Content -LiteralPath (Join-Path $installed 'settings.ini') -Raw) -notmatch [regex]::Escape('Simulator='+$simulator)){throw 'Simulator path was not saved'}
 # Verify a recognized update keeps local data and still produces identical files.
 New-Item -ItemType Directory -Path (Join-Path $installed 'logs'),(Join-Path $installed 'plugin-backups') | Out-Null
@@ -70,6 +83,7 @@ $code = Run-Setup ('/S /TEST=1 /AUTOUPDATE=1 /D='+$unrelated)
 if($code -ne 5){throw "Automatic update accepted an unrelated target: $code"}
 $settings = Join-Path $installed 'settings.ini'
 Add-Content -LiteralPath $settings -Value "`r`n[Updates]`r`nAutomaticChecks=0`r`nPreviewReleases=0"
+Add-Content -LiteralPath $settings -Value "`r`n[FeatureVideo]`r`nAutomatic=0`r`nMuted=1`r`nLastPresented=0.6.1-alpha"
 $settingsHash=(Get-FileHash -LiteralPath $settings).Hash
 $lockPath=Join-Path $installed 'launcher.lock'
 $heldLock=[IO.File]::Open($lockPath,[IO.FileMode]::OpenOrCreate,[IO.FileAccess]::Write,[IO.FileShare]::None)
@@ -107,5 +121,10 @@ $result.parentWait='PASS'
 $result.runningLauncherRejected='PASS'
 $result.lockedPayloadRejected='PASS'
 $result.unownedAutomaticUpdateRejected='PASS'
+if($featureVideo){
+  $result.featureVideoVersion=$featureVideo.version
+  $result.featureVideoSha256=$featureVideo.sha256
+  $result.featureVideoBytes=$featureVideo.bytes
+}
 $result | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $PSScriptRoot $ResultName) -Encoding utf8
 $result | ConvertTo-Json

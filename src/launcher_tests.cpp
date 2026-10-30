@@ -27,6 +27,9 @@ int wmain(int argc, wchar_t **argv) {
         graphics::write(file, "[Application]\r\nSimulator=D:\\Simulator "
                               "One\r\n[Graphics]\r\nLastBackup=keep this backup\r\n");
         require(launcher::load(file).simulator == L"D:\\Simulator One", "Legacy folder migration");
+        WritePrivateProfileStringW(L"FeatureVideo", L"Automatic", L"0", file.c_str());
+        WritePrivateProfileStringW(L"FeatureVideo", L"Muted", L"1", file.c_str());
+        WritePrivateProfileStringW(L"FeatureVideo", L"LastPresented", L"0.6.2-alpha", file.c_str());
         for (auto &preset : graphics::resolutionPresets) {
             launcher::Preferences p;
             p.simulator = L"D:\\Simulador \u00e9\u822a\\X-Plane 12";
@@ -43,6 +46,10 @@ int wmain(int argc, wchar_t **argv) {
                     "Every preset/provider/checkbox/Unicode argument must survive restart");
             require(launcher::readSetting(file, L"Graphics", L"LastBackup") == L"keep this backup",
                     "Saving choices must retain backup metadata");
+            require(launcher::readSetting(file, L"FeatureVideo", L"Automatic") == L"0" &&
+                        launcher::readSetting(file, L"FeatureVideo", L"Muted") == L"1" &&
+                        launcher::readSetting(file, L"FeatureVideo", L"LastPresented") == L"0.6.2-alpha",
+                    "Saving presets must retain feature-video opt-out, mute and presentation state");
         }
         launcher::Preferences custom;
         custom.manual = {2, 1, 4, 3840, 2160};

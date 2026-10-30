@@ -18,6 +18,9 @@ __pycache__/
 *.spv
 *.zip
 *.rar
+*.mp4
+*.wav
+*.onnx
 *.log
 settings.ini
 launcher.lock

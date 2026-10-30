@@ -1,0 +1,38 @@
+FEATURE GUIDE - CREDITS AND DISTRIBUTION
+
+Original script, edit, captions, layout and app icon: cjboy31 / this project.
+Original project materials are MIT licensed; see the included LICENSE.txt.
+Generated narration uses the Kokoro bm_george preset. It is synthetic speech,
+not an impersonation, voice clone or recording of an identified speaker.
+Kokoro-82M weights: hexgrad / rzvzn and contributors, Apache-2.0.
+https://huggingface.co/hexgrad/Kokoro-82M
+ONNX conversion / build-time inference:
+https://github.com/thewh1teagle/kokoro-onnx
+No speech model, voice pack, inference runtime, FFmpeg executable or speech
+tool is included in this installation. Generated speech is an output, not a
+redistribution of the model or these build-time programs.
+
+Before/after images were freshly captured from the owner's X-Plane 12.4.4-r1
+installation with permission to use this comparison. They show the default
+Cirrus SR22 in a stationary external view at 1920x1080, with processing bypassed
+and FSR 3.1.6 Native AA respectively. MSAA, FXAA and frame generation were Off.
+The captures are sequential and use identical crops and resizing. No generated
+detail or selective sharpening/blur has been applied. This is an individual
+detail example, not a benchmark or proof that motion/ghosting issues are fixed.
+The existing 0.6.1 renderer was used; 0.6.2 adds onboarding, not a new AA algorithm.
+
+X-Plane, aircraft, scenery, trademarks and rendered simulator visuals retain
+their respective owners' rights, including Laminar Research. MIT does not grant
+rights to those third-party visuals. No simulator source asset, model, texture,
+shader, aircraft file, user preferences or user log is included. The reviewed
+screen recording is presented as an instructional comparison. This project is
+independent and is not endorsed by AMD, Laminar Research or other vendors.
+
+Segoe UI was used to rasterize titles on Windows; font files are not included.
+Media playback uses the user's Windows Media Foundation installation; no
+Windows codec/system DLL is redistributed. Open captions, a transcript and
+non-sensitive capture provenance are supplied beside the MP4.
+
+Keep this notice, the main license and all upstream notices with the package.
+Source scene projects and build instructions: docs/FEATURE-VIDEOS.md in
+https://github.com/cjboy31/xplane-fsr-vulkan/tree/codex/saved-presets-and-status

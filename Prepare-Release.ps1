@@ -5,6 +5,7 @@ param(
     [Parameter(Mandatory)][string]$InstallerTestResult,
     [Parameter(Mandatory)][string]$Instructions,
     [string]$SetupInstaller = '',
+    [string]$FeatureVideo = '',
     [string]$Git = 'git'
 )
 $ErrorActionPreference = 'Stop'
@@ -26,6 +27,14 @@ $changelog = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'CHANGELOG.md') -
 $entry = [regex]::Match($changelog, ('(?ms)^##\s+'+[regex]::Escape($Version)+'\r?\n(.*?)(?=^##\s|\z)'))
 if (-not $entry.Success) { throw 'Add this version to CHANGELOG.md before preparing a release' }
 $changes = $entry.Groups[1].Value.Trim()
+if ([version](($Version -split '-')[0]) -ge [version]'0.6.2') {
+    if (-not $FeatureVideo) { throw 'This release requires the exact installer-tested feature video' }
+    if ($result.featureVideoSha256 -ne (Get-FileHash -LiteralPath $FeatureVideo).Hash.ToLowerInvariant() -or
+        $result.featureVideoBytes -ne (Get-Item -LiteralPath $FeatureVideo).Length -or
+        $result.featureVideoVersion -ne $Version) {
+        throw 'Feature video must match the installed payload verified by Test-Installer'
+    }
+}
 $output = Join-Path (Join-Path $PSScriptRoot 'dist') $Version
 if (Test-Path -LiteralPath $output) { throw 'Release staging already exists; keep versioned artifacts intact' }
 New-Item -ItemType Directory -Path $output -Force | Out-Null
@@ -47,6 +56,12 @@ if ($SetupInstaller) {
         Copy-Item -LiteralPath $SetupInstaller -Destination (Join-Path $output $setupName)
         [IO.File]::AppendAllText((Join-Path $output 'SHA256SUMS.txt'), "$setupHash  $setupName`n", $utf8)
     }
+}
+if ($FeatureVideo) {
+    $videoName = "XPlane-FSR3-4-$Version-Feature-Guide.mp4"
+    Copy-Item -LiteralPath $FeatureVideo -Destination (Join-Path $output $videoName)
+    $videoHash = (Get-FileHash -LiteralPath $FeatureVideo).Hash.ToLowerInvariant()
+    [IO.File]::AppendAllText((Join-Path $output 'SHA256SUMS.txt'), "$videoHash  $videoName`n", $utf8)
 }
 $notes = @"
 ## FSR 3/4 + Frame Gen for X-Plane $Version
@@ -80,8 +95,18 @@ install/update/uninstall and saved-choice preservation checks. Source commit:
 $sourceCommit. A passing fixture does not establish live-flight visual quality.
 Cockpit-screen restoration still requires frame generation Off and currently
 supports only the default Cirrus SR22. SDK runtimes
-are included under their binary redistribution terms; simulator assets and user
-data are excluded. Keep all supplied license notices with the installation.
+are included under their binary redistribution terms; simulator source assets
+and user data are excluded. The guide contains reviewed simulator screenshots;
+visuals retain their owners' rights. Keep all supplied license notices.
+
+### Feature guide
+
+The captioned, narrated MP4 plays offline once per installed version. Skip it
+immediately, disable future videos, or replay from What's new. It includes a
+fresh 1080p FSR 3.1.6 Native AA comparison captured in X-Plane 12.4.4. This is an
+individual detail example, not a benchmark or a general ghosting-fix claim.
+This update changes onboarding; the renderer is unchanged from 0.6.1. Built-in
+FG remains suspended, and the separate Linux/Mac preview packages are unchanged.
 
 Installer SHA-256: $hash
 "@

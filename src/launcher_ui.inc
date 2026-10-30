@@ -242,6 +242,7 @@ static void runtimeBanner(launcher::RuntimeState state, const app::Telemetry &st
 #include "setup_ui.inc"
 #include "update_ui.inc"
 #include "launcher_design.inc"
+#include "intro_video.inc"
 static LRESULT CALLBACK procedure(HWND hwnd, UINT message, WPARAM w, LPARAM l) {
     switch (message) {
     case WM_CREATE:
@@ -347,6 +348,9 @@ static LRESULT CALLBACK procedure(HWND hwnd, UINT message, WPARAM w, LPARAM l) {
                 return 0;
             }
             switch (id) {
+            case 251:
+                intro::show(hwnd, false);
+                break;
             case 250:
                 platformHelp(hwnd);
                 break;
@@ -472,7 +476,10 @@ static LRESULT CALLBACK procedure(HWND hwnd, UINT message, WPARAM w, LPARAM l) {
         }
         return 0;
     case WM_TIMER:
-        if (w == 3) {
+        if (w == 5) {
+            KillTimer(hwnd, 5);
+            intro::show(hwnd, true);
+        } else if (w == 3) {
             KillTimer(hwnd, 3);
             if (autoCheckUpdates)
                 startUpdateCheck();
@@ -500,6 +507,7 @@ static LRESULT CALLBACK procedure(HWND hwnd, UINT message, WPARAM w, LPARAM l) {
         }
         return 0;
     case WM_CLOSE:
+        intro::close();
         updateJob->cancel = true;
         try {
             saveChoices();
@@ -515,6 +523,7 @@ static LRESULT CALLBACK procedure(HWND hwnd, UINT message, WPARAM w, LPARAM l) {
         KillTimer(hwnd, 2);
         KillTimer(hwnd, 3);
         KillTimer(hwnd, 4);
+        KillTimer(hwnd, 5);
         detach();
         NOTIFYICONDATAW tray{sizeof(tray)};
         tray.hWnd = hwnd;

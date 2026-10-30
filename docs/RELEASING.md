@@ -4,6 +4,15 @@ Application updates are also published at
 [GitHub Releases](https://github.com/cjboy31/xplane-fsr-vulkan/releases).
 Source changes alone do not deliver the Windows installer to users.
 
+Starting with 0.6.2, every Windows application release also includes a matching
+captioned feature video. Read [the media workflow](FEATURE-VIDEOS.md). Pass
+`-FeatureVideoDirectory` to `installer/Build-Installer.ps1`; packaging rejects
+missing media, mismatched version, length or SHA-256. Keep the editable scene
+script in `media/source/`. Upload the MP4 separately alongside the installer
+assets using `Prepare-Release.ps1 -FeatureVideo <tested.mp4>`; it checks the
+installer-test evidence and adds SHA256SUMS.txt. Do not move an older tag or replace an older
+version's video to make a new release appear complete.
+
 1. Update version metadata and the changelog. Finish relevant source/graphics
    checks and inspect the Windows UI when it changes.
 2. Build a complete installer RAR using an explicit file allow-list. Preserve

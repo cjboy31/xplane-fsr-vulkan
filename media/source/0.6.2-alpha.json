@@ -1,0 +1,66 @@
+{
+  "version": "0.6.2-alpha",
+  "voice": "bm_george",
+  "speed": 1.0,
+  "capture": {
+    "simulator": "X-Plane 12.4.4-r1",
+    "renderer_version": "0.6.1-alpha",
+    "gpu": "AMD Radeon AI PRO R9700",
+    "aircraft": "Default Cirrus SR22",
+    "resolution": [1920, 1080],
+    "comparison": "Processing bypassed versus FSR 3.1.6 Native AA; MSAA/FXAA/FG off",
+    "crop": [430, 320, 1860, 1040],
+    "note": "Matched stationary external view; sequential captures. No sharpening, denoising, frame generation or image enhancement added. Not a performance benchmark or general ghosting-fix demonstration."
+  },
+  "scenes": [
+    {
+      "kind": "welcome",
+      "eyebrow": "COMMUNITY PREVIEW / 0.6.2",
+      "title": "A clearer setup.\nA better starting point.",
+      "lines": ["FSR 3/4 + Frame Gen for X-Plane", "A short guide to your next flight"],
+      "narration": "Welcome to F S R for X Plane. This community preview brings temporal anti aliasing, upscaling, and clearer setup controls into one launcher."
+    },
+    {
+      "kind": "comparison",
+      "eyebrow": "CAPTURED IN X-PLANE 12.4.4",
+      "title": "See the same scene, two ways.",
+      "lines": ["LEFT  Processing bypassed", "RIGHT  FSR 3.1.6 Native AA"],
+      "narration": "These fresh simulator captures show processing off, then F S R three Native A A active, at ten eighty p. Compare the wing and runway edges. This is one example, not a performance benchmark."
+    },
+    {
+      "kind": "presets",
+      "eyebrow": "01 / CHOOSE YOUR PROFILE",
+      "title": "Start with a preset.",
+      "lines": ["Native AA  /  full internal resolution", "Quality  /  lower input, reconstructed output", "FSR 4  /  experimental provider, hardware dependent"],
+      "narration": "Start with a preset. Native A A keeps the full internal resolution. Quality reconstructs a larger output from fewer pixels. F S R four remains an experimental, hardware dependent option."
+    },
+    {
+      "kind": "resolution",
+      "eyebrow": "02 / MATCH INPUT AND OUTPUT",
+      "title": "1440p in.\n4K out.",
+      "lines": ["4K Quality example", "2560 × 1440 internal → 3840 × 2160 output", "FXAA Off  /  start with MSAA Off"],
+      "narration": "For four K Quality, select four K output with fourteen forty p input. A fourteen forty p output setting stays fourteen forty p. Leave F X A A off, and start with M S A A off."
+    },
+    {
+      "kind": "status",
+      "eyebrow": "03 / CHECK BEFORE FLIGHT",
+      "title": "Saved choices.\nVisible confirmation.",
+      "lines": ["Selections return when you reopen", "Help explains settings and their intended use", "FSR ACTIVE requires recent renderer activity"],
+      "narration": "Your selections are remembered. Help explains each setting and its intended use. Check the live status for recent F S R activity; launching the simulator alone does not confirm reconstruction."
+    },
+    {
+      "kind": "limits",
+      "eyebrow": "EXPERIMENTAL / KNOW THE LIMITS",
+      "title": "Keep expectations clear.",
+      "lines": ["Cockpit-screen restore supports selected displays", "Clouds, props and moving objects can still ghost", "Built-in frame generation is suspended", "Linux: FSR 3.1 preview  /  Mac: diagnostics only"],
+      "narration": "The cockpit screen option supports selected displays. Clouds, propellers, and moving objects can still ghost. Built in frame generation is suspended. Linux has a separate preview; Mac currently provides diagnostics only."
+    },
+    {
+      "kind": "updates",
+      "eyebrow": "WHAT'S NEW / ON YOUR TERMS",
+      "title": "A short guide\nwith each update.",
+      "lines": ["Plays once for each installed version", "Skip immediately  /  replay from What's new", "Turn future update videos off at any time"],
+      "narration": "Each update can introduce its changes here. Skip at any time, turn future videos off, or replay from What's New. Choose your profile, check the status, and enjoy your flight."
+    }
+  ]
+}

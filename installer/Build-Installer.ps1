@@ -11,7 +11,8 @@ param(
   [string[]]$AdditionalOriginalFiles = @(),
   [string]$IconPath = '',
   [string]$SetupScript = (Join-Path $PSScriptRoot 'Setup.nsi'),
-  [string]$MingwNotices = ''
+  [string]$MingwNotices = '',
+  [string]$FeatureVideoDirectory = ''
 )
 $ErrorActionPreference = 'Stop'
 $taskRoot = (Resolve-Path -LiteralPath $WorkspaceRoot).Path
@@ -34,6 +35,22 @@ function Add-Payload([string]$Source,[string]$Relative,[string]$License) {
 }
 $originalFiles = @('XPlaneFSR24.exe','NativeAACheck.exe','CockpitRestoreCheck.exe','layer\XPFSR24Layer.dll','layer\XPFSR24Layer.json','plugin\64\win.xpl') + $AdditionalOriginalFiles
 foreach($relative in $originalFiles){ Add-Payload (Join-Path $app $relative) $relative 'Original MIT; API/compiler-runtime notices in licenses' }
+if([version](($PackageVersion -split '-')[0]) -ge [version]'0.6.2') {
+  if(-not $FeatureVideoDirectory){throw 'A matching feature video is required for every Windows release starting with 0.6.2'}
+  $videoFile = Join-Path $FeatureVideoDirectory ($PackageVersion+'.mp4')
+  $videoManifest = Join-Path $FeatureVideoDirectory 'feature-video.ini'
+  $videoText = [IO.File]::ReadAllText($videoManifest)
+  $videoDigest = (Get-FileHash -LiteralPath $videoFile -Algorithm SHA256).Hash.ToLowerInvariant()
+  $videoBytes = (Get-Item -LiteralPath $videoFile).Length
+  if($videoText -notmatch ('(?m)^Version='+[regex]::Escape($PackageVersion)+'\r?$') -or
+     $videoText -notmatch ('(?m)^SHA256='+$videoDigest+'\r?$') -or
+     $videoText -notmatch ('(?m)^Bytes='+$videoBytes+'\r?$') -or $videoBytes -lt 1024 -or $videoBytes -gt 100663296) {
+    throw 'Feature video manifest must match this version and exact MP4 bytes/hash'
+  }
+  foreach($name in @(($PackageVersion+'.mp4'),'feature-video.ini','TRANSCRIPT.txt','CAPTIONS.srt','PROVENANCE.json','CREDITS-AND-LICENSES.txt')) {
+    Add-Payload (Join-Path $FeatureVideoDirectory $name) ('media\'+$name) 'Original edit/narration/artwork; captured simulator visuals retain their owners; see media/CREDITS-AND-LICENSES.txt'
+  }
+}
 $expectedRuntime = @{
  'amd_fidelityfx_loader_vk.dll'='38a56a01fb3565c0757d9f5c1e4e69de4b65e5f2e5769b323b200dc1f142bab9'
  'amd_fidelityfx_upscaler_vk.dll'='4a7e895af6e0b615d40a84d59eb8c2b1054ad91cdd0c739567940270d51bdab7'
@@ -83,7 +100,7 @@ foreach($relative in ($allFiles | Sort-Object)){
   $install.Add('File "'+(Join-Path $payload $winRelative)+'"')
   $uninstall.Add('Delete "$INSTDIR\'+$winRelative+'"')
 }
-foreach($directory in @('plugin\64','plugin','layer','runtime','licenses')){ $uninstall.Add('RMDir "$INSTDIR\'+$directory+'"') }
+foreach($directory in @('plugin\64','plugin','layer','runtime','licenses','media')){ $uninstall.Add('RMDir "$INSTDIR\'+$directory+'"') }
 Write-Text (Join-Path $generated 'InstallFiles.nsh') ($install -join "`n")
 Write-Text (Join-Path $generated 'UninstallFiles.nsh') ($uninstall -join "`n")
 [string[]]$iconArguments = @()

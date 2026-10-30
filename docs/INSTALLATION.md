@@ -1,6 +1,25 @@
+0.6.2: OFFLINE FEATURE GUIDE
+A captioned 100-second overview plays once after opening each installed version.
+It explains presets, AA/input/output setup, live status and current limits, with
+fresh real simulator Native AA before/after detail shots and subtle synthetic
+voice narration. Skip / Continue, Escape or Close returns immediately to the app.
+Use What's new to replay. Pause and Mute are available. Turn off Show a feature
+video after future app updates to opt out; mute and opt-out are remembered.
+The player runs offline with Windows Media Foundation; no service, speech model
+or codec downloader is installed. Missing media does not block the launcher.
+If your Windows edition lacks its optional media components, use the included
+media/TRANSCRIPT.txt or standalone MP4. The player remains skippable on errors.
+
+This update adds onboarding; rendering is unchanged from 0.6.1. Its comparison
+shows one stationary external view at 1080p, FSR 3.1.6 Native AA versus bypassed,
+with MSAA/FXAA/FG Off. It does not prove an FPS gain or a general ghosting fix.
+Built-in frame generation stays suspended. Linux/Mac preview packages are
+separate and unchanged by this Windows update. Keep media credits with the app.
+Every future regular Windows release must include its own matching feature guide.
+
 # Install FSR 3/4 + Frame Gen for X-Plane
 
-0.6.1-alpha temporarily suspends built-in frame generation in regular releases.
+0.6.2-alpha temporarily suspends built-in frame generation in regular releases.
 The disabled selector shows **Off — Temporarily suspended**; its help explains
 why. Old settings and environment variables cannot enable it. FSR 3/4 Native AA
 and upscaling still work. Keep using the same application folder when updating;
@@ -16,9 +35,7 @@ branch and should not be used as a remedy for unstable base frame times.
 scale and output controls remain on the main screen; resize or scroll when
 needed. Launch actions and live status stay in the footer. Your existing saved
 choices and installer identity are retained. Click **Platform support** for the
-audit: this download is **Windows x64 only**. Linux needs a native port; macOS
-needs a separate Metal renderer. Neither platform is currently confirmed or
-packaged. See docs/PLATFORMS.md in the source repository.
+audit: this download is **Windows x64 only**. Separate native preview downloads provide Linux FSR 3.1 and Mac diagnostics only. Live-flight compatibility is not confirmed.
 
 0.5.9 adds fresh session logs, rejects stale camera/depth frames and adds a
 ground-camera safeguard for external views. Close X-Plane before updating and
@@ -79,7 +96,7 @@ Rendering/AA and frame rate can change while the safeguard is active. It is a
 precaution for the reported ground-level pan artifacts, not a verified cure for
 every aircraft, cloud or view. It requires the updated bundled publisher.
 
-Regular 0.6.1-alpha keeps FG disabled while these reports are investigated.
+Regular 0.6.2-alpha keeps FG disabled while these reports are investigated.
 Close X-Plane before updating; the launcher updates its owned camera publisher
 on the next FSR launch. If artifacts persist with FG Off, retain the renderer
 log. FG testing belongs to the separate experimental branch; do not enable it
@@ -200,6 +217,5 @@ keys; it refuses to overwrite later conflicting choices. Before uninstalling,
 restore graphics if wanted, close X-Plane and use **Remove camera plugin**.
 Then close the launcher and run the package uninstaller. Backups/logs are retained.
 
-The existing FG path is available with cockpit restore Off. It remains experimental
-and includes UI in interpolation. VR, multiple windows, multi-GPU and complete
+Built-in FG is suspended. Development on the separate experimental branch includes UI in interpolation. VR, multiple windows, multi-GPU and complete
 object/cloud motion are unsupported. Read STATUS.md before contributing results.

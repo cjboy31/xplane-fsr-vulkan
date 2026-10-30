@@ -98,7 +98,8 @@ static void designLayout(HWND hwnd) {
     designPlace(designVersion, left, 115, area - 360, 20);
     designPlace(designControl(33), origin + area - 324, 36, 136, 36);
     designPlace(updatesButton, origin + area - 172, 36, 140, 36);
-    designPlace(designPlatform, origin + area - 324, 88, 292, 28);
+    designPlace(designControl(251), origin + area - 324, 80, 292, 30);
+    designPlace(designPlatform, origin + area - 324, 115, 292, 23);
     int ys[] = {profileY, engineY, qualityY, temporalY, statusY, connectionY, diagnosticY};
     for (int i = 0; i < 7; ++i)
         designPlace(designHeads[i], i < 4 ? left + 24 : right + 24, ys[i] + 20,
@@ -247,6 +248,7 @@ static void createMainControls(HWND hwnd) {
         theme::surface(h, 1);
     make(L"BUTTON", L"Sim setup", BS_PUSHBUTTON | WS_TABSTOP, 33);
     updatesButton = make(L"BUTTON", L"Updates", BS_PUSHBUTTON | WS_TABSTOP, 39);
+    make(L"BUTTON", L"What's new  ·  Watch feature video", BS_PUSHBUTTON | WS_TABSTOP, 251);
     designPlatform =
         make(L"BUTTON", L"Windows / Vulkan  ·  Platform support", BS_PUSHBUTTON | WS_TABSTOP, 250);
     const wchar_t *heads[] = {L"Flight profile",
@@ -399,4 +401,5 @@ static void createMainControls(HWND hwnd) {
                                            L"PreviewReleases", L"1") != L"0";
     SetTimer(hwnd, 3, 1500, nullptr);
     SetTimer(hwnd, 4, 500, nullptr);
+    SetTimer(hwnd, 5, 500, nullptr);
 }

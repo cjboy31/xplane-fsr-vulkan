@@ -16,6 +16,10 @@ Laminar Research product, and is not a complete solution to ghosting or stutter.
 
 ## Features
 
+- Offline narrated/captioned feature guide in Windows 0.6.2: once per installed
+  version, immediate Skip, replay from **What's new**, mute and future-video
+  opt-out. Includes a real Native AA detail comparison; see the
+  [video workflow and limits](docs/FEATURE-VIDEOS.md).
 - **Frame generation is temporarily suspended in regular releases starting with
   0.6.1-alpha.** Old FG selections are ignored at runtime. FSR AA/upscaling remain
   available. Development stays on the separate experimental branch; see the
@@ -23,8 +27,10 @@ Laminar Research product, and is not a complete solution to ghosting or stutter.
 - Modern charcoal/champagne native launcher with rounded panels, clear focus
   states, resizing/scrolling, accessible field names and persistent launch/status
   controls. Presets and MSAA/FXAA remain on the main screen.
-- **Platform support:** current packages are Windows x64 only. Linux requires
-  a native port; macOS requires a separate Metal implementation. See the
+- **Platform support:** this branch packages Windows x64. The separate
+  [native-platform preview](https://github.com/cjboy31/xplane-fsr-vulkan/releases/tag/native-preview-2026.10.29.1)
+  offers a Linux FSR 3.1 preview and a Mac diagnostic probe. A Mac Metal FSR
+  renderer and live-flight compatibility are not confirmed. See the
   [platform audit and port requirements](docs/PLATFORMS.md).
 - Fresh logs for every simulator process, stale camera-frame rejection and
   temporary native rendering/FG pause for a grounded external camera near
