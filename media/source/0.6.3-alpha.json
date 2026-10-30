@@ -1,0 +1,105 @@
+{
+  "version": "0.6.3-alpha",
+  "voice": "bm_george",
+  "speed": 1.0,
+  "capture": {
+    "simulator": "X-Plane 12.4.4-r1",
+    "renderer_version": "0.6.3 camera-projection fix candidate; captured before the final old-publisher rejection guard",
+    "gpu": "AMD Radeon AI PRO R9700",
+    "aircraft": "Default Cirrus SR22",
+    "resolution": [
+      1920,
+      1080
+    ],
+    "comparison": "Processing bypassed versus FSR 3.1.6 Native AA; MSAA/FXAA/FG off",
+    "crop": [
+      120,
+      100,
+      1800,
+      946
+    ],
+    "note": "Verified stationary hold frames from sequential private SDK camera tests, processing Off then corrected FSR 3.1.6 Native AA. The camera publisher is byte-identical to the final 0.6.3 publisher. No image enhancement or artifact repair. This is not a performance benchmark or a universal ghosting claim.",
+    "evidence": "review-evidence.json",
+    "caption": "1080p Native AA  /  MSAA, FXAA, FG Off  /  Identical HDR → SDR conversion"
+  },
+  "scenes": [
+    {
+      "kind": "welcome",
+      "eyebrow": "0.6.3 / FLIGHT BRIEF",
+      "title": "Clearer views.\nA refined flight.",
+      "lines": [
+        "Refined image quality during camera movement",
+        "Your saved flight profile stays with you"
+      ],
+      "narration": "Discover the latest F S R update for X Plane. This release refines image reconstruction during camera movement, with Native A A and upscaling options for F S R three and four."
+    },
+    {
+      "kind": "comparison",
+      "eyebrow": "CAPTURED IN X-PLANE 12.4.4",
+      "title": "Compare the same scene.",
+      "lines": [
+        "LEFT  Processing bypassed",
+        "RIGHT  FSR 3.1.6 Native AA"
+      ],
+      "narration": "Compare the same ten eighty p scene with processing off, then F S R three Native A A active. Look at the wing and runway edges in these sequential captures."
+    },
+    {
+      "kind": "presets",
+      "eyebrow": "01 / CHOOSE YOUR PROFILE",
+      "title": "Start with a preset.",
+      "lines": [
+        "Native AA  /  full internal resolution",
+        "Quality  /  lower input, reconstructed output",
+        "FSR 4  /  experimental provider, hardware dependent"
+      ],
+      "narration": "Choose a preset for your display. Native A A keeps full internal resolution. Quality reconstructs a larger output from fewer pixels. F S R four is an experimental option for compatible hardware."
+    },
+    {
+      "kind": "resolution",
+      "eyebrow": "02 / MATCH INPUT AND OUTPUT",
+      "title": "1440p in.\n4K out.",
+      "lines": [
+        "4K Quality example",
+        "2560 x 1440 internal -> 3840 x 2160 output",
+        "FXAA Off  /  start with MSAA Off"
+      ],
+      "narration": "For four K Quality, choose four K output with fourteen forty p input. The output setting determines your final resolution. Leave F X A A off, and start with M S A A off."
+    },
+    {
+      "kind": "status",
+      "eyebrow": "03 / CHECK BEFORE FLIGHT",
+      "title": "Saved choices.\nVisible confirmation.",
+      "lines": [
+        "Selections return when you reopen",
+        "Help explains settings and their intended use",
+        "Live status confirms active FSR processing"
+      ],
+      "narration": "Your selections return when you reopen the app. Help explains each setting and its intended use. The live status confirms when F S R processing is active."
+    },
+    {
+      "kind": "guidance",
+      "chapter": "IN FLIGHT",
+      "eyebrow": "04 / AUTOMATIC VIEW ADAPTATION",
+      "title": "Ready for changing views.",
+      "lines": [
+        "Automatic native rendering near ground contact",
+        "Raise the external camera above 2.5 m to resume FSR",
+        "Built-in frame generation is unavailable in this preview"
+      ],
+      "narration": "Rendering adapts as you change views. Near ground contact, the app can select native rendering automatically. Raise the external camera above two point five metres to resume F S R. Built in frame generation is unavailable in this preview."
+    },
+    {
+      "kind": "updates",
+      "eyebrow": "WHAT'S NEW / ON YOUR TERMS",
+      "title": "A short guide\nwith each update.",
+      "lines": [
+        "Plays once for each installed version",
+        "Skip immediately  /  replay from What's new",
+        "Turn future update videos off at any time"
+      ],
+      "narration": "Each update includes a short feature guide. Skip whenever you like, replay from Whats New, or switch future videos off. Choose your profile, and enjoy your flight."
+    }
+  ],
+  "edition": "Private 0.6.3 feature-guide review; publication requires owner approval",
+  "preview_id": "v6"
+}

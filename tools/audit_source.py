@@ -9,7 +9,7 @@ except (OSError,subprocess.CalledProcessError):
     files=[]
 if not files:
     files=[p for p in root.rglob('*') if p.is_file() and not any(x in {'.git','build','app','dist','__pycache__'} for x in p.relative_to(root).parts)]
-forbidden={'.exe','.dll','.xpl','.pdb','.obj','.spv','.zip','.rar','.log','.prf'}
+forbidden={'.exe','.dll','.xpl','.pdb','.obj','.spv','.zip','.rar','.log','.prf','.mp4','.wav','.onnx','.bin'}
 patterns=[re.compile(r'gh[pousr]_[A-Za-z0-9]{30,}'),re.compile(r'github_pat_[A-Za-z0-9_]{40,}'),re.compile(r'-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----')]
 problems=[]
 for path in files:

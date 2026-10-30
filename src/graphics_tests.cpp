@@ -82,18 +82,19 @@ int wmain(int argc, wchar_t **argv) {
         rejects([&] { apply(root, base / L"backups", invalid, false); });
         auto only1080 = availableResolutionPresets(
             [](int width, int height) { return width == 1920 && height == 1080; });
-        require(only1080.size() == 2, "Display filter must hide unsupported 1440p and 4K presets");
+        require(only1080.size() == 4, "Display filter must hide unsupported 1440p and 4K presets");
         require(availableResolutionPresets([](int, int) { return false; }).empty(),
                 "Display with no supported presets");
-        require(availableResolutionPresets([](int, int) { return true; }).size() == 7,
-                "Seven standard presets");
+        require(availableResolutionPresets([](int, int) { return true; }).size() == 14,
+                "Seven standard presets for each of FSR 3 and FSR 4");
         rejects([&] { presetById("nonexistent"); });
         std::set<std::string> ids;
         for (auto &preset : resolutionPresets) {
             require(ids.insert(preset.id).second, "Duplicate preset ID");
             require(preset.settings.msaa == 0 && preset.settings.fxaa == 0,
                     "Temporal presets disable MSAA and FXAA");
-            require(preset.launcherMode == (preset.settings.scale == 0 ? 1 : 2),
+            require((preset.launcherMode == (preset.settings.scale == 0 ? 1 : 2)) ||
+                        (preset.launcherMode == (preset.settings.scale == 0 ? 3 : 4)),
                     "Preset must select matching Native AA/upscaling mode");
             write(main, original);
             write(screen, windows);

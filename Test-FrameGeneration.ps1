@@ -19,6 +19,8 @@ try{
   $folder=if($provider -eq '4.0.2'){'fg-check-ml'}else{'fg-check'}
   & (Join-Path $root 'app\FrameGenCheck.exe') (Join-Path $root 'app\runtime') (Join-Path $root ('app\'+$folder)) $provider
   if($LASTEXITCODE -ne 0){throw "Moving-scene generation/presentation check failed: $provider"}
+  & (Join-Path $root 'app\FrameGenCheck.exe') (Join-Path $root 'app\runtime') (Join-Path $build ($folder+'-srgb')) $provider '--srgb'
+  if($LASTEXITCODE -ne 0){throw "sRGB generated-frame black-flash check failed: $provider"}
  }
  $env:VK_LAYER_PATH=Join-Path $root 'app\layer'
  $env:VK_INSTANCE_LAYERS='VK_LAYER_XPFSR24'

@@ -255,11 +255,12 @@ class FrameGenerator {
         enabled_ = enabled;
     }
     void prepare(VkSwapchainKHR swapchain, uint64_t frame, const Frame &input,
-                 const CameraBasis &camera) {
+                 const CameraBasis &camera, bool deferConfiguration = false) {
         require(context_ && input.commands && input.depth.handle && input.motion.handle,
                 "Missing FG prepare inputs");
         reset_ = input.reset || !prepared_ || frame != prepared_ + 1;
-        configure(swapchain, frame, true);
+        if (!deferConfiguration)
+            configure(swapchain, frame, true);
         ffxDispatchDescFrameGenerationPrepareV2 p{};
         p.header.type = FFX_API_DISPATCH_DESC_TYPE_FRAMEGENERATION_PREPARE_V2;
         p.commandList = reinterpret_cast<void *>(input.commands);

@@ -7,6 +7,9 @@
 #define IBM 1
 #include "cockpit_mesh.hpp"
 #include "shared.hpp"
+#include "camera_continuity.hpp"
+#include "camera_math.hpp"
+#include "ground_camera.hpp"
 #include <XPLMDataAccess.h>
 #include <XPLMMenus.h>
 #include <XPLMPlanes.h>
@@ -20,10 +23,13 @@
 static HANDLE mapping{};
 static app::Shared *shared{};
 static XPLMDataRef projection{}, world{}, bodyRef{}, widthRef{}, heightRef{}, viewRef{}, pauseRef{},
-    ownX{}, ownY{}, ownZ{}, externalRef{};
+    externalRef{}, cameraAglRef{}, onGroundRef{};
 static XPLMMenuID menu{};
 static bool previousValid{};
+static app::Camera previousCamera{};
 static double previousVP[16]{};
+static app::ProjectionCache projectionCache;
+static app::ProjectionEncoding projectionEncoding = app::ProjectionEncoding::Invalid;
 static double previousBodyVP[16]{};
 static bool previousBodyValid{};
 static int previousView{}, previousPaused{};
@@ -65,9 +71,8 @@ static float update(float elapsed, float, int, void *) {
         viewRef = XPLMFindDataRef("sim/graphics/view/view_type");
         pauseRef = XPLMFindDataRef("sim/time/paused");
         externalRef = XPLMFindDataRef("sim/graphics/view/view_is_external");
-        ownX = XPLMFindDataRef("sim/flightmodel/position/local_x");
-        ownY = XPLMFindDataRef("sim/flightmodel/position/local_y");
-        ownZ = XPLMFindDataRef("sim/flightmodel/position/local_z");
+        cameraAglRef = XPLMFindDataRef("sim/graphics/view/view_elevation_agl_mtrs");
+        onGroundRef = XPLMFindDataRef("sim/flightmodel/failures/onground_any");
     }
     if (!shared)
         return -1;
@@ -76,16 +81,29 @@ static float update(float elapsed, float, int, void *) {
     LARGE_INTEGER now{};
     QueryPerformanceCounter(&now);
     packet.ticks = now.QuadPart;
-    float pf[16]{}, vf[16]{};
-    if (projection && world && XPLMGetDatavf(projection, pf, 0, 16) == 16 &&
-        XPLMGetDatavf(world, vf, 0, 16) == 16 && std::abs(pf[11]) > 0.5f) {
-        double p[16], v[16], vp[16], inv[16], invP[16], reproj[16];
+    float sourceProjection[16]{}, pf[16]{}, vf[16]{};
+    auto encoding = app::ProjectionEncoding::Invalid;
+    if (projection && world && XPLMGetDatavf(projection, sourceProjection, 0, 16) == 16 &&
+        XPLMGetDatavf(world, vf, 0, 16) == 16 &&
+        (encoding = app::vulkanProjection(pf, sourceProjection)) !=
+            app::ProjectionEncoding::Invalid) {
+        if (projectionEncoding != encoding) {
+            XPLMDebugString(encoding == app::ProjectionEncoding::ForwardOpenGL
+                                ? "XPFSR24: camera projection OpenGL [-1,1] -> Vulkan reversed "
+                                  "[1,0]; world/body motion and FSR depth share this convention.\n"
+                                : "XPFSR24: camera projection already Vulkan reversed [1,0]; no "
+                                  "second conversion.\n");
+            projectionEncoding = encoding;
+        }
+        double p[16], v[16], vp[16], inv[16], invP[16], inverseView[16], reproj[16];
         for (int i = 0; i < 16; ++i) {
             p[i] = pf[i];
             v[i] = vf[i];
         }
         app::multiply(vp, p, v);
-        if (app::inverse(inv, vp) && app::inverse(invP, p)) {
+        if (projectionCache.update(pf) && app::inverseTransform(inverseView, v)) {
+            memcpy(invP, projectionCache.inverseMatrix, sizeof(invP));
+            app::multiply(inv, inverseView, invP);
             const int view = viewRef ? XPLMGetDatai(viewRef) : 0,
                       paused = pauseRef ? XPLMGetDatai(pauseRef) : 0;
             packet.reset = !previousValid || view != previousView || paused != previousPaused ||
@@ -104,14 +122,12 @@ static float update(float elapsed, float, int, void *) {
                 packet.reprojection[i] = float(reproj[i]);
                 packet.inverseProjection[i] = float(invP[i]);
             }
-            double inverseView[16]{};
-            if (app::inverse(inverseView, v))
-                for (int k = 0; k < 3; ++k) {
-                    packet.position[k] = float(inverseView[12 + k]);
-                    packet.right[k] = float(inverseView[k]);
-                    packet.up[k] = float(inverseView[4 + k]);
-                    packet.forward[k] = float(-inverseView[8 + k]);
-                }
+            for (int k = 0; k < 3; ++k) {
+                packet.position[k] = float(inverseView[12 + k]);
+                packet.right[k] = float(inverseView[k]);
+                packet.up[k] = float(inverseView[4 + k]);
+                packet.forward[k] = float(-inverseView[8 + k]);
+            }
             auto plane = [&](double z) {
                 double wz = invP[10] * z + invP[14], ww = invP[11] * z + invP[15];
                 return std::abs(ww) < 1e-10 ? INFINITY : float(std::abs(wz / ww));
@@ -126,14 +142,22 @@ static float update(float elapsed, float, int, void *) {
             packet.width = widthRef ? XPLMGetDatai(widthRef) : 0;
             packet.height = heightRef ? XPLMGetDatai(heightRef) : 0;
             packet.internal = externalRef ? !XPLMGetDatai(externalRef) : 0;
+            if (!packet.internal && externalRef && cameraAglRef && onGroundRef) {
+                const bool onGround = XPLMGetDatai(onGroundRef) != 0;
+                // Cached public datarefs only: no terrain probing, camera
+                // ownership, collision override or controller writes.
+                app::groundMetadata(packet, onGround, onGround ? XPLMGetDataf(cameraAglRef) : 0.f);
+            }
             float af[16]{};
             if (bodyRef && XPLMGetDatavf(bodyRef, af, 0, 16) == 16 &&
                 std::abs(af[12]) + std::abs(af[13]) + std::abs(af[14]) > .05f) {
-                double body[16], bodyVP[16], inverseBody[16], bodyReprojection[16];
+                double body[16], bodyVP[16], inverseBody[16], inverseBodyView[16],
+                    bodyReprojection[16];
                 for (int i = 0; i < 16; ++i)
                     body[i] = af[i];
                 app::multiply(bodyVP, p, body);
-                if (app::inverse(inverseBody, bodyVP)) {
+                if (app::inverseTransform(inverseBodyView, body)) {
+                    app::multiply(inverseBody, inverseBodyView, invP);
                     if (previousBodyValid && previousValid)
                         app::multiply(bodyReprojection, previousBodyVP, inverseBody);
                     else
@@ -160,19 +184,12 @@ static float update(float elapsed, float, int, void *) {
                 }
             }
             previousBodyValid = packet.bodyValid;
-            if (ownX && ownY && ownZ) {
-                double position[4] = {XPLMGetDatad(ownX), XPLMGetDatad(ownY), XPLMGetDatad(ownZ),
-                                      1};
-                for (int r = 0; r < 3; ++r) {
-                    double value = 0;
-                    for (int c = 0; c < 4; ++c)
-                        value += v[c * 4 + r] * position[c];
-                    packet.ownSphere[r] = float(value);
-                }
-                packet.ownSphere[3] = 20;
-            }
             packet.valid = std::isfinite(packet.nearPlane) && packet.nearPlane > 0 &&
                            packet.verticalFov > 0 && packet.width && packet.height;
+            packet.reset |= app::cameraCut(previousCamera, packet);
+            if (packet.reset)
+                packet.screenReady = 0;
+            previousCamera = packet;
             memcpy(previousVP, vp, sizeof(vp));
             previousView = view;
             previousPaused = paused;

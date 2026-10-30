@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MIT
 #include "shared.hpp"
+#include "camera_continuity.hpp"
+#include "frame_sequence.hpp"
 #include <atomic>
 #include <iostream>
 #include <stdexcept>
@@ -11,6 +13,46 @@ static void expect(bool value, const char *name) {
 int main() {
     try {
         double p[16] = {2, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, -1, 0, 0, .1, 0};
+        app::Camera before{}, after{};
+        xpfsr::FrameSequence sequence;
+        expect(sequence.canPrepare() && !sequence.ready(), "Initial FG source state");
+        sequence.prepared = 10;
+        expect(!sequence.canPrepare() && !sequence.ready(), "Unsubmitted prepare was presented");
+        sequence.submit(10, 10);
+        expect(sequence.ready(), "Matching submitted FG source rejected");
+        sequence.submit(11, 0);
+        expect(!sequence.ready(), "Stale FG source matched a newer scene");
+        sequence.finishPresent();
+        expect(sequence.canPrepare(), "Skipped scene did not retire stale prepare");
+        sequence.prepared = 12;
+        sequence.submit(11, 0);
+        sequence.finishPresent();
+        expect(!sequence.canPrepare() && !sequence.ready(),
+               "Future prepare was prematurely consumed");
+        sequence.submit(12, 12);
+        expect(sequence.ready(), "Future source did not become ready on submission");
+        sequence.finishPresent();
+        expect(!sequence.ready(), "One prepare was generated twice");
+        before.valid = 1;
+        before.width = 1920;
+        before.height = 1080;
+        before.forward[2] = -1;
+        before.verticalFov = 1;
+        after = before;
+        after.position[0] = 2;
+        expect(!app::cameraCut(before, after), "Ordinary camera movement reset history");
+        after.position[0] = 101;
+        expect(app::cameraCut(before, after), "Teleport retained history");
+        after = before;
+        after.internal = 1;
+        expect(app::cameraCut(before, after), "View switch retained history");
+        after = before;
+        after.forward[0] = 1;
+        after.forward[2] = 0;
+        expect(app::cameraCut(before, after), "Rapid pan retained history");
+        after = before;
+        after.verticalFov += .2f;
+        expect(app::cameraCut(before, after), "Abrupt zoom retained history");
         double v[16] = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, -53000, 2200, -41000, 1};
         double vp[16], inv[16], identity[16];
         app::multiply(vp, p, v);

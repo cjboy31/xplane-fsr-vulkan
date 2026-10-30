@@ -4,6 +4,7 @@
 #include "probe_support.hpp"
 #undef wmain
 #include "shared.hpp"
+#include "ground_camera.hpp"
 static std::vector<uint32_t> loadSpv(const wchar_t *path) {
     FILE *f = _wfopen(path, L"rb");
     require(f, "Test shader missing");
@@ -23,6 +24,15 @@ int wmain(int argc, wchar_t **argv) {
         SetEnvironmentVariableW(L"XPFSR24_RUNTIME", argv[1]);
         bool nativeAA = argc > 3 && std::wstring(argv[3]) == L"native-aa",
              observe = argc > 3 && std::wstring(argv[3]) == L"observe";
+        unsigned sampleCount = argc > 4 ? std::stoul(argv[4]) : 1;
+        require(sampleCount == 1 || sampleCount == 2 || sampleCount == 4 || sampleCount == 8,
+                "MSAA test sample count");
+        auto samples = VkSampleCountFlagBits(sampleCount);
+        std::wstring resolveKind = argc > 5 ? argv[5] : L"attachment";
+        std::cout << "Scene MSAA samples=" << sampleCount << "\n";
+        const bool staleCamera = argc > 6 && std::wstring(argv[6]) == L"stale-camera";
+        const bool groundCamera = argc > 6 && std::wstring(argv[6]) == L"ground-camera";
+        const bool wrongDepth = argc > 6 && std::wstring(argv[6]) == L"depth-convention";
         const uint32_t OW = nativeAA ? 256 : 384, OH = nativeAA ? 144 : 216;
         SetEnvironmentVariableW(L"XPFSR24_MODE", observe    ? L"observe"
                                                  : nativeAA ? L"native-aa"
@@ -41,28 +51,32 @@ int wmain(int argc, wchar_t **argv) {
         Vulkan vk;
         vk.open();
         GpuImage finalColor(vk), auxColor(vk), auxDepth(vk), sceneColor(vk), color(vk), output(vk),
-            depth(vk);
+            depth(vk), msaaColor(vk);
         finalColor.create(OW, OH, VK_FORMAT_R16G16B16A16_SFLOAT);
         auxColor.create(256, 144, VK_FORMAT_R16G16B16A16_SFLOAT, 0,
                         VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT);
         sceneColor.create(256, 144, VK_FORMAT_R16G16B16A16_SFLOAT, 0,
                           VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT);
+        if (sampleCount > 1)
+            msaaColor.create(256, 144, VK_FORMAT_R16G16B16A16_SFLOAT, 0,
+                             VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT, samples);
         color.create(256, 144, VK_FORMAT_R16G16B16A16_SFLOAT,
                      VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT | VK_IMAGE_CREATE_ALIAS_BIT,
                      VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT);
         output.create(OW, OH, VK_FORMAT_R16G16B16A16_SFLOAT);
         VkMemoryRequirements mr{};
         VkMemoryAllocateInfo ai{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};
-        auto createDepth = [&](GpuImage &depth) {
+        auto createDepth = [&](GpuImage &depth,
+                               VkSampleCountFlagBits count = VK_SAMPLE_COUNT_1_BIT) {
             auto &dc = depth.value.description;
             dc.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
             dc.imageType = VK_IMAGE_TYPE_2D;
             dc.extent = {256, 144, 1};
             dc.format = VK_FORMAT_D32_SFLOAT_S8_UINT;
             dc.mipLevels = dc.arrayLayers = 1;
-            dc.samples = VK_SAMPLE_COUNT_1_BIT;
+            dc.samples = count;
             dc.tiling = VK_IMAGE_TILING_OPTIMAL;
-            dc.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT |
+            dc.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT |
                        VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
             vkcheck(vk.dev<PFN_vkCreateImage>("vkCreateImage")(vk.device, &dc, nullptr,
                                                                &depth.value.handle),
@@ -79,7 +93,7 @@ int wmain(int argc, wchar_t **argv) {
                         vk.device, depth.value.handle, depth.allocation, 0),
                     "Depth bind");
         };
-        createDepth(depth);
+        createDepth(depth, samples);
         createDepth(auxDepth);
         auto view = [&](VkImage image, VkFormat format, VkImageAspectFlags aspect,
                         VkImageViewType type) {
@@ -106,6 +120,10 @@ int wmain(int argc, wchar_t **argv) {
                              VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_VIEW_TYPE_2D_ARRAY),
              depthRT = view(depth.value.handle, VK_FORMAT_D32_SFLOAT_S8_UINT,
                             VK_IMAGE_ASPECT_DEPTH_BIT, VK_IMAGE_VIEW_TYPE_2D);
+        VkImageView msaaRT{};
+        if (sampleCount > 1)
+            msaaRT = view(msaaColor.value.handle, VK_FORMAT_R16G16B16A16_SFLOAT,
+                          VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_VIEW_TYPE_2D);
         auto auxRT = view(auxColor.value.handle, VK_FORMAT_R16G16B16A16_SFLOAT,
                           VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_VIEW_TYPE_2D),
              auxArray = view(auxColor.value.handle, VK_FORMAT_R16G16B16A16_SFLOAT,
@@ -233,6 +251,14 @@ int wmain(int argc, wchar_t **argv) {
         vkcheck(vk.dev<PFN_vkCreateGraphicsPipelines>("vkCreateGraphicsPipelines")(
                     vk.device, VK_NULL_HANDLE, 1, &gp, nullptr, &graphics),
                 "Static-viewport scene pipeline");
+        auto graphicsSingle = graphics;
+        if (sampleCount > 1) {
+            ms.rasterizationSamples = samples;
+            vkcheck(vk.dev<PFN_vkCreateGraphicsPipelines>("vkCreateGraphicsPipelines")(
+                        vk.device, VK_NULL_HANDLE, 1, &gp, nullptr, &graphics),
+                    "MSAA scene pipeline");
+            ms.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+        }
         auto postFragment = shader(L"post.frag.spv");
         stages[1].module = postFragment;
         rendering.depthAttachmentFormat = VK_FORMAT_UNDEFINED;
@@ -380,6 +406,8 @@ int wmain(int argc, wchar_t **argv) {
             camera.nearPlane = .1f;
             camera.farPlane = INFINITY;
             camera.infiniteZ = camera.reverseZ = 1;
+            if (wrongDepth && frame >= 12 && frame <= 14)
+                camera.reverseZ = 0;
             camera.verticalFov = 1.0472f;
             camera.milliseconds = 16.667f;
             LARGE_INTEGER now{};
@@ -387,7 +415,14 @@ int wmain(int argc, wchar_t **argv) {
             camera.ticks = now.QuadPart;
             for (int i = 0; i < 16; ++i)
                 camera.reprojection[i] = camera.inverseProjection[i] = (i % 5) == 0;
-            camera.reprojection[12] = .03f;
+            camera.reprojection[12] = groundCamera ? 0.f : .03f;
+            if (groundCamera && frame >= 12) {
+                camera.internal = 0;
+                app::groundMetadata(camera, frame <= 15,
+                                    frame == 14   ? 2.f
+                                    : frame == 15 ? 2.6f
+                                                  : .15f);
+            }
             InterlockedIncrement(&shared->cameraSequence);
             shared->camera = camera;
             InterlockedIncrement(&shared->cameraSequence);
@@ -423,7 +458,13 @@ int wmain(int argc, wchar_t **argv) {
                 if (n == 1) {
                     VkRenderingAttachmentInfo standaloneColor{
                         VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO};
-                    standaloneColor.imageView = colorRT;
+                    standaloneColor.imageView = sampleCount > 1 ? msaaRT : colorRT;
+                    if (sampleCount > 1 && resolveKind == L"attachment") {
+                        standaloneColor.resolveMode = VK_RESOLVE_MODE_AVERAGE_BIT;
+                        standaloneColor.resolveImageView = colorRT;
+                        standaloneColor.resolveImageLayout =
+                            VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+                    }
                     standaloneColor.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
                     standaloneColor.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
                     standaloneColor.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
@@ -443,8 +484,11 @@ int wmain(int argc, wchar_t **argv) {
                     vk.dev<PFN_vkCmdBeginRendering>("vkCmdBeginRendering")(children[n],
                                                                            &standalone);
                 }
-                vk.dev<PFN_vkCmdBindPipeline>("vkCmdBindPipeline")(
-                    children[n], VK_PIPELINE_BIND_POINT_GRAPHICS, n == 2 ? postPipeline : graphics);
+                vk.dev<PFN_vkCmdBindPipeline>("vkCmdBindPipeline")(children[n],
+                                                                   VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                                                   n == 2   ? postPipeline
+                                                                   : n == 0 ? graphicsSingle
+                                                                            : graphics);
                 if (n == 2) {
                     uint32_t offset = 0;
                     vk.dev<PFN_vkCmdBindDescriptorSets>("vkCmdBindDescriptorSets")(
@@ -463,6 +507,13 @@ int wmain(int argc, wchar_t **argv) {
                 vkcheck(vk.dev<PFN_vkEndCommandBuffer>("vkEndCommandBuffer")(children[n]),
                         "End child");
             }
+            if (staleCamera && frame == 12) {
+                camera.frame += 100000;
+                camera.reprojection[13] = .3f;
+                InterlockedIncrement(&shared->cameraSequence);
+                shared->camera = camera;
+                InterlockedIncrement(&shared->cameraSequence);
+            }
             vkcheck(vk.dev<PFN_vkResetCommandBuffer>("vkResetCommandBuffer")(cb, 0), "Test reset");
             VkCommandBufferBeginInfo begin{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
             begin.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
@@ -471,6 +522,9 @@ int wmain(int argc, wchar_t **argv) {
             barrier(auxColor, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_ASPECT_COLOR_BIT);
             barrier(auxDepth, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
                     VK_IMAGE_ASPECT_DEPTH_BIT);
+            if (sampleCount > 1)
+                barrier(msaaColor, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                        VK_IMAGE_ASPECT_COLOR_BIT);
             barrier(sceneColor, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
                     VK_IMAGE_ASPECT_COLOR_BIT);
             barrier(color, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_ASPECT_COLOR_BIT);
@@ -510,6 +564,33 @@ int wmain(int argc, wchar_t **argv) {
             vk.dev<PFN_vkCmdEndRendering>("vkCmdEndRendering")(cb);
             barrier(auxColor, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_ASPECT_COLOR_BIT);
             vk.dev<PFN_vkCmdExecuteCommands>("vkCmdExecuteCommands")(cb, 1, &children[1]);
+            if (sampleCount > 1 && resolveKind != L"attachment") {
+                barrier(msaaColor, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_ASPECT_COLOR_BIT);
+                barrier(sceneColor, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                        VK_IMAGE_ASPECT_COLOR_BIT);
+                VkImageResolve region{};
+                region.srcSubresource =
+                    region.dstSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+                region.extent = {256, 144, 1};
+                if (resolveKind == L"explicit") {
+                    vk.dev<PFN_vkCmdResolveImage>("vkCmdResolveImage")(
+                        cb, msaaColor.value.handle, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                        sceneColor.value.handle, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+                } else {
+                    VkImageResolve2 region2{VK_STRUCTURE_TYPE_IMAGE_RESOLVE_2};
+                    region2.srcSubresource = region.srcSubresource;
+                    region2.dstSubresource = region.dstSubresource;
+                    region2.extent = region.extent;
+                    VkResolveImageInfo2 info{VK_STRUCTURE_TYPE_RESOLVE_IMAGE_INFO_2};
+                    info.srcImage = msaaColor.value.handle;
+                    info.srcImageLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+                    info.dstImage = sceneColor.value.handle;
+                    info.dstImageLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+                    info.regionCount = 1;
+                    info.pRegions = &region2;
+                    vk.dev<PFN_vkCmdResolveImage2>("vkCmdResolveImage2")(cb, &info);
+                }
+            }
             barrier(depth, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_ASPECT_DEPTH_BIT);
             VkClearDepthStencilValue discardedDepth{0, 0};
             VkImageSubresourceRange discardedRange{VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, 0, 1};
@@ -605,8 +686,32 @@ int wmain(int argc, wchar_t **argv) {
                     "Layer output readback differs");
             app::Telemetry status{};
             uint64_t expected = observe ? 0 : frame <= 8 ? frame : frame <= 10 ? 8 : frame - 2;
+            if (!observe && groundCamera && frame >= 12)
+                expected -= std::min<uint64_t>(frame - 11, 3);
+            if (!observe && wrongDepth && frame >= 12)
+                expected -= std::min<uint64_t>(frame - 11, 3);
+            if (!observe && staleCamera && frame >= 12)
+                --expected;
             require(app::readStatus(shared, status) && status.recordings == expected,
                     "Layer replacement/toggle count differs");
+            wchar_t publicFg[8]{};
+            if (GetEnvironmentVariableW(L"XPFSR24_EXPECT_NO_FG", publicFg, 8)) {
+                require(!status.fgActive && !status.fgPrepared && !status.fgGenerated &&
+                            !status.displayedPresents && !status.fgProvider[0] &&
+                            strstr(status.fgReason, "Suspended in regular releases"),
+                        "Public build must not prepare or activate FG despite forced requests");
+                require(GetModuleHandleW(L"amd_fidelityfx_framegeneration_vk.dll") == nullptr,
+                        "Public build loaded the suspended FG runtime");
+            }
+            if (staleCamera && frame == 12 && !observe)
+                require(!status.active && strstr(status.reason, "camera frame mismatch"),
+                        "Stale scene must explain native fallback");
+            if (groundCamera && frame >= 12 && frame <= 14 && !observe)
+                require(!status.active && strstr(status.reason, "Ground camera safety:"),
+                        "Camera resting at the ground must show native safety fallback");
+            if (wrongDepth && frame >= 12 && frame <= 14 && !observe)
+                require(!status.active && strstr(status.reason, "Camera depth convention mismatch"),
+                        "Incompatible publisher must leave the native frame and explain recovery");
             std::cout << "Source frame " << frame << ": completed, RGB " << rgb[0] << ',' << rgb[1]
                       << ',' << rgb[2] << ", FSR recordings " << status.recordings << ", provider "
                       << status.provider << '\n';
@@ -628,6 +733,10 @@ int wmain(int argc, wchar_t **argv) {
         vk.dev<PFN_vkDestroyDescriptorSetLayout>("vkDestroyDescriptorSetLayout")(vk.device, layout,
                                                                                  nullptr);
         vk.dev<PFN_vkDestroySampler>("vkDestroySampler")(vk.device, sampler, nullptr);
+        if (sampleCount > 1) {
+            vk.dev<PFN_vkDestroyPipeline>("vkDestroyPipeline")(vk.device, graphicsSingle, nullptr);
+            vk.dev<PFN_vkDestroyImageView>("vkDestroyImageView")(vk.device, msaaRT, nullptr);
+        }
         for (auto v : {finalArray, auxRT, auxArray, auxDepthRT, colorRT, postRT, sceneArray,
                        colorArray, outArray, depthRT})
             vk.dev<PFN_vkDestroyImageView>("vkDestroyImageView")(vk.device, v, nullptr);

@@ -47,12 +47,14 @@ struct Observation {
     VkBuffer buffer{};
     VkExtent2D size{};
     bool copied{};
+    uint64_t firstCheckedFrame{3};
 };
 static void inspectGenerated(const ffxDispatchDescFrameGeneration &params, void *pointer) {
     auto &target = *static_cast<Observation *>(pointer);
-    if (params.frameID != 90)
-        return;
     auto &vk = *target.vk;
+    if (params.frameID < target.firstCheckedFrame || !params.numGeneratedFrames ||
+        !params.outputs[0].resource)
+        return;
     auto cb = static_cast<VkCommandBuffer>(params.commandList);
     auto image = reinterpret_cast<VkImage>(params.outputs[0].resource);
     VkImageMemoryBarrier b{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
@@ -153,10 +155,13 @@ int wmain(int argc, wchar_t **argv) {
         std::vector<VkSurfaceFormatKHR> formats(n);
         formatsFn(vk.physical, surface, &n, formats.data());
         auto format = formats.front();
+        bool srgb = argc > 4 && std::wstring(argv[4]) == L"--srgb";
         for (auto value : formats)
-            if (value.format == VK_FORMAT_B8G8R8A8_UNORM &&
+            if (value.format == (srgb ? VK_FORMAT_B8G8R8A8_SRGB : VK_FORMAT_B8G8R8A8_UNORM) &&
                 value.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR)
                 format = value;
+        require(!srgb || format.format == VK_FORMAT_B8G8R8A8_SRGB,
+                "Requested sRGB test format unavailable");
         VkExtent2D size = caps.currentExtent;
         if (size.width == UINT32_MAX)
             size = {960, 540};
@@ -181,7 +186,7 @@ int wmain(int argc, wchar_t **argv) {
         {
             Presentation presentation(runtime.api);
             presentation.create(backend, ci, queues, vk.family,
-                                argc > 4 ? std::string("3.1.7") : std::string{});
+                                argc > 4 && !srgb ? std::string("3.1.7") : std::string{});
             std::cout << "Swapchain provider=" << presentation.provider()
                       << " format=" << format.format << " size=" << size.width << 'x' << size.height
                       << '\n';
@@ -234,9 +239,12 @@ int wmain(int argc, wchar_t **argv) {
                         "FG present semaphore");
             Staging staging(vk, size_t(size.width) * size.height * 4);
             Observation observation{&vk, staging.buffer, size};
+            constexpr uint64_t sourceBase = 10000;
+            observation.firstCheckedFrame = sourceBase + 3;
             generator.inspect = inspectGenerated;
             generator.inspectContext = &observation;
             constexpr uint64_t frames = 90;
+            unsigned nonBlackFrames = 0;
             for (uint64_t frame = 1; frame <= frames; ++frame) {
                 MSG message{};
                 while (PeekMessageW(&message, nullptr, 0, 0, PM_REMOVE)) {
@@ -291,6 +299,7 @@ int wmain(int argc, wchar_t **argv) {
                     cb, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 0,
                     nullptr, 0, nullptr, 1, &barrier);
                 used[index] = true;
+                observation.copied = false;
                 VkImageSubresourceRange range{VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
                 for (auto *image : {&depth, &motion}) {
                     image->transition(cb, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
@@ -315,7 +324,7 @@ int wmain(int argc, wchar_t **argv) {
                 input.verticalFovRadians = 1.0472f;
                 input.reset = frame == 1;
                 CameraBasis camera{};
-                generator.prepare(presentation.handle(), frame, input, camera);
+                generator.prepare(presentation.handle(), sourceBase + frame, input, camera);
                 vkcheck(vk.dev<PFN_vkEndCommandBuffer>("vkEndCommandBuffer")(cb), "FG end");
                 vkcheck(vk.dev<PFN_vkResetFences>("vkResetFences")(vk.device, 1, &fence),
                         "FG reset fence");
@@ -340,10 +349,39 @@ int wmain(int argc, wchar_t **argv) {
                 result = presentation.functions.pOutQueuePresentKHR(queues[0], &present);
                 require(result == VK_SUCCESS || result == VK_SUBOPTIMAL_KHR, "FG present failed");
                 require(!generator.failure.load(), "FG callback failed");
+                presentation.wait();
+                vkcheck(vk.waitIdle(vk.device), "Generated-frame readback completion");
+                if (observation.copied) {
+                    auto *pixels = static_cast<uint8_t *>(staging.mapped);
+                    double sum = 0;
+                    unsigned dark = 0;
+                    for (size_t i = 0; i < size_t(size.width) * size.height; ++i) {
+                        unsigned rgb =
+                            unsigned(pixels[i * 4]) + pixels[i * 4 + 1] + pixels[i * 4 + 2];
+                        sum += rgb / (3.0 * 255);
+                        // sRGB sources can be linearized in the intermediate
+                        // generation surface. Count near-zero pixels, not valid
+                        // dark linear-light background samples, as black.
+                        dark += rgb < 3;
+                    }
+                    if (frame == 3)
+                        std::cout << "Generated readback: mean=" << sum / (size.width * size.height)
+                                  << " zero-fraction=" << double(dark) / (size.width * size.height)
+                                  << '\n';
+                    require(sum / (size.width * size.height) > .05 &&
+                                double(dark) / (size.width * size.height) < .05,
+                            "Generated frame contains an unexpected black flash/region");
+                    ++nonBlackFrames;
+                }
                 Sleep(8);
             }
-            generator.configure(presentation.handle(), frames + 1, false);
+            generator.configure(presentation.handle(), sourceBase + frames + 1, false);
             presentation.wait();
+            require(nonBlackFrames >= frames - 3,
+                    "Insufficient generated frames were checked for black flashes");
+            std::cout << "PASS: " << nonBlackFrames
+                      << " generated-frame readbacks without black flashes; format="
+                      << format.format << '\n';
             vkcheck(vk.waitIdle(vk.device), "FG idle");
             auto displayed = presentation.displayed();
             std::cout << "Rendered=" << frames
@@ -355,16 +393,23 @@ int wmain(int argc, wchar_t **argv) {
             std::vector<float> generated(size_t(size.width) * size.height), raw(generated.size()),
                 reference(generated.size());
             auto *downloaded = static_cast<const uint8_t *>(staging.mapped);
+            auto referenceColor = [srgb](float value) {
+                // sRGB image sampling decodes the source; the SDK's writable
+                // intermediate readback is linear, before presentation encoding.
+                return srgb ? (value <= .04045f ? value / 12.92f
+                                                : std::pow((value + .055f) / 1.055f, 2.4f))
+                            : value;
+            };
             double generatedError = 0, rawError = 0;
             uint64_t samples = 0;
             for (uint32_t y = 0; y < size.height; ++y)
                 for (uint32_t x = 0; x < size.width; ++x) {
                     auto i = size_t(y) * size.width + x;
                     generated[i] = downloaded[i * 4] / 255.f;
-                    raw[i] = edge(x + .5f, y + .5f, 90);
+                    raw[i] = referenceColor(edge(x + .5f, y + .5f, 90));
                     float value = 0;
                     for (int k = 0; k < 16; ++k)
-                        value += edge(x + (k + .5f) / 16, y + .5f, 89.5f) / 16;
+                        value += referenceColor(edge(x + (k + .5f) / 16, y + .5f, 89.5f)) / 16;
                     reference[i] = value;
                     if (y > 16 && y < size.height - 16 &&
                         std::abs(float(x) + .5f - (50 + 89.5f * 3 + .28f * (y + .5f))) < 7) {
@@ -385,6 +430,7 @@ int wmain(int argc, wchar_t **argv) {
             metrics << "{\"provider\":\"" << generator.provider() << "\",\"swapchain_provider\":\""
                     << presentation.provider() << "\",\"rendered\":" << frames
                     << ",\"generated_dispatch_outputs\":" << generator.generated.load()
+                    << ",\"non_black_generated_frames\":" << nonBlackFrames
                     << ",\"sdk_actual_presents\":" << displayed
                     << ",\"raw_midpoint_error\":" << rawError
                     << ",\"generated_midpoint_error\":" << generatedError

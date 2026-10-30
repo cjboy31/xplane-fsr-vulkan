@@ -1,0 +1,19 @@
+// SPDX-License-Identifier: MIT
+// Test-only distinct per-sample data for the production depth-resolve shader.
+#version 450
+layout(local_size_x=8,local_size_y=8)in;
+layout(set=0,binding=0,std140)uniform Params{
+    mat4 reprojection;mat4 inverseProjection;mat4 body;
+    vec4 jitter;vec4 planes;vec4 sphere;
+}p;
+layout(set=0,binding=5,r32f)writeonly uniform image2DMSArray source;
+void main(){
+    ivec2 xy=ivec2(gl_GlobalInvocationID.xy);
+    for(int i=0;i<imageSamples(source);++i){
+        float z=p.sphere.x;
+        if(p.planes.w==8||p.planes.w==9)z=i==0?.8:i==1?.2:.5;
+        if(p.planes.w==10)z=i==0?uintBitsToFloat(0x7fc00000u):i==1?.35:.75;
+        if(p.planes.w==11)z=uintBitsToFloat(0x7fc00000u);
+        imageStore(source,ivec3(xy,0),i,vec4(z));
+    }
+}

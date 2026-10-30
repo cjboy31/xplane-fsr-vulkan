@@ -6,6 +6,9 @@ An experimental Windows Vulkan integration for AMD FSR Native AA, upscaling and
 frame generation, with a new current-frame cockpit-screen compositor for the
 default Cirrus SR22. Original project code and artwork are MIT licensed.
 
+The application is **FSR 3/4 + Frame Gen for X-Plane**. **FSR Ghosting Fix** is
+the optional cockpit-screen feature, not the application name.
+
 **Developer preview.** This project is being opened for community development.
 GPU fixtures pass on a Radeon AI PRO R9700; the new SR22 screen projection and
 visual quality still need live-flight validation. It is not an official AMD or
@@ -13,33 +16,70 @@ Laminar Research product, and is not a complete solution to ghosting or stutter.
 
 ## Downloads and current source
 
-- **Windows:** [0.6.2-alpha installer and instructions](https://github.com/cjboy31/xplane-fsr-vulkan/releases/tag/v0.6.2-alpha). Built-in frame generation is suspended in regular releases.
-- **Feature video:** [Watch or download the 100-second narrated guide](https://github.com/cjboy31/xplane-fsr-vulkan/releases/download/v0.6.2-alpha/XPlane-FSR3-4-0.6.2-alpha-Feature-Guide.mp4). Fresh real Native AA comparison, setup help, captions and immediate Skip in the Windows launcher. [Versioned-video workflow](https://github.com/cjboy31/xplane-fsr-vulkan/blob/codex/saved-presets-and-status/docs/FEATURE-VIDEOS.md).
+- **Windows:** [0.6.3-alpha installer and instructions](https://github.com/cjboy31/xplane-fsr-vulkan/releases/tag/v0.6.3-alpha). Built-in frame generation is suspended in regular releases.
+- **Feature video:** [Watch or download the captioned narrated guide](https://github.com/cjboy31/xplane-fsr-vulkan/releases/download/v0.6.3-alpha/XPlane-FSR3-4-0.6.3-alpha-Feature-Guide.mp4). Fresh real Native AA comparison, setup help, captions and immediate Skip in the Windows launcher. [Versioned-video workflow](https://github.com/cjboy31/xplane-fsr-vulkan/blob/codex/artifact-contract-fix/docs/FEATURE-VIDEOS.md).
 - **Linux:** [Native FSR 3.1 preview downloads](https://github.com/cjboy31/xplane-fsr-vulkan/releases/tag/native-preview-2026.10.29.1) — requires MSAA off and FSR supersampling enabled; real-flight validation is pending.
 - **Mac:** [Universal compatibility-probe download](https://github.com/cjboy31/xplane-fsr-vulkan/releases/tag/native-preview-2026.10.29.1) — diagnostics only; **Mac FSR/Metal rendering is not implemented**.
 - **Combined Linux/Mac RAR:** [Download the native preview package](https://github.com/cjboy31/xplane-fsr-vulkan/releases/download/native-preview-2026.10.29.1/XPlane-FSR-Native-0.6.2-platform-preview.1.rar). Includes installation instructions and validation notes.
 
-**Source matching these releases:** [Windows release source](https://github.com/cjboy31/xplane-fsr-vulkan/tree/codex/saved-presets-and-status) · [Linux/Mac preview source](https://github.com/cjboy31/xplane-fsr-vulkan/tree/experimental/native-platforms/platform) · [All releases](https://github.com/cjboy31/xplane-fsr-vulkan/releases).
+**Source matching these releases:** [Windows release source](https://github.com/cjboy31/xplane-fsr-vulkan/tree/codex/artifact-contract-fix) · [Linux/Mac preview source](https://github.com/cjboy31/xplane-fsr-vulkan/tree/experimental/native-platforms/platform) · [All releases](https://github.com/cjboy31/xplane-fsr-vulkan/releases).
 
-The repository opens on `main`, which contains the original implementation snapshot.
-Current release development is on the branches linked above; the native preview is
-also labeled **Pre-release** in Releases. Its FSR 4, frame-generation, VR and Native AA
-features are unavailable. Read the selected release's instructions and limitations.
+Native preview downloads have separate limits: FSR 4, frame generation, VR and
+Native AA are unavailable there. Read the selected release's instructions.
 
 ## Features
 
+- Corrected camera/depth reconstruction in Windows 0.6.3, with live 12.4.4
+  external-pan and powered-cockpit validation. See the
+  [diagnosis, tests and remaining limits](docs/ARTIFACT-INVESTIGATION.md).
+- Offline narrated/captioned feature guide in Windows 0.6.2: once per installed
+  version, immediate Skip, replay from **What's new**, mute and future-video
+  opt-out. Includes a real Native AA detail comparison; see the
+  [video workflow and limits](docs/FEATURE-VIDEOS.md).
+- **Frame generation is temporarily suspended in regular releases starting with
+  0.6.1-alpha.** Old FG selections are ignored at runtime. FSR AA/upscaling remain
+  available. Development stays on the separate experimental branch; see the
+  [FG review and return criteria](docs/FRAME-GENERATION-REVIEW.md).
+- Modern charcoal/champagne native launcher with rounded panels, clear focus
+  states, resizing/scrolling, accessible field names and persistent launch/status
+  controls. Presets and MSAA/FXAA remain on the main screen.
+- **Platform support:** this branch packages Windows x64. The separate
+  [native-platform preview](https://github.com/cjboy31/xplane-fsr-vulkan/releases/tag/native-preview-2026.10.29.1)
+  offers a Linux FSR 3.1 preview and a Mac diagnostic probe. A Mac Metal FSR
+  renderer and live-flight compatibility are not confirmed. See the
+  [platform audit and port requirements](docs/PLATFORMS.md).
+- Fresh logs for every simulator process, stale camera-frame rejection and
+  temporary native rendering/FG pause for a grounded external camera near
+  terrain in 0.5.9. See [ground-camera behavior and testing](docs/RENDERING-STABILITY.md).
+- Frame-generation source matching/synchronization and safer temporal history
+  handling in 0.5.6. See [stability changes and retest steps](docs/RENDERING-STABILITY.md).
+- Automatic startup checks for GitHub Releases, preview-channel selection and
+  verified one-click installation from **Updates...**, preserving saved choices.
+  Install 0.5.4 or later once to enable this feature.
 - Explicit Vulkan layer enabled only for X-Plane started by the launcher.
 - FSR 3.1.6 compatibility and 4.1.2 ML-preview AA/upscaling providers.
-- Built-in frame generation is suspended in current regular releases; development stays experimental.
-- Seven resolution presets configuring output, internal scale and AA settings,
-  with backups and selective restoration.
-- An independent Vulkan cockpit compositor: replays current-scene screen pixels
+- FSR frame-generation development with SDK-controlled presentation on the
+  separate experimental branch; suspended in regular releases.
+- Fourteen presets on the main screen: seven resolution/AA choices each for
+  FSR 3 and FSR 4, with backups and selective restoration.
+- Automatically saved presets, provider, frame generation, checkboxes, simulator
+  folder and arguments; custom AA/output choices and pending edits are remembered without changing FSR/FG.
+- Hover/click help beside settings and a live injection banner. Green FSR ACTIVE
+  requires recent renderer activity; a one-time Windows notification is requested.
+- **Sim setup...** provides the required AA/input/output configuration and a
+  read-only saved-settings check. Start with the [setup checklist](docs/INSTALLATION.md).
+- **FSR Ghosting Fix - cockpit screens**, an independent Vulkan compositor:
+  replays current-scene screen pixels
   after temporal reconstruction, with jitter correction, depth checks, edge
   erosion and an alignment tint. Initial target: default Cirrus SR22 PFD/MFD.
 - Camera-pose stability checks and a separate IPC ABI for the new publisher.
+- Main-screen MSAA, FXAA, input scale and output controls, with experimental 2x/4x/8x MSAA depth capture for FSR 3/4. FXAA remains native-only.
+- Optimized camera/cockpit motion packing with measured GPU timings and numerical scene-flow tests; see [research and limits](docs/MOTION-VECTORS.md).
 - CPU source-pacing diagnostics and isolated AA/FG/cockpit GPU tests.
 
-The cockpit compositor currently requires **frame generation Off**. It restores
+The cockpit-screen fix currently requires **frame generation Off** and supports
+only the **default Cirrus SR22 PFD/MFD**. The generic feature name does not extend
+aircraft compatibility. It restores
 pixels from the current rendered scene; it does not extract the native-resolution
 G1000 texture. Upscaled screen detail therefore remains limited by input
 resolution. Clouds, props, other aircraft and generated-frame UI are separate

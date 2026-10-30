@@ -1,10 +1,17 @@
 // SPDX-License-Identifier: MIT
 #include "graphics_presets.hpp"
-static HWND graphicsWindow{}, presetBox{}, msaaBox{}, fxaaBox{}, scaleBox{}, outputBox{},
-    graphicsStatus{};
+static HWND msaaBox{}, fxaaBox{}, scaleBox{}, outputBox{}, graphicsStatus{};
 static std::vector<const graphics::Preset *> visiblePresets;
-static void graphicsMessage(const std::wstring &text) {
-    SetWindowTextW(graphicsStatus, text.c_str());
+static void graphicsMessage(const std::wstring &text, const wchar_t *compact = nullptr) {
+    if (graphicsStatus) {
+        auto summary = compact ? std::wstring(compact) : text;
+        auto at = summary.find(L"\r\n");
+        if (at != std::wstring::npos)
+            summary.replace(at, 2, L" · ");
+        SetWindowTextW(graphicsStatus, summary.c_str());
+    }
+    if (!running())
+        SetWindowTextW(statusBox, text.c_str());
 }
 static void rememberGraphicsBackup(const fs::path &backup) {
     if (!backup.empty())
@@ -24,191 +31,177 @@ static void showGraphicsOptions(const graphics::Options &o) {
             selection = i;
     SendMessageW(outputBox, CB_SETCURSEL, selection, 0);
 }
+static graphics::Options readGraphicsOptions() {
+    graphics::Options o;
+    o.msaa = int(SendMessageW(msaaBox, CB_GETCURSEL, 0, 0));
+    o.fxaa = SendMessageW(fxaaBox, BM_GETCHECK, 0, 0) == BST_CHECKED;
+    o.scale = int(SendMessageW(scaleBox, CB_GETCURSEL, 0, 0));
+    auto selected = SendMessageW(outputBox, CB_GETCURSEL, 0, 0);
+    ensure(selected >= 0 && size_t(selected) < graphics::outputChoices.size(),
+           "Choose an output resolution");
+    auto &choice = graphics::outputChoices[size_t(selected)];
+    o.outputWidth = choice.width;
+    o.outputHeight = choice.height;
+    return o;
+}
+static void updatePresetSummary() {
+    if (!presetNote)
+        return;
+    if (preferences.presetId.empty()) {
+        SetWindowTextW(
+            presetNote,
+            (preferences.manualApplied || preferences.manualPending)
+                ? (app::frameGenerationAvailable
+                       ? L"Custom graphics remembered. Apply with X-Plane closed. FSR / FG stay "
+                         L"selected."
+                       : L"Custom graphics remembered. Apply with X-Plane closed. FG is suspended.")
+                : L"Choose a preset to configure output, AA and FSR automatically. FG defaults "
+                  L"Off.");
+        return;
+    }
+    auto &p = graphics::presetById(preferences.presetId);
+    std::wstring summary = L"Saved: ";
+    summary += p.label;
+    summary += L". MSAA / FXAA Off. Output " + std::to_wstring(p.settings.outputWidth) + L" x " +
+               std::to_wstring(p.settings.outputHeight) + L" fullscreen.";
+    SetWindowTextW(presetNote, summary.c_str());
+}
+static void syncPresetSelection() {
+    size_t selected = 0;
+    for (size_t i = 0; i < visiblePresets.size(); ++i)
+        if (preferences.presetId == visiblePresets[i]->id)
+            selected = i + 1;
+    SendMessageW(presetBox, CB_SETCURSEL, selected, 0);
+    updatePresetSummary();
+}
+static void populatePresets() {
+    visiblePresets = graphics::availableResolutionPresets(
+        [](int w, int h) { return graphics::supportsOutput(w, h); });
+    // Preserve a remembered choice even if a monitor has since been disconnected.
+    if (!preferences.presetId.empty()) {
+        auto *saved = &graphics::presetById(preferences.presetId);
+        if (std::find(visiblePresets.begin(), visiblePresets.end(), saved) == visiblePresets.end())
+            visiblePresets.push_back(saved);
+    }
+    SendMessageW(presetBox, CB_ADDSTRING, 0,
+                 reinterpret_cast<LPARAM>(L"Custom - graphics controls on this screen"));
+    for (auto *p : visiblePresets)
+        SendMessageW(presetBox, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(p->label));
+    SendMessageW(presetBox, CB_SETMINVISIBLE, 12, 0);
+    syncPresetSelection();
+}
+static void clearPreset() {
+    preferences.presetId.clear();
+    syncPresetSelection();
+}
 static void selectResolutionPreset() {
     auto selected = SendMessageW(presetBox, CB_GETCURSEL, 0, 0);
-    if (selected <= 0)
+    if (selected == 0) {
+        launcher::customGraphics(preferences, readGraphicsOptions(), !preferences.manualPending);
+        syncPresetSelection();
+        saveChoices();
         return;
-    ensure(size_t(selected) <= visiblePresets.size(), "Invalid resolution preset selection");
+    }
+    ensure(selected > 0 && size_t(selected) <= visiblePresets.size(),
+           "Invalid resolution preset selection");
     auto &preset = *visiblePresets[size_t(selected) - 1];
     auto backup = graphics::apply(fs::path(text(pathBox)), appDirectory / L"graphics-backups",
                                   preset.settings);
-    // Reflect the selected renderer only after preference changes succeed.
+    rememberGraphicsBackup(backup);
+    preferences.presetId = preset.id;
+    preferences.manualApplied = preferences.manualPending = false;
     showGraphicsOptions(preset.settings);
     SendMessageW(modeBox, CB_SETCURSEL, preset.launcherMode, 0);
     SendMessageW(fgBox, CB_SETCURSEL, 0, 0);
-    rememberGraphicsBackup(backup);
-    std::wstring result = L"Applied: ";
+    saveChoices();
+    updatePresetSummary();
+    std::wstring result = L"Applied and saved: ";
     result += preset.label;
-    result += L".\r\nOutput " + std::to_wstring(preset.settings.outputWidth) + L"x" +
-              std::to_wstring(preset.settings.outputHeight) +
-              L" fullscreen; MSAA/FXAA Off; SR 3.1.6; FG Off.\r\n";
-    result += backup.empty() ? L"Settings already matched; no new backup needed."
-                             : L"Previous settings backed up. Restore last change is available.";
-    result += L" Close this window, then Launch selected mode.";
-    graphicsMessage(result);
+    result += L".\r\nMSAA / FXAA Off; frame generation Off. Launch X-Plane with FSR to use it.\r\n";
+    result += backup.empty() ? L"Simulator settings already matched."
+                             : L"Previous simulator settings were backed up.";
+    graphicsMessage(result, L"Preset saved. FG / MSAA / FXAA Off.");
 }
-static LRESULT CALLBACK graphicsProcedure(HWND hwnd, UINT message, WPARAM w, LPARAM l) {
-    switch (message) {
-    case WM_COMMAND:
-        try {
-            auto id = LOWORD(w);
-            auto event = HIWORD(w);
-            if (id == 109 &&
-                (event == CBN_SELENDOK ||
-                 (event == CBN_SELCHANGE && !SendMessageW(presetBox, CB_GETDROPPEDSTATE, 0, 0)))) {
-                try {
-                    selectResolutionPreset();
-                } catch (...) {
-                    SendMessageW(presetBox, CB_SETCURSEL, 0, 0);
-                    throw;
-                }
-                return 0;
-            }
-            if (((id == 110 || id == 112 || id == 113) && event == CBN_SELCHANGE) ||
-                (id == 111 && event == BN_CLICKED)) {
-                SendMessageW(presetBox, CB_SETCURSEL, 0, 0);
-                graphicsMessage(L"Manual changes pending. Click Apply manual settings to write "
-                                L"them. Temporal FSR needs MSAA and FXAA Off.");
-                return 0;
-            }
-            switch (id) {
-            case 106: {
-                auto root = fs::path(text(pathBox));
-                graphics::Options o;
-                o.msaa = int(SendMessageW(msaaBox, CB_GETCURSEL, 0, 0));
-                o.fxaa = SendMessageW(fxaaBox, BM_GETCHECK, 0, 0) == BST_CHECKED;
-                o.scale = int(SendMessageW(scaleBox, CB_GETCURSEL, 0, 0));
-                auto output = SendMessageW(outputBox, CB_GETCURSEL, 0, 0);
-                ensure(output >= 0 && size_t(output) < graphics::outputChoices.size(),
-                       "Choose a valid output resolution");
-                auto &choice = graphics::outputChoices[size_t(output)];
-                o.outputWidth = choice.width;
-                o.outputHeight = choice.height;
-                auto backup = graphics::apply(root, appDirectory / L"graphics-backups", o);
-                rememberGraphicsBackup(backup);
-                SendMessageW(presetBox, CB_SETCURSEL, 0, 0);
-                graphicsMessage(backup.empty()
-                                    ? L"These settings are already applied. No preferences changed."
-                                    : L"Manual settings applied and backed up. Match the renderer "
-                                      L"mode in the main window before launching. Temporal FSR "
-                                      L"requires MSAA and FXAA Off.");
-                break;
-            }
-            case 107: {
-                wchar_t backup[32768]{};
-                GetPrivateProfileStringW(L"Graphics", L"LastBackup", L"", backup, 32768,
-                                         (appDirectory / L"settings.ini").c_str());
-                ensure(*backup, "No graphics backup has been created by this launcher");
-                auto root = fs::path(text(pathBox));
-                graphics::restore(root, fs::path(backup));
-                SendMessageW(presetBox, CB_SETCURSEL, 0, 0);
-                showGraphicsOptions(graphics::current(root));
-                graphicsMessage(
-                    L"Restored the last changed graphics keys and preserved unrelated settings. "
-                    L"Choose a matching renderer before launching, or select another preset.");
-                break;
-            }
-            case 108:
-                DestroyWindow(hwnd);
-                break;
-            }
-        } catch (const std::exception &e) {
-            MessageBoxW(hwnd, wide(e.what()).c_str(), L"Graphics settings",
-                        MB_OK | MB_ICONEXCLAMATION);
-        }
-        return 0;
-    case WM_CLOSE:
-        DestroyWindow(hwnd);
-        return 0;
-    case WM_DESTROY:
-        graphicsWindow = nullptr;
-        visiblePresets.clear();
-        return 0;
+static void applyRememberedGraphics(const fs::path &root) {
+    ensure(!running(), "X-Plane is already running from this launcher");
+    if (!preferences.presetId.empty())
+        rememberGraphicsBackup(
+            graphics::apply(root, appDirectory / L"graphics-backups",
+                            graphics::presetById(preferences.presetId).settings));
+    else if (preferences.manualApplied || preferences.manualPending)
+        rememberGraphicsBackup(
+            graphics::apply(root, appDirectory / L"graphics-backups", preferences.manual));
+    if (preferences.manualPending) {
+        preferences.manualApplied = true;
+        preferences.manualPending = false;
+        saveChoices();
     }
-    return DefWindowProcW(hwnd, message, w, l);
 }
-static void showGraphics() {
-    if (graphicsWindow) {
-        SetForegroundWindow(graphicsWindow);
-        return;
-    }
-    graphics::ensureSimulatorClosed();
-    auto root = fs::path(text(pathBox));
-    graphics::validateMappings(root);
-    auto current = graphics::current(root);
-    visiblePresets = graphics::availableResolutionPresets(
-        [](int width, int height) { return graphics::supportsOutput(width, height); });
-    auto instance = GetModuleHandleW(nullptr);
-    WNDCLASSW c{};
-    c.lpfnWndProc = graphicsProcedure;
-    c.hInstance = instance;
-    c.lpszClassName = L"XPFSR24Graphics";
-    c.hCursor = LoadCursor(nullptr, IDC_ARROW);
-    c.hbrBackground = reinterpret_cast<HBRUSH>(COLOR_WINDOW + 1);
-    RegisterClassW(&c);
-    graphicsWindow = CreateWindowExW(WS_EX_DLGMODALFRAME, c.lpszClassName,
-                                     L"Resolution presets and graphics setup",
-                                     WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU, CW_USEDEFAULT,
-                                     CW_USEDEFAULT, 710, 610, window, nullptr, instance, nullptr);
-    ensure(graphicsWindow != nullptr, "Cannot create graphics settings window");
-    auto add = [&](const wchar_t *type, const wchar_t *label, DWORD style, int x, int y, int width,
-                   int height, int id = 0) {
-        auto h = CreateWindowExW(0, type, label, WS_CHILD | WS_VISIBLE | style, x, y, width, height,
-                                 graphicsWindow, reinterpret_cast<HMENU>(intptr_t(id)), instance,
-                                 nullptr);
-        SendMessageW(h, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
-        return h;
-    };
-    add(L"STATIC",
-        L"Choose a preset from the list to apply immediately, with a backup.\r\nX-Plane must be "
-        L"closed. Only outputs supported by your primary display appear.",
-        0, 20, 15, 660, 50);
-    add(L"STATIC", L"Resolution preset", 0, 20, 86, 150, 24);
-    presetBox = add(L"COMBOBOX", L"", CBS_DROPDOWNLIST | WS_TABSTOP, 185, 80, 475, 265, 109);
-    SendMessageW(presetBox, CB_ADDSTRING, 0,
-                 reinterpret_cast<LPARAM>(L"Choose a preset to apply automatically..."));
-    for (auto *preset : visiblePresets)
-        SendMessageW(presetBox, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(preset->label));
-    SendMessageW(presetBox, CB_SETCURSEL, 0, 0);
-    add(L"STATIC", L"Manual settings", 0, 20, 127, 630, 24);
-    add(L"STATIC", L"MSAA", 0, 20, 168, 150, 24);
-    msaaBox = add(L"COMBOBOX", L"", CBS_DROPDOWNLIST | WS_TABSTOP, 185, 162, 475, 120, 110);
-    for (auto *v : {L"Off", L"2x MSAA", L"4x MSAA", L"8x MSAA"})
-        SendMessageW(msaaBox, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(v));
-    fxaaBox = add(L"BUTTON", L"Enable FXAA (native renderer only)", BS_AUTOCHECKBOX | WS_TABSTOP,
-                  185, 204, 475, 25, 111);
-    add(L"STATIC", L"Rendering scale", 0, 20, 250, 150, 24);
-    scaleBox = add(L"COMBOBOX", L"", CBS_DROPDOWNLIST | WS_TABSTOP, 185, 244, 475, 160, 112);
-    for (auto *v : {L"Full - for Native AA", L"Ultra quality", L"Quality - 1.5x upscaling",
-                    L"Balanced", L"Performance - 2x upscaling"})
-        SendMessageW(scaleBox, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(v));
-    add(L"STATIC", L"Output resolution", 0, 20, 297, 150, 24);
-    outputBox = add(L"COMBOBOX", L"", CBS_DROPDOWNLIST | WS_TABSTOP, 185, 292, 475, 150, 113);
+static void restoreGraphics() {
+    auto backup = launcher::readSetting(appDirectory / L"settings.ini", L"Graphics", L"LastBackup");
+    ensure(!backup.empty(), "No graphics backup has been created by this launcher");
+    graphics::restore(fs::path(text(pathBox)), fs::path(backup));
+    preferences.manualApplied = preferences.manualPending = false;
+    preferences.manual = graphics::current(fs::path(text(pathBox)));
+    clearPreset();
+    showGraphicsOptions(preferences.manual);
+    saveChoices();
+    graphicsMessage(L"Previous graphics restored. FSR and frame gen choices are unchanged. "
+                    L"Check rendering scale before launching.",
+                    L"Previous graphics restored.\r\nFSR / FG unchanged.");
+}
+static void editGraphics() {
+    launcher::customGraphics(preferences, readGraphicsOptions(), false);
+    syncPresetSelection();
+    saveChoices();
+    graphicsMessage(L"Choices remembered; simulator changes pending. Click Apply graphics "
+                    L"with X-Plane closed. FSR and frame gen are unchanged.",
+                    L"Edits saved; apply before launch.\r\nFSR / FG unchanged.");
+}
+static void applyCustomGraphics() {
+    auto options = readGraphicsOptions();
+    auto backup =
+        graphics::apply(fs::path(text(pathBox)), appDirectory / L"graphics-backups", options);
+    rememberGraphicsBackup(backup);
+    launcher::customGraphics(preferences, options, true);
+    syncPresetSelection();
+    saveChoices();
+    graphicsMessage(L"Graphics applied and saved. FSR and frame gen selections are unchanged. "
+                    L"FSR requires FXAA Off and a matching rendering scale. MSAA is experimental.",
+                    L"Graphics saved. FSR / FG unchanged.\r\nFXAA Off for FSR; MSAA preview.");
+}
+static void createGraphicsControls(HWND parent) {
+    msaaBox = control(L"COMBOBOX", L"", CBS_DROPDOWNLIST | WS_TABSTOP, 0, 0, 200, 180, 110);
+    for (auto *v :
+         {L"Off · Recommended", L"2x MSAA · Preview", L"4x MSAA · Preview", L"8x MSAA · Preview"})
+        SendMessageW(msaaBox, CB_ADDSTRING, 0, LPARAM(v));
+    fxaaBox =
+        control(L"BUTTON", L"FXAA · Native only", BS_AUTOCHECKBOX | WS_TABSTOP, 0, 0, 200, 32, 111);
+    scaleBox = control(L"COMBOBOX", L"", CBS_DROPDOWNLIST | WS_TABSTOP, 0, 0, 200, 180, 112);
+    for (auto *v : {L"Full · Native AA", L"Ultra quality", L"Quality · 1.5x", L"Balanced",
+                    L"Performance · 2x"})
+        SendMessageW(scaleBox, CB_ADDSTRING, 0, LPARAM(v));
+    outputBox = control(L"COMBOBOX", L"", CBS_DROPDOWNLIST | WS_TABSTOP, 0, 0, 200, 180, 113);
     for (auto &choice : graphics::outputChoices)
-        SendMessageW(outputBox, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(choice.label));
-    showGraphicsOptions(current);
-    graphicsStatus =
-        add(L"EDIT",
-            visiblePresets.empty()
-                ? L"No supported preset output was found. Manual AA/scale settings remain "
-                  L"available. Windows display modes and drivers are not changed."
-                : L"Choose a resolution preset above. It configures fullscreen output, rendering "
-                  L"scale, MSAA/FXAA Off, the matching FSR 3.1.6 mode and FG Off. No Apply click "
-                  L"is needed for presets. Manual controls use the button below.",
-            ES_MULTILINE | ES_READONLY | WS_VSCROLL, 20, 344, 640, 135);
-    add(L"BUTTON", L"Apply manual settings", BS_PUSHBUTTON | WS_TABSTOP, 20, 500, 215, 36, 106);
-    add(L"BUTTON", L"Restore last change", BS_PUSHBUTTON | WS_TABSTOP, 250, 500, 195, 36, 107);
-    add(L"BUTTON", L"Close", BS_PUSHBUTTON | WS_TABSTOP, 460, 500, 200, 36, 108);
-    EnableWindow(window, FALSE);
-    ShowWindow(graphicsWindow, SW_SHOW);
-    UpdateWindow(graphicsWindow);
-    MSG msg{};
-    while (graphicsWindow && GetMessageW(&msg, nullptr, 0, 0) > 0) {
-        if (!IsDialogMessageW(graphicsWindow, &msg)) {
-            TranslateMessage(&msg);
-            DispatchMessageW(&msg);
+        SendMessageW(outputBox, CB_ADDSTRING, 0, LPARAM(choice.label));
+    graphics::Options options{};
+    if (!preferences.presetId.empty())
+        options = graphics::presetById(preferences.presetId).settings;
+    else if (preferences.manualApplied || preferences.manualPending)
+        options = preferences.manual;
+    else {
+        try {
+            options = graphics::current(fs::path(text(pathBox)));
+        } catch (...) {
         }
     }
-    EnableWindow(window, TRUE);
-    SetForegroundWindow(window);
+    showGraphicsOptions(options);
+    control(L"BUTTON", L"Apply graphics", BS_PUSHBUTTON | WS_TABSTOP, 0, 0, 200, 34, 106);
+    graphicsStatus = control(L"STATIC",
+                             preferences.manualPending
+                                 ? L"Edits saved · Apply graphics before launch"
+                                 : (app::frameGenerationAvailable
+                                        ? L"Custom edits retain FSR and frame generation selections"
+                                        : L"Custom edits retain FSR mode · FG is suspended"),
+                             0, 0, 0, 600, 22, 538);
 }

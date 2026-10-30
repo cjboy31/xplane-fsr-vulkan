@@ -1,5 +1,6 @@
 param(
  [switch]$SkipCpu,
+ [switch]$Msaa,
  [Parameter(Mandatory)][string]$Compiler,
  [Parameter(Mandatory)][string]$Glslang,
  [Parameter(Mandatory)][string]$VulkanHeaders,
@@ -36,9 +37,15 @@ try{
  $env:XPFSR24_LOG=Join-Path $build 'layer-test.log'
  Remove-Item Env:XPFSR24_STATUS -ErrorAction SilentlyContinue
  Remove-Item Env:XPFSR24_CONTROL -ErrorAction SilentlyContinue
+ $sampleCounts=if($Msaa){@(1,2,4,8)}else{@(1)}
+ foreach($samples in $sampleCounts){
+ $resolveKinds=if($samples -gt 1){@('attachment','explicit','explicit2')}else{@('attachment')}
+ foreach($resolve in $resolveKinds){
  foreach($mode in @('observe','upscale','native-aa')){
-  & (Join-Path $build 'layer_test.exe') (Join-Path $root 'app\runtime') (Join-Path $build 'native_test.spv') $mode
-  if($LASTEXITCODE -ne 0){throw "GPU layer integration test failed: $mode"}
+  & (Join-Path $build 'layer_test.exe') (Join-Path $root 'app\runtime') (Join-Path $build 'native_test.spv') $mode $samples $resolve
+  if($LASTEXITCODE -ne 0){throw "GPU layer integration test failed: $mode / MSAA $samples"}
+ }
+ }
  }
 }finally{foreach($name in $names){[Environment]::SetEnvironmentVariable($name,$previous[$name],'Process')}}
 $savedLayers=@{}
