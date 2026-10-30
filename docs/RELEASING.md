@@ -81,3 +81,17 @@ checks, download cancellation/retry, integrity rejection and installer arguments
 Installer fixtures additionally verify new-install choice imports, preservation
 of existing settings and rejection of missing/invalid/oversized import files.
 Verify the actual open dropdown and the enabled installation action in the app.
+
+## Discord community updates
+
+After the GitHub release and asset verification in step 7, announce the published
+version in the community's [#updates channel](https://discord.com/channels/1565487749832777830/1565816821523681290).
+The owner has authorized routine release announcements there. Check for an
+existing post with the same release URL before sending. Include the version,
+Normal/Experimental channel, a concise feature summary, any changed setup or
+hardware/model requirements, important limitations and the official GitHub
+release link. Keep the tone friendly and avoid unsupported quality/FPS claims.
+Verify the visible message and save its permalink. Keep the prior feature-video
+approval gate. If access is unavailable, prepare the text and report the pending
+announcement rather than claiming success.
+

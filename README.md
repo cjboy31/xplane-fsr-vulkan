@@ -2,6 +2,10 @@
 
 # FSR 3/4 + Frame Gen for X-Plane 12
 
+**Community:** [Join our Discord](https://discord.gg/yh396QNgHZ) · [Release updates](https://discord.com/channels/1565487749832777830/1565816821523681290)
+
+Get setup help, report problems, share feedback and follow new releases.
+
 An experimental Windows Vulkan integration for AMD FSR Native AA, upscaling and
 frame generation, with a new current-frame cockpit-screen compositor for the
 default Cirrus SR22. Original project code and artwork are MIT licensed.
