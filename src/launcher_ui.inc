@@ -65,7 +65,11 @@ static constexpr SettingHelp settingHelp[] = {
      L"artifacts. 3.1.6 is the compatibility option; 4.0.2 is the ML preview.\n\nBest use: enable "
      L"only after real rendered frame times are stable. Cockpit screen restore must be Off; "
      L"selecting FG turns that restore Off automatically. Changing provider requires restart; Off "
-     L"can be selected during flight."},
+     L"can be selected during flight.\n\nSynchronized compatibility tests request AMD's 3.1.7 "
+     L"presenter and wait for its paced work before allowing the next source frame. They can "
+     L"reduce overlap and performance. Use them to compare presentation flicker against the "
+     L"ordinary modes, not as a guarantee of artifact-free output. VSync is not a verified "
+     L"workaround. These tests also require a restart."},
     {205, L"Enable FSR processing",
      L"Enables or bypasses the selected FSR mode in the simulator launched here. This checkbox can "
      L"be changed during flight. It does not remove the loaded Vulkan layer.\n\nBest use: compare "
@@ -92,7 +96,7 @@ static constexpr SettingHelp settingHelp[] = {
      L"running, but layer activity is not confirmed.\nLAYER LOADED: the Vulkan layer reports "
      L"activity, but FSR is waiting or bypassed.\nFSR ACTIVE: recent FSR command recordings and "
      L"Vulkan presentation have been reported.\nPAUSED or NO RECENT ACTIVITY: processing is "
-     L"disabled or telemetry has stopped progressing. GROUND CAMERA SAFETY: when the aircraft is "
+     L"disabled or telemetry has stopped progressing. Neither means the layer was unloaded. The live Renderer log refreshes automatically and records actual instance/device lifecycle events. GROUND CAMERA SAFETY: when the aircraft is "
      L"on the ground, an external camera at or below 1.5 metres AGL uses native rendering and "
      L"pauses FG. Raise it to 2.5 metres, enter the cockpit or take off to resume. "
      L"Camera/controller settings are unchanged.\n\nBest use: launch from this app, load a "
@@ -131,6 +135,9 @@ static const SettingHelp *helpById(int id) {
 static void helpIcon(HWND parent, int id, int x, int y) {
     auto button = control(L"BUTTON", L"?", BS_PUSHBUTTON | WS_TABSTOP, x, y, 25, 25, id, parent);
     auto *h = helpById(id);
+    if(id==215){theme::name(button,L"Help: AMD neural rendering");return;}
+    if(id==216){theme::name(button,L"Help: Keep X-Plane UI size");return;}
+    if(!h)return;
     theme::name(button, (std::wstring(L"Help: ") + h->title).c_str());
     auto tip = CreateWindowExW(WS_EX_TOPMOST, TOOLTIPS_CLASSW, nullptr, WS_POPUP | TTS_ALWAYSTIP, 0,
                                0, 0, 0, parent, nullptr, GetModuleHandleW(nullptr), nullptr);
@@ -144,7 +151,10 @@ static void helpIcon(HWND parent, int id, int x, int y) {
     SendMessageW(tip, TTM_SETDELAYTIME, TTDT_AUTOPOP, 30000);
 }
 #include "launcher_help.inc"
+#include "nr_ui.inc"
 static bool showHelp(HWND parent, int id) {
+    if(id==216){modernHelp(parent,L"Keep X-Plane UI size",L"When this app changes output resolution, it adjusts X-Plane's saved UI pixel multiplier in proportion to the previous output/window height. Base font size is retained. Minimum readable UI limits still apply.\n\nBest use: leave On when switching between 1080p, 1440p and 4K. Turn Off to let X-Plane manage scaling. Recognized single-monitor preferences are edited with an exact backup; Restore graphics undoes the edit. Ordinary launches keep current display and UI bytes unchanged.");return true;}
+    if(id==215){modernHelp(parent,L"AMD neural rendering - Experimental",nrSetupText().c_str());return true;}
     if (id == 204 && !app::frameGenerationAvailable) {
         modernHelp(parent, L"Frame generation temporarily suspended",
                    app::frameGenerationSuspension);
@@ -157,6 +167,8 @@ static bool showHelp(HWND parent, int id) {
     return true;
 }
 static void collectChoices() {
+    if(keepUIBox)preferences.keepSimUISize=SendMessageW(keepUIBox,BM_GETCHECK,0,0)==BST_CHECKED;
+    if(app::neuralRenderingAvailable)preferences.neuralRendering=int(SendMessageW(neuralBox,CB_GETCURSEL,0,0));
     preferences.simulator = text(pathBox);
     preferences.arguments = text(argsBox);
     preferences.mode = int(SendMessageW(modeBox, CB_GETCURSEL, 0, 0));
@@ -176,6 +188,8 @@ static void saveChoices() {
         SetWindowTextW(motionSetupNote, designSetupHint());
     try {
         launcher::save(appDirectory / L"settings.ini", preferences);
+        preferences.nr[xpfsr::nr::Enabled]=preferences.neuralRendering!=0;
+        nrChannel.write(preferences.nr);
         SetWindowTextW(savedLabel, L"Choices saved automatically");
         theme::tone(savedLabel, theme::green);
     } catch (...) {
@@ -200,13 +214,13 @@ static void runtimeBanner(launcher::RuntimeState state, const app::Telemetry &st
         message = L"FSR ACTIVE\r\nVulkan layer confirmed";
         break;
     case launcher::RuntimeState::groundSafety:
-        message = L"GROUND CAMERA SAFETY\r\nNative rendering";
+        message = L"GROUND CAMERA SAFETY\r\nLayer loaded · Native rendering";
         break;
     case launcher::RuntimeState::paused:
-        message = L"FSR PAUSED\r\nProcessing disabled";
+        message = L"FSR PAUSED\r\nLayer loaded · Processing disabled";
         break;
     case launcher::RuntimeState::stalled:
-        message = L"NO RECENT ACTIVITY\r\nWaiting for updates";
+        message = L"LAYER PREVIOUSLY CONFIRMED\r\nTelemetry stale · Waiting";
         break;
     default:
         break;
@@ -248,6 +262,7 @@ static void runtimeBanner(launcher::RuntimeState state, const app::Telemetry &st
 #include "update_ui.inc"
 #include "launcher_design.inc"
 #include "intro_video.inc"
+#include "renderer_log_ui.inc"
 static LRESULT CALLBACK procedure(HWND hwnd, UINT message, WPARAM w, LPARAM l) {
     switch (message) {
     case WM_CREATE:
@@ -354,6 +369,17 @@ static LRESULT CALLBACK procedure(HWND hwnd, UINT message, WPARAM w, LPARAM l) {
                 return 0;
             }
             switch (id) {
+            case 114:if(event==BN_CLICKED)saveChoices();break;
+            case 46:
+                if(event==CBN_SELCHANGE){
+                    auto selected=SendMessageW(neuralBox,CB_GETCURSEL,0,0);
+                    if(selected>0&&running()&&(launchedNative||!launchedMode||(launchedFG&&!preferences.nr[xpfsr::nr::AllowFG]))){SendMessageW(neuralBox,CB_SETCURSEL,preferences.neuralRendering,0);throw std::runtime_error(launchedNative||!launchedMode?"This session has no FSR reconstruction path for NR. Launch with FSR Native AA or upscaling to use NR live.":"Enable NR + frame generation testing in NR settings first, or use an FG-Off session.");}
+                    if(selected>=1&&selected<=3)preferences.nr[xpfsr::nr::Intensity]=selected==1?25:selected==2?50:100;
+                    if(selected>0&&!running()&&!preferences.nr[xpfsr::nr::AllowFG])SendMessageW(fgBox,CB_SETCURSEL,0,0);
+                    saveChoices();
+                }
+                break;
+            case 47:showNRSetup();break;
             case 251:
                 intro::show(hwnd, false);
                 break;
@@ -416,6 +442,7 @@ static LRESULT CALLBACK procedure(HWND hwnd, UINT message, WPARAM w, LPARAM l) {
                             "Restart X-Plane to change the frame generation provider");
                     }
                     if (selected && !running()) {
+                        if(!preferences.nr[xpfsr::nr::AllowFG])SendMessageW(neuralBox, CB_SETCURSEL, 0, 0);
                         SendMessageW(cockpitBox, BM_SETCHECK, BST_UNCHECKED, 0);
                         SendMessageW(tintBox, BM_SETCHECK, BST_UNCHECKED, 0);
                     }
@@ -444,9 +471,7 @@ static LRESULT CALLBACK procedure(HWND hwnd, UINT message, WPARAM w, LPARAM l) {
                 saveChoices();
                 break;
             case 31:
-                ShellExecuteW(hwnd, L"open", L"notepad.exe",
-                              quote((appDirectory / L"logs/renderer.log").wstring()).c_str(),
-                              nullptr, SW_SHOWNORMAL);
+                showRendererLog();
                 break;
             case 32:
                 removePlugin(text(pathBox));
@@ -513,6 +538,9 @@ static LRESULT CALLBACK procedure(HWND hwnd, UINT message, WPARAM w, LPARAM l) {
         }
         return 0;
     case WM_CLOSE:
+        if(nrJobRunning()){MessageBoxW(hwnd,L"Wait for the NR import/check to finish.",L"NR task active",MB_OK);return 0;}
+        nrFinishJob();
+        if(IsWindow(rendererLogWindow))DestroyWindow(rendererLogWindow);
         intro::close();
         updateJob->cancel = true;
         try {
@@ -531,6 +559,7 @@ static LRESULT CALLBACK procedure(HWND hwnd, UINT message, WPARAM w, LPARAM l) {
         KillTimer(hwnd, 4);
         KillTimer(hwnd, 5);
         detach();
+        nrChannel.close();
         NOTIFYICONDATAW tray{sizeof(tray)};
         tray.hWnd = hwnd;
         tray.uID = 1;

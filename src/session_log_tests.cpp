@@ -3,6 +3,7 @@
 #include "scene_frame.hpp"
 #include "ground_camera.hpp"
 #include "runtime_status.hpp"
+#include "renderer_status_file.hpp"
 #include <iostream>
 static void require(bool ok, const char *why) {
     if (!ok)
@@ -19,13 +20,14 @@ int wmain(int argc, wchar_t **argv) {
         require(!session::fs::exists(directory), "Refusing to reuse a log fixture");
         session::fs::create_directories(directory);
         for (auto name : {L"renderer.log", L"renderer-status.txt", L"exit-status.txt",
-                          L"launch.txt", L"renderer-status.txt.tmp"})
+                          L"launch.txt", L"renderer-nr-status.txt", L"renderer-status.txt.tmp",
+                          L"renderer-nr-status.txt.tmp"})
             session::write(directory / name, "old-session-contents\n");
         session::write(directory / L"keep-user-file.txt", "unrelated\n");
         auto first = session::prepare(directory, "mode=upscale provider=4.1.2 fg=Off");
         require(first.size() == 32, "Session token");
         for (auto name :
-             {L"renderer.log", L"renderer-status.txt", L"exit-status.txt", L"launch.txt"})
+             {L"renderer.log", L"renderer-status.txt", L"exit-status.txt", L"launch.txt", L"renderer-nr-status.txt"})
             require(read((directory / name).wstring() + L".previous") == "old-session-contents\n",
                     "Previous diagnostics not preserved");
         require(read(directory / L"renderer.log").find("old-session") == std::string::npos &&
@@ -33,7 +35,9 @@ int wmain(int argc, wchar_t **argv) {
                 "Old renderer session leaked");
         require(read(directory / L"renderer-status.txt").empty() &&
                     read(directory / L"exit-status.txt").empty() &&
-                    !session::fs::exists(directory / L"renderer-status.txt.tmp"),
+                    read(directory / L"renderer-nr-status.txt").empty() &&
+                    !session::fs::exists(directory / L"renderer-status.txt.tmp") &&
+                    !session::fs::exists(directory / L"renderer-nr-status.txt.tmp"),
                 "Stale status/exit/temp survived");
         session::write(directory / L"renderer.log", "first-session-only\n");
         auto second = session::prepare(directory, "mode=native");
@@ -42,6 +46,30 @@ int wmain(int argc, wchar_t **argv) {
                 "Second session rotation");
         require(read(directory / L"keep-user-file.txt") == "unrelated\n",
                 "Unrelated user log touched");
+        auto reopened=session::openRendererLog(directory/L"renderer.log",second,true);
+        require(reopened!=nullptr,"Renderer could not append launcher-prepared session");
+        fputs("first-renderer-evidence\n",reopened);fclose(reopened);
+        reopened=session::openRendererLog(directory/L"renderer.log",second,true);
+        require(reopened!=nullptr,"Reloaded renderer could not append");fputs("reload-evidence\n",reopened);fclose(reopened);
+        require(read(directory/L"renderer.log").find("first-renderer-evidence")!=std::string::npos,"Renderer reload erased current-session diagnostics");
+        SetEnvironmentVariableW(L"XPFSR24_SESSION",std::wstring(second.begin(),second.end()).c_str());
+        require(!session::openRendererLog(directory/L"renderer.log",first,true),"Late writer accepted another session's log");
+        require(!session::openRendererLog(directory/L"renderer.log",first,false),"An existing late writer appended into another session");
+        SetEnvironmentVariableW(L"XPFSR24_SESSION",nullptr);
+        require(session::logTail(directory/L"renderer.log",first).find("Older-session data is hidden")!=std::string::npos,"Live log displayed another session");
+        session::write(directory/L"tail.log","XPFSR24 session="+second+"\n"+std::string(400000,'x')+"\nlatest-tail-evidence\n");
+        auto tail=session::logTail(directory/L"tail.log",second);
+        require(tail.size()<262250&&tail.find("latest-tail-evidence")!=std::string::npos,"Log tail is unbounded or misses latest data");
+        auto statusFile=directory/L"renderer-status.txt";app::Telemetry written{},loaded{};
+        written.presents=12;written.recordings=9;strcpy(written.reason,"current renderer");
+        {std::ofstream out(statusFile);launcher::writeRendererStatus(out,written,42,10000,second);}
+        require(launcher::readRendererStatus(statusFile,42,second,11000,loaded)&&loaded.recordings==9,"Fresh fallback status rejected");
+        require(!launcher::readRendererStatus(statusFile,43,second,11000,loaded)&&
+                !launcher::readRendererStatus(statusFile,42,first,11000,loaded)&&
+                !launcher::readRendererStatus(statusFile,42,second,14000,loaded)&&
+                !launcher::readRendererStatus(statusFile,42,second,9000,loaded),"Wrong process/session/stale/future fallback status accepted");
+        session::write(statusFile,"old reason\nold provider\n1 1 0 2560 1440 3840 2160 1\n");
+        require(!launcher::readRendererStatus(statusFile,42,second,11000,loaded),"Legacy untagged fallback status accepted");
         auto file = directory / L"renderer.log";
         HANDLE locked =
             CreateFileW(file.c_str(), GENERIC_READ, 0, nullptr, OPEN_EXISTING, 0, nullptr);
@@ -97,6 +125,7 @@ int wmain(int argc, wchar_t **argv) {
         std::cout << "PASS: per-session reset, unique IDs, bounded previous diagnostics, stale "
                      "status/exit/temp removal, locked-file refusal, unrelated-file preservation "
                      "and immutable scene camera tags\n";
+        std::cout<<"PASS: same-session log reload preserves history; stale-session writer refused; bounded current log tail; PID/token/age-tagged fallback status\n";
         return 0;
     } catch (const std::exception &e) {
         std::cerr << "FAIL: " << e.what() << '\n';

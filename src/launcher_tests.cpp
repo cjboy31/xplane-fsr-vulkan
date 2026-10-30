@@ -21,7 +21,7 @@ int wmain(int argc, wchar_t **argv) {
         auto file = dir / L"settings.ini";
         auto defaults = launcher::load(file);
         require(defaults.mode == 0 && defaults.enabled && defaults.cockpitRestore &&
-                    defaults.frameGeneration == 0 && defaults.presetId.empty(),
+                    defaults.frameGeneration == 0 && defaults.neuralRendering == 0 && defaults.presetId.empty(),
                 "First-run defaults");
         // Exercise upgrading the ANSI file created by the old launcher/installer.
         graphics::write(file, "[Application]\r\nSimulator=D:\\Simulator "
@@ -37,6 +37,9 @@ int wmain(int argc, wchar_t **argv) {
             p.presetId = preset.id;
             p.mode = preset.launcherMode;
             p.frameGeneration = 2;
+            p.neuralRendering = 3;
+            p.nr[xpfsr::nr::Intensity]=37;p.nr[xpfsr::nr::Tone]=63;p.nr[xpfsr::nr::Structure]=125;
+            p.nr[xpfsr::nr::Scale]=33;p.nr[xpfsr::nr::Style]=2;p.nr[xpfsr::nr::Passes]=3;p.nr[xpfsr::nr::AllowFG]=1;p.nr[xpfsr::nr::Order]=1;
             p.cockpitRestore = false;
             p.alignmentTint = true;
             p.enabled = false;
@@ -59,7 +62,7 @@ int wmain(int argc, wchar_t **argv) {
         require(launcher::serialized(launcher::load(file)) == launcher::serialized(custom),
                 "Custom AA/output/quote-only argument persistence");
         for (int mode = 0; mode <= 4; ++mode)
-            for (int fg = 0; fg <= 2; ++fg)
+            for (int fg = 0; fg <= 4; ++fg)
                 for (int msaa = 0; msaa <= 3; ++msaa) {
                     custom.mode = mode;
                     custom.frameGeneration = fg;
@@ -86,6 +89,23 @@ int wmain(int argc, wchar_t **argv) {
         launcher::save(newFile, custom);
         require(launcher::serialized(launcher::load(newFile)) == launcher::serialized(custom),
                 "First-save Unicode INI round trip");
+        auto legacyNR=dir/L"legacy-nr.ini";
+        graphics::write(legacyNR,"[Launcher]\r\nNeuralRendering=4\r\nNRIntensity=39\r\nNRModelScale=33\r\nNRScope=1\r\nNRAllowFG=1\r\n");
+        auto migratedNR=launcher::load(legacyNR);
+        require(migratedNR.nr[xpfsr::nr::Order]==0,"Upgrading earlier NR installs must retain before-upscale behavior");
+        migratedNR.nr[xpfsr::nr::Order]=1;
+        require(migratedNR.neuralRendering==4&&migratedNR.nr[xpfsr::nr::Intensity]==39&&migratedNR.nr[xpfsr::nr::Scope]==1,"Legacy NR choices did not migrate");
+        launcher::save(legacyNR,migratedNR);
+        auto nrBefore=migratedNR.nr;
+        // The public pre-NR Normal launcher uses this Windows API to replace
+        // its entire Launcher block, retaining independent sections.
+        const wchar_t oldNormalSection[]=L"Mode=2\0FrameGeneration=0\0Enabled=1\0";
+        require(WritePrivateProfileSectionW(L"Launcher",oldNormalSection,legacyNR.c_str())!=FALSE,"Older-Normal save fixture failed");
+        WritePrivateProfileStringW(nullptr,nullptr,nullptr,legacyNR.c_str());
+        auto returnedNR=launcher::load(legacyNR);
+        require(returnedNR.mode==2&&returnedNR.neuralRendering==4&&returnedNR.nr==nrBefore,"Older Normal save erased NR choices");
+        launcher::save(legacyNR,returnedNR);
+        require(launcher::load(legacyNR).nr==nrBefore,"Returned Experimental save erased NR choices");
         SetFileAttributesW(file.c_str(), FILE_ATTRIBUTE_READONLY);
         rejects([&] {
             custom.mode = 3;
@@ -94,9 +114,11 @@ int wmain(int argc, wchar_t **argv) {
         SetFileAttributesW(file.c_str(), FILE_ATTRIBUTE_NORMAL);
         WritePrivateProfileStringW(L"Launcher", L"Mode", L"999", file.c_str());
         WritePrivateProfileStringW(L"Launcher", L"FrameGeneration", L"nonsense", file.c_str());
+        WritePrivateProfileStringW(L"Launcher", L"NeuralRendering", L"999", file.c_str());
+        WritePrivateProfileStringW(L"NeuralRendering", L"Mode", L"999", file.c_str());
         WritePrivateProfileStringW(L"Launcher", L"Preset", L"unknown", file.c_str());
         auto invalid = launcher::load(file);
-        require(invalid.mode == 0 && invalid.frameGeneration == 0 && invalid.presetId.empty(),
+        require(invalid.mode == 0 && invalid.frameGeneration == 0 && invalid.neuralRendering == 0 && invalid.presetId.empty(),
                 "Corrupt saved selectors use safe defaults");
         launcher::RuntimeMonitor monitor;
         using S = launcher::RuntimeState;
@@ -118,6 +140,9 @@ int wmain(int argc, wchar_t **argv) {
         t.presents = 2;
         require(state(true, false, true, true, 3000) == S::active,
                 "Fresh FSR dispatch and present confirmation");
+        t.active=0;t.recordings=2;t.presents=3;strcpy_s(t.reason,"Another intercepted pass bypassed");
+        require(state(true,false,true,true,3500)==S::active,"Advancing FSR recordings were mistaken for layer unload");
+        require(state(true,false,false,true,3600)==S::stalled,"Missing telemetry erased earlier layer confirmation");
         require(state(true, false, true, false, 4000) == S::paused,
                 "Disabled processing never green");
         require(state(true, false, true, true, 10001) == S::stalled,
@@ -132,9 +157,12 @@ int wmain(int argc, wchar_t **argv) {
         t.recordings = 2;
         require(state(true, false, true, true, 12000) == S::loaded,
                 "Unpresented command recordings are not active proof");
+        t.presents=1;t.recordings=3;t.active=0;strcpy_s(t.reason,"Ground camera safety: native rendering");
+        require(state(true,false,true,true,12100)==S::groundSafety,"Recent recordings hid explicit ground protection");
         std::cout << "PASS: all 14 preset/provider round trips, Unicode/quoted arguments, "
                      "checkboxes, custom AA/output, legacy migration, backup preservation, write "
                      "failure, corrupt selectors and injection-state transitions.\n";
+        std::cout<<"PASS: legacy NR migration and NR choices retained across an older Normal section rewrite\n";
         return 0;
     } catch (const std::exception &e) {
         std::cerr << "FAIL: " << e.what() << '\n';

@@ -33,9 +33,15 @@ foreach($transition in @(
   if((Get-FileHash -LiteralPath (Join-Path $installed $item.path)).Hash.ToLowerInvariant() -ne $item.sha256){throw "Channel payload mismatch: $($item.path)"}
  }
  foreach($fgFile in @('FrameGenCheck.exe','runtime\amd_fidelityfx_framegeneration_vk.dll')){
-  if((Test-Path -LiteralPath (Join-Path $installed $fgFile)) -ne $transition.experimental){throw "FG payload leaked or missing: $fgFile"}
+  $fgExpected=$transition.experimental -or [version](($manifest.packageVersion -split '-')[0]) -ge [version]'0.7.1'
+  if((Test-Path -LiteralPath (Join-Path $installed $fgFile)) -ne $fgExpected){throw "FG payload incorrect: $fgFile"}
+ }
+ if([version](($manifest.packageVersion -split '-')[0]) -ge [version]'0.7.1'){
+  foreach($nrFile in @('nr/NR-BUILD.json','nr/XPFSRNeuralRendering.dll','nr/ImportNRModel.exe')){
+   if(-not(Test-Path -LiteralPath (Join-Path $installed $nrFile))){throw "NR payload missing: $nrFile"}
+  }
  }
  Write-Output "PASS: channel switch to $($manifest.packageVersion), saved choices preserved, correct FG payload."
 }
-[ordered]@{status='PASS';normalSetupSha256=(Get-FileHash -LiteralPath $NormalSetup).Hash.ToLowerInvariant();experimentalSetupSha256=(Get-FileHash -LiteralPath $ExperimentalSetup).Hash.ToLowerInvariant();transitions=4;settingsPreserved='PASS';normalExcludesFG='PASS';experimentalIncludesFG='PASS';fixture=$fixture} |
+[ordered]@{status='PASS';normalSetupSha256=(Get-FileHash -LiteralPath $NormalSetup).Hash.ToLowerInvariant();experimentalSetupSha256=(Get-FileHash -LiteralPath $ExperimentalSetup).Hash.ToLowerInvariant();transitions=4;settingsPreserved='PASS';channelPayloadsVerified='PASS';fixture=$fixture} |
  ConvertTo-Json | Set-Content -LiteralPath (Join-Path $PSScriptRoot 'CHANNEL-SWITCH-RESULTS.json')

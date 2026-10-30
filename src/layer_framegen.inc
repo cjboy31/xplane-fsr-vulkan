@@ -88,7 +88,7 @@ static VKAPI_ATTR VkResult VKAPI_CALL L_CreateSwapchainKHR(VkDevice device,
             ensureRuntime(*d);
             auto presentation = std::make_shared<xpfsr::Presentation>(d->runtime->api);
             presentation->create({d->handle, applicationPhysical(*d), d->next}, *info, d->fgQueues,
-                                 d->graphicsFamily);
+                                 d->graphicsFamily,d->fgPresenter);
             auto generation = std::make_shared<SwapchainGeneration>();
             generation->presentation = std::move(presentation);
             generation->width = info->imageExtent.width;
@@ -99,8 +99,9 @@ static VKAPI_ATTR VkResult VKAPI_CALL L_CreateSwapchainKHR(VkDevice device,
             d->fgCurrent = generation;
             strncpy(d->status.fgReason, "FG swapchain ready; waiting for scene depth and motion",
                     159);
-            log("FG SDK presentation proxy ready: provider=%s",
-                generation->presentation->provider().c_str());
+            log("FG SDK presentation proxy ready: provider=%s requested=%s synchronized=%u colorspace=%u composite-alpha=%u",
+                generation->presentation->provider().c_str(),d->fgPresenter.empty()?"automatic":d->fgPresenter.c_str(),d->fgSynchronized,
+                info->imageColorSpace,info->compositeAlpha);
             return VK_SUCCESS;
         }
     } catch (const std::exception &e) {
@@ -312,6 +313,20 @@ static VkResult presentFrame(Device &d, VkQueue queue, const VkPresentInfoKHR *i
         auto present = *info;
         present.pSwapchains = &proxy;
         result = generation->presentation->functions.pOutQueuePresentKHR(queue, &present);
+        if(d.fgSynchronized && d.status.fgActive && (result==VK_SUCCESS||result==VK_SUBOPTIMAL_KHR)){
+            // The compatibility path deliberately gives up CPU/GPU overlap.
+            // Drain SDK-managed interpolation/composition/presents before the
+            // next source can prepare on another host recording thread. Keep
+            // the same device guard; SDK native present traffic bypasses it.
+            // No semaphore is re-used and no old swapchain image is re-presented.
+            try {generation->presentation->wait();}
+            catch(const std::exception &e){
+                d.fgFailed=true;d.status.fgActive=0;
+                snprintf(d.status.fgReason,160,"FG synchronization failed: %.120s",e.what());
+                log("FG compatibility synchronization failed: %s",e.what());
+                return VK_ERROR_DEVICE_LOST;
+            }
+        }
     } else
         result = native(queue, info);
     QueryPerformanceCounter(&presentEnd);
@@ -324,6 +339,13 @@ static VkResult presentFrame(Device &d, VkQueue queue, const VkPresentInfoKHR *i
             d.lastPresentRecordings = d.status.recordings;
             auto now = GetTickCount64();
             if (now - d.lastPacingReport >= 2000) {
+                if(d.frameGenerator && d.frameGenerator->pixelProbe()){
+                    auto *probe=d.frameGenerator->pixelProbe();probe->poll();auto &p=probe->stats;
+                    log("FG pixels before composition: checked=%llu generated-blank-with-visible-source=%llu both-dark=%llu busy=%llu unsupported=%llu errors=%llu last-blank-frame=%llu source-mean=%.5f generated-mean=%.5f resets=%llu",
+                        (unsigned long long)p.checked,(unsigned long long)p.generatedBlank,(unsigned long long)p.bothDark,
+                        (unsigned long long)p.busy,(unsigned long long)p.unsupported,(unsigned long long)p.errors,
+                        (unsigned long long)p.lastBlankFrame,p.realMean,p.generatedMean,(unsigned long long)d.frameGenerator->resetDispatches.load());
+                }
                 d.lastPacingReport = now;
                 auto s = d.pacing.summary();
                 log("Source pacing (CPU present-call intervals, not scanout): n=%u p50=%.2fms "
@@ -331,6 +353,10 @@ static VkResult presentFrame(Device &d, VkQueue queue, const VkPresentInfoKHR *i
                     "no-scene-presents-total=%u FG-active=%u",
                     s.samples, s.p50, s.p95, s.p99, s.maximum, s.over50ms, s.presentP95,
                     s.missingScene, d.status.fgActive);
+                log("Renderer heartbeat: device=%p presents=%llu FSR-recordings=%llu bypasses=%llu enabled=%u last-pass-active=%u reason=%s",
+                    reinterpret_cast<void*>(d.handle),(unsigned long long)d.status.presents,
+                    (unsigned long long)d.status.recordings,(unsigned long long)d.status.bypasses,
+                    d.enabled,d.status.active,d.status.reason);
             }
         }
         if (generation) {
@@ -346,8 +372,9 @@ static VkResult presentFrame(Device &d, VkQueue queue, const VkPresentInfoKHR *i
                              "FG dispatch failed with SDK code %u; disable FG and restart",
                              failure);
                 } else if (d.status.fgActive)
-                    strncpy(d.status.fgReason, "SDK frame generation and paced presentation active",
-                            159);
+                    snprintf(d.status.fgReason,160,"%s; real-frame holds=%llu (missing source/error)",
+                        d.fgSynchronized?"Synchronized compatibility FG":"SDK paced FG",
+                        (unsigned long long)d.frameGenerator->skipped.load());
             }
         }
         if (d.status.presents < 5 || d.status.presents % 500 == 0)

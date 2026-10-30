@@ -155,7 +155,8 @@ int wmain(int argc, wchar_t **argv) {
         std::vector<VkSurfaceFormatKHR> formats(n);
         formatsFn(vk.physical, surface, &n, formats.data());
         auto format = formats.front();
-        bool srgb = argc > 4 && std::wstring(argv[4]) == L"--srgb";
+        auto option=[&](const wchar_t*name){for(int i=4;i<argc;++i)if(std::wstring(argv[i])==name)return true;return false;};
+        const bool srgb=option(L"--srgb"),injectGaps=option(L"--inject-gaps"),async=option(L"--async"),benchmark=option(L"--benchmark");
         for (auto value : formats)
             if (value.format == (srgb ? VK_FORMAT_B8G8R8A8_SRGB : VK_FORMAT_B8G8R8A8_UNORM) &&
                 value.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR)
@@ -179,6 +180,13 @@ int wmain(int argc, wchar_t **argv) {
         ci.preTransform = caps.currentTransform;
         ci.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
         ci.presentMode = VK_PRESENT_MODE_FIFO_KHR;
+        if(option(L"--immediate")){
+            auto getModes=vk.inst<PFN_vkGetPhysicalDeviceSurfacePresentModesKHR>("vkGetPhysicalDeviceSurfacePresentModesKHR");
+            uint32_t count{};vkcheck(getModes(vk.physical,surface,&count,nullptr),"FG present modes count");std::vector<VkPresentModeKHR> modes(count);
+            vkcheck(getModes(vk.physical,surface,&count,modes.data()),"FG present modes");
+            require(std::find(modes.begin(),modes.end(),VK_PRESENT_MODE_IMMEDIATE_KHR)!=modes.end(),"Immediate test presentation unavailable");
+            ci.presentMode=VK_PRESENT_MODE_IMMEDIATE_KHR;
+        }
         ci.clipped = VK_TRUE;
         std::array<VkQueue, 4> queues{};
         for (uint32_t i = 0; i < 4; ++i)
@@ -186,14 +194,16 @@ int wmain(int argc, wchar_t **argv) {
         {
             Presentation presentation(runtime.api);
             presentation.create(backend, ci, queues, vk.family,
-                                argc > 4 && !srgb ? std::string("3.1.7") : std::string{});
+                                option(L"--presenter-3.1.7")?std::string("3.1.7"):std::string{});
             std::cout << "Swapchain provider=" << presentation.provider()
                       << " format=" << format.format << " size=" << size.width << 'x' << size.height
                       << '\n';
             FrameGenerator generator(runtime.api);
+            generator.unadaptedSrgbForTest=option(L"--unadapted-srgb");
             generator.create(backend, size.width, size.height, size.width, size.height,
-                             format.format, true, true, wanted);
-            std::cout << "Frame generator=" << generator.provider() << '\n';
+                             format.format, true, true, wanted,async,&vk.memory);
+            if(option(L"--diagnostics"))generator.enablePixelProbe(vk.memory);
+            std::cout << "Frame generator=" << generator.provider() << "; async="<<async<<"; benchmark="<<benchmark<<'\n';
             GpuImage depth(vk), motion(vk);
             depth.create(size.width, size.height, VK_FORMAT_R32_SFLOAT);
             motion.create(size.width, size.height, VK_FORMAT_R16G16_SFLOAT);
@@ -240,10 +250,11 @@ int wmain(int argc, wchar_t **argv) {
             Staging staging(vk, size_t(size.width) * size.height * 4);
             Observation observation{&vk, staging.buffer, size};
             constexpr uint64_t sourceBase = 10000;
-            observation.firstCheckedFrame = sourceBase + 3;
-            generator.inspect = inspectGenerated;
+            observation.firstCheckedFrame = sourceBase + (injectGaps?1:3);
+            generator.inspect = benchmark?nullptr:inspectGenerated;
             generator.inspectContext = &observation;
-            constexpr uint64_t frames = 90;
+            const uint64_t frames = benchmark?240:90;
+            LARGE_INTEGER benchmarkStart{},benchmarkEnd{},benchmarkFrequency{};QueryPerformanceFrequency(&benchmarkFrequency);QueryPerformanceCounter(&benchmarkStart);
             unsigned nonBlackFrames = 0;
             for (uint64_t frame = 1; frame <= frames; ++frame) {
                 MSG message{};
@@ -325,6 +336,7 @@ int wmain(int argc, wchar_t **argv) {
                 input.reset = frame == 1;
                 CameraBasis camera{};
                 generator.prepare(presentation.handle(), sourceBase + frame, input, camera);
+                if(injectGaps&&(frame==15||frame==35||frame==55))generator.discardPreparedForTest(sourceBase+frame);
                 vkcheck(vk.dev<PFN_vkEndCommandBuffer>("vkEndCommandBuffer")(cb), "FG end");
                 vkcheck(vk.dev<PFN_vkResetFences>("vkResetFences")(vk.device, 1, &fence),
                         "FG reset fence");
@@ -348,9 +360,9 @@ int wmain(int argc, wchar_t **argv) {
                 present.pImageIndices = &index;
                 result = presentation.functions.pOutQueuePresentKHR(queues[0], &present);
                 require(result == VK_SUCCESS || result == VK_SUBOPTIMAL_KHR, "FG present failed");
+                if(option(L"--synchronized"))presentation.wait();
                 require(!generator.failure.load(), "FG callback failed");
-                presentation.wait();
-                vkcheck(vk.waitIdle(vk.device), "Generated-frame readback completion");
+                if(!benchmark){presentation.wait();vkcheck(vk.waitIdle(vk.device), "Generated-frame readback completion");}
                 if (observation.copied) {
                     auto *pixels = static_cast<uint8_t *>(staging.mapped);
                     double sum = 0;
@@ -371,35 +383,51 @@ int wmain(int argc, wchar_t **argv) {
                     require(sum / (size.width * size.height) > .05 &&
                                 double(dark) / (size.width * size.height) < .05,
                             "Generated frame contains an unexpected black flash/region");
+                    // The SDK no-UI presenter copies bytes, so these must be
+                    // display-encoded values just like the real backbuffer.
+                    // A linear-light reference here hid alternating dim frames.
+                    double low=0,high=0;
+                    for(uint32_t y=0;y<size.height;++y){low+=pixels[(size_t(y)*size.width+2)*4];high+=pixels[(size_t(y)*size.width+size.width-3)*4];}
+                    low/=size.height;high/=size.height;
+                    if(frame==3 || std::abs(low-31)>=4 || std::abs(high-210)>=4)std::cout<<"Encoded output levels: dark="<<low<<" expected=31 bright="<<high<<" expected=210 adapter="<<generator.encodedColorActive()<<'\n';
+                    require(std::abs(low-31)<4 && std::abs(high-210)<4,"Generated frame changed display encoding/brightness versus the real frame");
                     ++nonBlackFrames;
                 }
                 Sleep(8);
             }
             generator.configure(presentation.handle(), sourceBase + frames + 1, false);
             presentation.wait();
-            require(nonBlackFrames >= frames - 3,
+            QueryPerformanceCounter(&benchmarkEnd);
+            if(!benchmark)require(nonBlackFrames >= frames - 3,
                     "Insufficient generated frames were checked for black flashes");
             std::cout << "PASS: " << nonBlackFrames
                       << " generated-frame readbacks without black flashes; format="
                       << format.format << '\n';
             vkcheck(vk.waitIdle(vk.device), "FG idle");
+            if(auto *probe=generator.pixelProbe()){
+                probe->poll();auto &s=probe->stats;
+                std::cout<<"FG pixel probe: checked="<<s.checked<<" generated-blank="<<s.generatedBlank<<" both-dark="<<s.bothDark<<" busy="<<s.busy<<" unsupported="<<s.unsupported<<" errors="<<s.errors<<'\n';
+                require(s.checked>0 && !s.generatedBlank && !s.unsupported && !s.errors,"FG pixel probe found unexpected blanks or incompatible SDK resources");
+            }
             auto displayed = presentation.displayed();
             std::cout << "Rendered=" << frames
                       << " generated dispatch outputs=" << generator.generated.load()
                       << " SDK actual presents=" << displayed << '\n';
-            require(generator.generated.load() >= frames - 2, "No generated frames");
+            require(generator.generated.load() >= frames - (injectGaps?3:2), "No generated frames");
             require(displayed >= frames * 2 - 4, "No additional SDK presents");
+            if(injectGaps)require(generator.skipped.load()>=3,"Missing-source callbacks did not hold real frames and reset history");
+            std::cout<<"Safe real-frame holds="<<generator.skipped.load()<<"; missing-source injection="<<injectGaps<<'\n';
+            if(benchmark){
+                const double seconds=double(benchmarkEnd.QuadPart-benchmarkStart.QuadPart)/benchmarkFrequency.QuadPart;
+                std::ofstream timing(directory/L"async-benchmark.json");
+                timing<<"{\"syntheticOnly\":true,\"async\":"<<(async?"true":"false")<<",\"frames\":"<<frames<<",\"seconds\":"<<seconds<<",\"sourceThroughput\":"<<frames/seconds<<",\"sdkPresents\":"<<displayed<<",\"safeHolds\":"<<generator.skipped.load()<<",\"presentMode\":\"FIFO\",\"perFrameWaitIdle\":false}";
+                std::cout<<"Synthetic source throughput="<<frames/seconds<<"/s, async="<<async<<"; FIFO/CPU-upload fixture, not simulator FPS or scanout timing\n";
+            }else{
             require(observation.copied, "No generated-image readback was recorded");
             std::vector<float> generated(size_t(size.width) * size.height), raw(generated.size()),
                 reference(generated.size());
             auto *downloaded = static_cast<const uint8_t *>(staging.mapped);
-            auto referenceColor = [srgb](float value) {
-                // sRGB image sampling decodes the source; the SDK's writable
-                // intermediate readback is linear, before presentation encoding.
-                return srgb ? (value <= .04045f ? value / 12.92f
-                                                : std::pow((value + .055f) / 1.055f, 2.4f))
-                            : value;
-            };
+            auto referenceColor = [](float value) {return value;};
             double generatedError = 0, rawError = 0;
             uint64_t samples = 0;
             for (uint32_t y = 0; y < size.height; ++y)
@@ -437,6 +465,7 @@ int wmain(int argc, wchar_t **argv) {
                     << ",\"midpoint_error_improvement_percent\":" << improvement << "}\n";
             require(generatedError < rawError * .95,
                     "Generated frame did not improve the moving-edge midpoint fixture");
+            }
             for (auto s : ready)
                 vk.dev<PFN_vkDestroySemaphore>("vkDestroySemaphore")(vk.device, s, nullptr);
             vk.dev<PFN_vkDestroySemaphore>("vkDestroySemaphore")(vk.device, acquired, nullptr);

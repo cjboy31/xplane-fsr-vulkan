@@ -20,16 +20,33 @@ Laminar Research product, and is not a complete solution to ghosting or stutter.
 
 ## Downloads and current source
 
-- **Windows Normal:** [0.6.7-alpha installer and instructions](https://github.com/cjboy31/xplane-fsr-vulkan/releases/tag/v0.6.7-alpha). Recommended project channel; built-in frame generation remains disabled.
-- **Windows Experimental:** [0.7.0-experimental.1 NR and FG preview installer](https://github.com/cjboy31/xplane-fsr-vulkan/releases/tag/v0.7.0-experimental.1). Adds live independent NR controls, External-only or Full-scene cockpit scope and processing budgets on compatible Windows RDNA4 FP8 hardware. NR starts Off and requires your own supported local model; NVIDIA DLLs/model weights are excluded. NR + FG needs explicit opt-in and retains visual/pacing limitations. Switch builds through **Updates / Channel**.
-- **Feature video:** [Watch or download the captioned narrated guide](https://github.com/cjboy31/xplane-fsr-vulkan/releases/download/v0.6.7-alpha/XPlane-FSR3-4-0.6.7-alpha-Feature-Guide.mp4). The previously approved 0.6.4 channel/display guide is included unchanged in the 0.6.7 maintenance package, with captions and immediate Skip. [Versioned-video workflow](https://github.com/cjboy31/xplane-fsr-vulkan/blob/main/docs/FEATURE-VIDEOS.md).
+**Windows 0.7.1: update to Normal for all current features.** Both channels
+include FSR 3/4, independent neural rendering, frame generation and optional
+synchronized FG compatibility modes. Normal is recommended; Experimental is
+for future development updates. NR and FG start Off. NR requires compatible
+Windows RDNA4 FP8 hardware and your own supported local model. It supports
+External only or Full scene scope and live Before/After upscaling order.
+Before is the recommended lower-cost order. This is an independent integration,
+not NVIDIA's official DLSS 5 implementation. No NVIDIA DLL or model weights are
+included. See [NR setup](docs/NEURAL-RENDERING.md), the
+[reference review](docs/FRAME-GENERATION-REFERENCE-REVIEW.md) and
+[rendering evidence and limits](docs/RENDERING-STABILITY.md).
+
+This update also includes live current-session logs, clearer layer activity,
+initial optional-work deferral and safe real-frame holds when FG input is missing.
+The corrected FG display encoding stopped flicker in the owner's R9700 live test;
+broader hardware, display and long-flight quality remain unverified.
+The [async FG investigation](docs/ASYNC-FRAME-GENERATION.md) includes controlled
+results and developer test commands; it does not enable async in the launcher.
+
+- **Windows Normal (recommended):** [0.7.1-alpha installer and instructions](https://github.com/cjboy31/xplane-fsr-vulkan/releases/tag/v0.7.1-alpha). All current NR, FG and compatibility features. NR + FG requires explicit opt-in and compatible hardware/model. Start with FG Off and one NR pass.
+- **Windows Experimental:** [0.7.1-experimental.1 installer](https://github.com/cjboy31/xplane-fsr-vulkan/releases/tag/v0.7.1-experimental.1). Same current feature set; future development track. Switch builds through **Updates / Channel**.
+- **Feature video:** [Watch or download the 0.7.1 guide](https://github.com/cjboy31/xplane-fsr-vulkan/releases/download/v0.7.1-alpha/XPlane-FSR3-4-0.7.1-alpha-Feature-Guide.mp4). Explains live NR order/controls, FG choices, startup behavior and logs, with captions and immediate Skip. [Versioned-video workflow](docs/FEATURE-VIDEOS.md).
 - **Linux:** [Native FSR 3.1 preview downloads](https://github.com/cjboy31/xplane-fsr-vulkan/releases/tag/native-preview-2026.10.29.1) — requires MSAA off and FSR supersampling enabled; real-flight validation is pending.
 - **Mac:** [Universal compatibility-probe download](https://github.com/cjboy31/xplane-fsr-vulkan/releases/tag/native-preview-2026.10.29.1) — diagnostics only; **Mac FSR/Metal rendering is not implemented**.
 - **Combined Linux/Mac RAR:** [Download the native preview package](https://github.com/cjboy31/xplane-fsr-vulkan/releases/download/native-preview-2026.10.29.1/XPlane-FSR-Native-0.6.2-platform-preview.1.rar). Includes installation instructions and validation notes.
 
-**Source matching these releases:** [Windows Normal 0.6.7 source](https://github.com/cjboy31/xplane-fsr-vulkan/tree/v0.6.7-alpha) · [NR/FG 0.7.0 preview source](https://github.com/cjboy31/xplane-fsr-vulkan/tree/v0.7.0-experimental.1) · [Earlier FG development source](https://github.com/cjboy31/xplane-fsr-vulkan/tree/experimental/frame-generation) · [Linux/Mac preview source](https://github.com/cjboy31/xplane-fsr-vulkan/tree/experimental/native-platforms/platform) · [All releases](https://github.com/cjboy31/xplane-fsr-vulkan/releases).
-
-**NR setup:** [Read the model, live-control and hardware requirements](https://github.com/cjboy31/xplane-fsr-vulkan/blob/experimental/amd-neural-rendering/docs/NEURAL-RENDERING.md). NR implementation and build instructions live on the separate `experimental/amd-neural-rendering` branch. [Watch/download its approved 77-second guide](https://github.com/cjboy31/xplane-fsr-vulkan/releases/download/v0.7.0-experimental.1/XPlane-FSR3-4-0.7.0-experimental.1-Feature-Guide.mp4).
+**Source matching these releases:** [Windows release source](https://github.com/cjboy31/xplane-fsr-vulkan/tree/main) · [NR/FG preview source](https://github.com/cjboy31/xplane-fsr-vulkan/tree/experimental/amd-neural-rendering) · [Earlier FG development source](https://github.com/cjboy31/xplane-fsr-vulkan/tree/experimental/frame-generation) · [Linux/Mac preview source](https://github.com/cjboy31/xplane-fsr-vulkan/tree/experimental/native-platforms/platform) · [All releases](https://github.com/cjboy31/xplane-fsr-vulkan/releases).
 
 Native preview downloads have separate limits: FSR 4, frame generation, VR and
 Native AA are unavailable there. Read the selected release's instructions.
@@ -43,10 +60,9 @@ Native AA are unavailable there. Read the selected release's instructions.
   version, immediate Skip, replay from **What's new**, mute and future-video
   opt-out. Includes a real Native AA detail comparison; see the
   [video workflow and limits](docs/FEATURE-VIDEOS.md).
-- **Frame generation is temporarily suspended in regular releases starting with
-  0.6.1-alpha.** Old FG selections are ignored at runtime. FSR AA/upscaling remain
-  available. Development stays on the separate experimental branch; see the
-  [FG review and return criteria](docs/FRAME-GENERATION-REVIEW.md).
+- Frame generation returns to Normal in 0.7.1, with corrected sRGB display
+  encoding, safe real-frame holds and optional synchronized compatibility modes.
+  NR/FG are Off by default; quality and pacing depend on the workload/display.
 - Modern charcoal/champagne native launcher with rounded panels, clear focus
   states, resizing/scrolling, accessible field names and persistent launch/status
   controls. Presets and MSAA/FXAA remain on the main screen.
@@ -65,8 +81,7 @@ Native AA are unavailable there. Read the selected release's instructions.
   Install 0.5.4 or later once to enable this feature.
 - Explicit Vulkan layer enabled only for X-Plane started by the launcher.
 - FSR 3.1.6 compatibility and 4.1.2 ML-preview AA/upscaling providers.
-- FSR frame-generation development with SDK-controlled presentation on the
-  separate experimental branch; suspended in regular releases.
+- FSR frame generation with SDK-controlled presentation in both Windows channels.
 - Fourteen presets on the main screen: seven resolution/AA choices each for
   FSR 3 and FSR 4, with backups and selective restoration.
 - Automatically saved presets, provider, frame generation, checkboxes, simulator

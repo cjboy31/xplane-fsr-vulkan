@@ -1,12 +1,14 @@
 # Building on Windows x64
 
-Regular releases starting with 0.6.1-alpha enforce the public FG suspension in
-the launcher and Vulkan layer. The build may produce standalone FG diagnostics
-for development, but the regular installer excludes them and the FG runtime.
-Use the separate experimental branch for FG development; public builds must
-retain the default framegen_policy.hpp policy. Test-PublicFrameGeneration.ps1
-exercises the production layer with a forced FG request and a runtime folder
-containing only the loader and upscaler.
+Starting with 0.7.1, both Windows channels include NR, FG and synchronized
+compatibility modes. Normal is the recommended current feature set; Experimental
+is the future development track. NR and FG remain Off by default. Build Normal
+without development flags, and Experimental with `-FrameGenerationDevelopment
+-NeuralRenderingDevelopment`. These flags choose the channel version. Build the
+NR runtime separately with Build-NR.ps1 and pass `-NeuralRenderingDevelopment` to
+both installer builds. Test-ReleaseFeatures.ps1 verifies the complete 0.7.1
+payload and the real SDK's encoded-color/missing-input fallback with both FG
+providers. Earlier Normal releases below 0.7.1 still omit FG.
 
 The launcher links the Windows system GDI+, DWM and accessibility libraries for
 native styling, DPI handling and field annotations. No browser runtime, bundled
@@ -41,6 +43,12 @@ executables and unmodified signed AMD runtimes. The app icon is embedded in the
 launcher executable and is also supplied as source SVG and multi-size ICO.
 
 Run the relevant scripts with the same dependency path overrides:
+
+`Test-Regression.ps1 -Compiler <clang++.exe>` runs the CPU, preferences/logs,
+Normal/Experimental updater, update handoff and native UI regressions without
+launching X-Plane or changing simulator settings. The source-check workflow runs
+it on Windows for every push/PR, using a pinned, SHA-256-verified LLVM-MinGW
+compiler. Real SDK/GPU and live-flight checks remain separate release checks.
 
 ```powershell
 ./Test.ps1 -Compiler ... -Glslang ... -VulkanHeaders ... -FsrSdk ...
@@ -99,12 +107,23 @@ For the separate Windows frame-generation development package, build from
 `experimental/frame-generation` using the same command plus
 `-FrameGenerationDevelopment`. This sets `XPFSR_FG_DEVELOPMENT` for both launcher
 and layer and embeds `0.6.4-experimental.1` in the app resource and updater.
-The default build embeds `0.6.4-alpha` and enforces FG Off. The installer rejects
+The default build embeds the Normal version in `src/update_feed.hpp` and enforces FG Off. The installer rejects
 mismatched package/resource versions; only an `experimental.N` package includes
 the verified AMD FG DLL and FrameGenCheck. Do not enable this flag for Normal
 packages. The independent native-motion branch is unchanged.
 
-`Test-LauncherUI.ps1 -Compiler <compiler>` exercises native scroll/repaint behavior,
-clipping, diagnostics, fixed footer, precision wheel deltas and repeated limit
-input at four DPI values in wide/narrow layouts. Its brief visible UI fixtures
-make no network requests and never launch the simulator.
+For independent NR development, use `experimental/amd-neural-rendering`, add
+both `-FrameGenerationDevelopment -NeuralRenderingDevelopment` and optionally
+`-OutputDirectory build/release-app` to `build.ps1`. Run `Build-NR.ps1` with
+the pinned MIT reference, compiler, glslang, Python and Vulkan headers and use
+the same `-AppDirectory build/release-app`. The initial build generates and
+records shaders; `-SkipShaders` subsequently verifies their hashes. Models
+are user-supplied local data and must never be packaged. See
+[the integration contract](docs/NEURAL-RENDERING.md).
+
+`Test-LauncherUI.ps1 -Compiler '<compiler>'` exercises the actual native main
+window and NR dialog, including scrolling, clipped children, diagnostics,
+fixed footer, wheel precision, overscroll no-ops, scope persistence and Escape.
+It creates short-lived UI fixtures without simulator launches or network
+requests. Run it when the desktop can briefly show the test windows. Run
+`Test-Launcher.ps1`, `Test-NR.ps1` and updater regressions as appropriate too.

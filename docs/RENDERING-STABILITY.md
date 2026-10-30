@@ -80,8 +80,9 @@ jitter cancellation, NaN/infinite depth, behind-camera projection and excessive
 motion. CPU tests cover camera continuity, matched/mismatched/duplicate/future
 FG sources and IPC. Existing layer image tests cover native/FSR replacement,
 toggles, post-processing and analytic AA edges. FG fixtures inspect generated
-images using both providers and UNORM/sRGB presentation, with sRGB intermediate
-references compared in linear light and source IDs offset from present counts.
+images using both providers and UNORM/sRGB presentation, with source IDs
+offset from present counts. The 0.7.1 encoding regression below supersedes the
+earlier assumption that a linear-light sRGB intermediate was presentation-ready.
 The old shader fails the external-ground history regression; the new shader
 passes all eight packing cases. Publisher migration from the previous published
 binary is tested with a verified backup and refusal to overwrite an unknown file.
@@ -107,3 +108,86 @@ and lack of complete moving-object/cloud motion remain.
 The optional cockpit-screen fix still requires FG Off and currently supports
 only the default Cirrus SR22. The new build needs the reporter's live confirmation;
 it is not a verified universal fix for flicker, stutter, cloud trails or edge shimmer.
+
+
+## 0.7.1: current diagnostics and FG fallback
+
+The live log button now reads a bounded current file tail once per second,
+with Follow latest and explicit current/last-session labels. Launch rotation
+still removes old current-session data. A renderer reload appends to the same
+session rather than truncating its evidence. UTC/PID lines, two-second present
+heartbeats and actual instance/device lifecycle messages distinguish a bypass
+from destruction. Fallback status requires matching PID, session token and an
+age of at most three seconds. The activity monitor follows advancing FSR
+recordings even if another intercepted pass later publishes a bypass. Missing
+telemetry retains prior layer confirmation, with a stale label, not a claim
+that the DLL unloaded. No reporter log established an actual periodic unload.
+
+The local official SDK 2.4.0 Vulkan presenter source
+`Kits/FidelityFX/framegeneration/fsr3/vk/FrameInterpolationSwapchainVK.cpp`
+selects its interpolation output when `numGeneratedFrames > 0`, even after a
+failed callback dropped the command list. Our earlier missing-metadata error
+left that count at one. The callback now reports zero outputs for missing or
+already-consumed source metadata, returns success for this recoverable gap,
+and resets generation history on recovery. SDK dispatch errors also set zero
+before returning failure; the layer then disables failing FG. The SDK's real
+backbuffer continues to present. There is no unsafe re-presentation of an old
+swapchain image, extra acquire, semaphore reuse or unsynchronized image copy.
+A correct reset dispatch still completes so the SDK can leave reset mode.
+
+[AMD's integration guidance](https://gpuopen.com/manuals/fidelityfx_sdk/techniques/super-resolution-interpolation/)
+notes that disabling async workloads still leaves UI/presentation on paced
+queues. `allowAsyncWorkloads=false` and `onlyPresentGenerated=false` remain
+explicit. Thus a black flicker is not proof that this app enabled async FG.
+[NVIDIA's current DLSS documentation](https://developer.nvidia.com/rtx/dlss)
+requires RTX hardware; Streamline's cross-vendor integration framework does not
+make NVIDIA FG a working AMD backend. No NVIDIA FG DLL or support toggle was
+added.
+
+`Test-FGFallback.ps1` drives production callbacks through mocked SDK boundaries,
+covering normal/reset/missing/duplicate/error and reset recovery. The real
+`FrameGenCheck` additionally accepts `--srgb --inject-gaps` after its provider:
+three deliberately missing sources in 90 frames gave 87 non-black generated
+readbacks and 177 SDK presents on each of 3.1.6 and 4.0.2 (4.0.0 presenter),
+including startup/reset outputs. These are controlled fixtures, not evidence
+that all live-flight flicker or uneven pacing is fixed. Start with FG Off and
+test its visual quality in the user's own simulator/display configuration.
+
+## Display encoding and synchronized compatibility
+
+A later controlled test reproduced a specific sRGB encoding failure. The SDK
+samples the sRGB backbuffer through an sRGB view, while its writable output has
+no automatic sRGB encode. Its default no-UI presenter directly copies that
+output's bytes. The old regression reference accepted those darker linear-light
+bytes. Expected static source levels 31/210 became 3/164, producing different
+brightness in real/generated frames. This is a confirmed integration defect;
+it is not proof that every reported black-screen event has the same cause.
+
+For eight-bit sRGB backbuffers, FrameEncodedColor now raw-copies source bytes
+into a private UNORM image and gives the interpolation context UNORM input and
+output with the original explicit SDR transfer function. It raw-copies the
+encoded result back to the SDK output and restores image states. There is no
+unsupported image-view reinterpretation, shader gamma approximation, host
+readback, extra present or CPU wait. The pair adds about 63.3 MiB at 4K and two
+full-frame GPU copies; the cost in a flight still needs measurement. Actual
+HDR/10-bit/ordinary UNORM formats are unchanged. Unsupported callback resource
+contracts stop FG with zero advertised output and retain real presentation.
+
+The same executable can expose the old path only in the developer fixture via
+`--unadapted-srgb`; it fails the new encoded-level assertion. The production
+path passes 31/210, both generation providers, automatic/3.1.7 presenters,
+synchronous/async fixture schedules and injected gaps. The app remains
+synchronous. The opt-in pixel probe now observes the corrected SDK output.
+
+Optional synchronized compatibility choices in both Windows channels request presenter
+3.1.7 and wait for SDK-managed work after each FG-active Present while retaining
+the device serialization guard. They deliberately reduce overlap and can lower
+performance; they do not replace SDK acquire/semaphore ownership. Ordinary
+choices retain automatic presenter selection without this extra wait. Selection
+persists and requires restart to change the provider/presentation path.
+VSync made the owner's earlier live flicker worse and is not a verified fix.
+
+In the subsequent R9700 / X-Plane 12.4.4-r1 live test with FSR 4, full-scene NR
+and FG active, real/generated encoded brightness matched and FG counters kept
+advancing. The owner confirmed that visible flicker stopped. This establishes
+the correction in that session, not universal hardware or long-flight validation.

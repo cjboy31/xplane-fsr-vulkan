@@ -185,7 +185,7 @@ def main():
 
     plates, all_pages = [], []
     chapter_defaults = ["WELCOME", "COMPARE", "PRESETS", "RESOLUTION", "LIVE STATUS", "LIMITS", "WHAT'S NEW"]
-    chapters = [scene.get("chapter", chapter_defaults[index])
+    chapters = [scene.get("chapter", chapter_defaults[index] if index < len(chapter_defaults) else f"CHAPTER {index+1}")
                 for index, scene in enumerate(segments)]
     for index, scene in enumerate(segments):
         plate = base.copy()

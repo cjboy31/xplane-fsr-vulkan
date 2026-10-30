@@ -2,6 +2,8 @@
 #include "shared.hpp"
 #include "camera_continuity.hpp"
 #include "frame_sequence.hpp"
+#include "framegen_callback_state.hpp"
+#include "startup_readiness.hpp"
 #include <atomic>
 #include <iostream>
 #include <stdexcept>
@@ -14,7 +16,23 @@ int main() {
     try {
         double p[16] = {2, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, -1, 0, 0, .1, 0};
         app::Camera before{}, after{};
+        app::StartupReadiness startup;
+        for(uint64_t i=1;i<=29;++i)expect(!startup.observe(i,16.667f,i*110),"Startup enabled optional work too early");
+        expect(startup.observe(30,16.667f,3300),"Coherent startup never became ready");
+        expect(startup.observe(50,200.f,3400),"Later loading/cuts cleared completed startup readiness");
+        app::StartupReadiness slow;expect(!slow.observe(1,200.f,1)&&!slow.observe(2,NAN,2),"Invalid/very slow startup enabled optional work");
+        for(uint64_t i=3;i<80;++i)expect(!slow.observe(i,16.667f,3+i),"Fast scene samples bypassed the startup time budget");
+        expect(!slow.observe(100,16.667f,4000),"A source gap retained a partial startup streak");
+        app::StartupReadiness skippedIds;for(uint64_t i=1;i<=29;++i)expect(!skippedIds.observe(i*2,33.3f,i*110),"Skipped-ID startup enabled too soon");
+        expect(skippedIds.observe(60,33.3f,3300),"Valid skipped scene IDs prevented startup completion");
         xpfsr::FrameSequence sequence;
+        xpfsr::FrameCallbackState callbacks;bool reset=false;
+        callbacks.prepared(10,false);callbacks.prepared(11,true);
+        expect(callbacks.read(10,reset)&&!reset,"Delayed FG callback used a newer frame's reset or was rejected");
+        expect(callbacks.read(11,reset)&&reset,"NR/camera reset lost in FG callback");
+        expect(callbacks.consume(10,reset)&&!callbacks.consume(10,reset),"A repeated callback reused one frame's interpolation metadata");
+        callbacks.prepared(27,false);
+        expect(!callbacks.read(11,reset)&&!callbacks.read(999,reset),"Overwritten/unknown FG metadata accepted");
         expect(sequence.canPrepare() && !sequence.ready(), "Initial FG source state");
         sequence.prepared = 10;
         expect(!sequence.canPrepare() && !sequence.ready(), "Unsubmitted prepare was presented");

@@ -49,13 +49,19 @@ $prefsBefore = if(Test-Path -LiteralPath $prefs){(Get-FileHash -LiteralPath $pre
 $code = Run-Setup ('/S /TEST=1 /XPLANE="'+$simulator+'" /D='+$installed)
 if($code -ne 0){throw "Installation failed: $code"}
 $manifest = Get-Content -LiteralPath (Join-Path $installed 'PAYLOAD-MANIFEST.json') -Raw | ConvertFrom-Json
+$nrPackage='nr/XPFSRNeuralRendering.dll' -in $manifest.files.path
+if($nrPackage){
+  foreach($excluded in @('nvngx_dlssnr.dll','dlssnr-small.bin','dlssnr.bin')){
+    if(@($manifest.files.path | Where-Object {($_ -split '/')[-1] -eq $excluded}).Count){throw 'Private NR asset included in payload'}
+  }
+}
 foreach($required in @('XPlaneFSR24.exe','NativeAACheck.exe','CockpitRestoreCheck.exe','layer/XPFSR24Layer.dll','plugin/64/win.xpl')){
   if($required -notin $manifest.files.path){throw "Required app component absent from installer: $required"}
 }
 foreach($excluded in @('FrameGenCheck.exe','runtime/amd_fidelityfx_framegeneration_vk.dll')){
- $expectedFG = $manifest.packageVersion -match '^\d+\.\d+\.\d+-experimental\.\d+$'
+ $expectedFG = $manifest.packageVersion -match '^\d+\.\d+\.\d+-experimental\.\d+$' -or [version](($manifest.packageVersion -split '-')[0]) -ge [version]'0.7.1'
  if($expectedFG){
-  if($excluded -notin $manifest.files.path -or -not(Test-Path -LiteralPath (Join-Path $installed $excluded))){throw ('Experimental FG component is missing: '+$excluded)}
+  if($excluded -notin $manifest.files.path -or -not(Test-Path -LiteralPath (Join-Path $installed $excluded))){throw ('Required FG component is missing: '+$excluded)}
  }elseif($excluded -in $manifest.files.path -or (Test-Path -LiteralPath (Join-Path $installed $excluded))){throw ('Suspended FG component was packaged: '+$excluded)}
 }
 foreach($file in $manifest.files){
@@ -81,6 +87,13 @@ New-Item -ItemType Directory -Path (Join-Path $installed 'logs'),(Join-Path $ins
 Set-Content -LiteralPath (Join-Path $installed 'logs\keep.txt') -Value 'Test user log'
 Set-Content -LiteralPath (Join-Path $installed 'plugin-backups\keep.txt') -Value 'Test user backup'
 Set-Content -LiteralPath (Join-Path $installed 'user-file.txt') -Value 'Test unrelated user file'
+$nrUserFiles=@()
+if($nrPackage){
+  $nrUserFiles=@('nr\dlssnr-amd\dlssnr-small.bin','nr\dlssnr-amd\cache\user-cache.bin')
+  New-Item -ItemType Directory -Force -Path (Join-Path $installed 'nr\dlssnr-amd\cache') | Out-Null
+  foreach($relative in $nrUserFiles){Set-Content -LiteralPath (Join-Path $installed $relative) -Value 'Inert local-model/cache preservation sentinel; never executed'}
+  Add-Content -LiteralPath (Join-Path $installed 'settings.ini') -Value "`r`n[NeuralRendering]`r`nSchema=1`r`nMode=4`r`nNROrder=1`r`nNRScope=1`r`nNRPasses=2"
+}
 Add-Content -LiteralPath (Join-Path $installed 'settings.ini') -Value "`r`n[Launcher]`r`nPreset=fsr4-4k-quality`r`nMode=4`r`nFrameGeneration=2`r`nCockpitRestore=0`r`nEnabled=1`r`nGhostReduction=0`r`nAlignmentTint=0`r`n[Window]`r`nClientWidth=900`r`nClientHeight=740"
 $savedChoiceBlock = (Get-Content -LiteralPath (Join-Path $installed 'settings.ini') -Raw) -split '\[Launcher\]',2 | Select-Object -Last 1
 $code = Run-Setup ('/S /TEST=1 /XPLANE="'+$simulator+'" /D='+$installed)
@@ -106,6 +119,14 @@ try {
   $code=Run-Setup ('/S /TEST=1 /AUTOUPDATE=1 /D='+$installed)
   if($code -ne 7){throw "Automatic update did not refuse a loaded/locked payload: $code"}
 } finally { $heldPayload.Dispose() }
+if($nrPackage){
+  $heldNR=[IO.File]::Open((Join-Path $installed 'nr\XPFSRNeuralRendering.dll'),[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::Read)
+  try{
+    $code=Run-Setup ('/S /TEST=1 /AUTOUPDATE=1 /D='+$installed)
+    if($code -ne 7){throw "Automatic update did not refuse a locked NR backend: $code"}
+  }finally{$heldNR.Dispose()}
+  foreach($relative in $nrUserFiles){if((Get-Content -LiteralPath (Join-Path $installed $relative) -Raw).Trim() -ne 'Inert local-model/cache preservation sentinel; never executed'){throw 'Update altered a local NR model/cache file'}}
+}
 $parent = Start-Process -FilePath (Join-Path $PSHOME 'pwsh.exe') -ArgumentList @('-NoProfile','-Command','Start-Sleep -Milliseconds 1800') -WindowStyle Hidden -PassThru
 $elapsed=[Diagnostics.Stopwatch]::StartNew()
 $code=Run-Setup ('/S /TEST=1 /AUTOUPDATE=1 /PARENT='+$parent.Id+' /D='+$installed)
@@ -145,9 +166,9 @@ Copy-Item -LiteralPath (Join-Path $installed 'Uninstall.exe') -Destination $unin
 $process = Start-Process -FilePath $uninstallCopy -ArgumentList ('/S _?='+$installed) -WindowStyle Hidden -PassThru -Wait
 if($process.ExitCode -ne 0){throw "Uninstall failed: $($process.ExitCode)"}
 foreach($file in $manifest.files){if(Test-Path -LiteralPath (Join-Path $installed $file.path)){throw "Installed payload remains: $($file.path)"}}
-foreach($file in @('logs\keep.txt','plugin-backups\keep.txt','user-file.txt')){if(-not(Test-Path -LiteralPath (Join-Path $installed $file))){throw "User file deleted: $file"}}
+foreach($file in (@('logs\keep.txt','plugin-backups\keep.txt','user-file.txt')+$nrUserFiles)){if(-not(Test-Path -LiteralPath (Join-Path $installed $file))){throw "User file deleted: $file"}}
 $remaining = @(Get-ChildItem -LiteralPath $installed -File -Recurse | ForEach-Object {[IO.Path]::GetRelativePath($installed,$_.FullName)} | Sort-Object)
-if(@(Compare-Object (@('logs\keep.txt','plugin-backups\keep.txt','user-file.txt') | Sort-Object) $remaining).Count){throw ('Unexpected files after uninstall: '+($remaining -join ', '))}
+if(@(Compare-Object ((@('logs\keep.txt','plugin-backups\keep.txt','user-file.txt')+$nrUserFiles) | Sort-Object) $remaining).Count){throw ('Unexpected files after uninstall: '+($remaining -join ', '))}
 if($cameraBefore -and (Get-FileHash -LiteralPath $camera).Hash -ne $cameraBefore){throw 'Simulator camera plugin changed'}
 if($prefsBefore -and (Get-FileHash -LiteralPath $prefs).Hash -ne $prefsBefore){throw 'Simulator preferences changed'}
 $result = [ordered]@{status='PASS';testedAt=(Get-Date -Format o);archiveSha256=(Get-FileHash -LiteralPath $archive).Hash.ToLowerInvariant();archiveBytes=(Get-Item -LiteralPath $archive).Length;payloadHashesVerified=$manifest.files.Count;rarIntegrity='PASS';roundTripExtraction='PASS';invalidSimulatorRejected='PASS';unrelatedFolderRejected='PASS';silentInstall='PASS';recognizedUpdate='PASS';savedChoicesPreservedOnUpdate='PASS';userFilesPreservedOnUninstall='PASS';simulatorCameraUnchanged='PASS';simulatorPreferencesUnchanged='PASS';testMode='Per-user registry and shortcuts skipped; all test files confined to workspace';testFolder=$testRoot}
@@ -164,6 +185,7 @@ $result.portableChoicesImported='PASS'
 $result.existingSettingsNotOverwrittenByImport='PASS'
 $result.invalidImportRejectedBeforeInstall='PASS'
 $result.portableSourceChoicesUnchanged='PASS'
+if($nrPackage){$result.nrModelsExcluded='PASS';$result.nrModelsAndCachePreserved='PASS';$result.lockedNRBackendRejected='PASS'}
 if($featureVideo){
   $result.featureVideoVersion=$featureVideo.version
   $result.featureVideoSha256=$featureVideo.sha256

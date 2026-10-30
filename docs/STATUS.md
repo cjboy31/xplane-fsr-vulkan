@@ -1,12 +1,23 @@
-# Current Windows status: 0.6.3
+# Current Windows status: 0.7.1
+
+Normal and Experimental include all current NR, FG and synchronized compatibility
+options. Normal is recommended. NR/FG start Off; independent NR requires
+compatible RDNA4 FP8 hardware and a supported model imported locally. Live NR
+order (Before recommended / After optional), scope and controls are saved.
+The FG encoded-color correction passed both SDK providers and stopped visible
+flicker in the owner's R9700 live FSR 4 + NR + FG session. Other hardware/display
+and long-flight quality remain unverified. See [NR setup](NEURAL-RENDERING.md)
+and [rendering validation and limits](RENDERING-STABILITY.md).
+
+## Prior camera-projection milestone: 0.6.3
 
 The camera-projection correction is implemented and validated in X-Plane
 12.4.4 with repeatable external pans and a powered default cockpit. FSR 4 Quality
 reported 2560x1440 input to 3840x2160 output in the final live test. See
 [the investigation, measured diagnosis and test scope](ARTIFACT-INVESTIGATION.md).
 This does not establish complete cloud/object motion, all aircraft/add-ons,
-native Mac rendering or Linux live-flight compatibility. Regular FG stays
-suspended. The older milestone notes below retain their original test scope;
+native Mac rendering or Linux live-flight compatibility. Regular FG was
+suspended at that milestone and returns in 0.7.1. The older notes retain their original test scope;
 they are not a statement that the current renderer is unchanged from 0.5.x.
 
 # 0.5.8 motion optimization

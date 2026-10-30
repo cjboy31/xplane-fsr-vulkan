@@ -3,13 +3,16 @@
 #include "shared.hpp"
 #include "launcher_preferences.hpp"
 #include "runtime_status.hpp"
+#include "renderer_status_file.hpp"
 #include "session_logs.hpp"
 #include "launcher_theme.hpp"
 #include "native_layout.hpp"
 #include "framegen_policy.hpp"
+#include "nr_policy.hpp"
 #include <algorithm>
 #include <bcrypt.h>
 #include <commctrl.h>
+#include <commdlg.h>
 #include <filesystem>
 #include <fstream>
 #include <functional>
@@ -23,21 +26,27 @@
 namespace fs = std::filesystem;
 static fs::path appDirectory, simulator;
 static std::wstring launcherWindowClass;
+static std::string activeSessionToken;
+static xpfsr::nr::ControlChannel nrChannel;
 static HWND window{}, pathBox{}, argsBox{}, statusBox{}, toggle{}, modeBox{}, fgBox{}, ghostBox{},
-    cockpitBox{}, tintBox{};
+    cockpitBox{}, tintBox{}, neuralBox{}, keepUIBox{};
 static HWND presetBox{}, presetNote{}, savedLabel{}, injectionBanner{}, motionSetupNote{},
     footerStatus{};
-static const wchar_t *designSetupHint();
 static HWND designControl(int id);
+static const wchar_t *designSetupHint();
 static launcher::Preferences preferences;
 static launcher::RuntimeMonitor runtimeMonitor;
 static launcher::RuntimeState bannerState{};
 static bool controlsReady{}, launchedNative{}, activeNotificationSent{};
 static void saveChoices();
+static bool nrModelReady();
+static std::wstring nrLiveStatus();
+static void nrFinishJob();
+static bool nrJobRunning();
 static void runtimeBanner(launcher::RuntimeState, const app::Telemetry &);
 static HANDLE child{}, mapping{}, aaChild{};
 static DWORD childId{};
-static int launchedFG{}, lastFGSelection{};
+static int launchedFG{}, launchedMode{}, lastFGSelection{};
 static bool checkingFG{}, checkingCockpit{};
 static app::Shared *shared{};
 static HFONT font{}, titleFont{};
@@ -218,7 +227,8 @@ struct EnvironmentScope {
              {L"XPFSR24_COCKPIT_RESTORE", L"XPFSR24_GHOST_REDUCTION", L"VK_LAYER_PATH",
               L"VK_INSTANCE_LAYERS", L"VK_LOADER_LAYERS_ENABLE", L"VK_LOADER_DEBUG",
               L"DISABLE_VULKAN_OBS_CAPTURE", L"XPFSR24_FG_CONTROL", L"XPFSR24_MODE",
-              L"XPFSR24_SESSION", L"XPFSR24_PROVIDER", L"XPFSR24_FG", L"XPFSR24_RUNTIME",
+              L"XPFSR24_NR",L"XPFSR24_NR_ROOT",L"XPFSR24_NR_STATUS",L"XPFSR24_NR_CONTROL",L"XPFSR24_NR_ALLOW_FG",
+              L"XPFSR24_SESSION", L"XPFSR24_PROVIDER", L"XPFSR24_FG", L"XPFSR24_FG_PRESENTER",L"XPFSR24_FG_SYNCHRONIZED", L"XPFSR24_RUNTIME",
               L"XPFSR24_LOG", L"XPFSR24_STATUS", L"XPFSR24_CONTROL"}) {
             wchar_t value[32768]{};
             GetEnvironmentVariableW(name, value, 32768);
@@ -233,6 +243,7 @@ struct EnvironmentScope {
 };
 static void launch(const fs::path &root, const std::wstring &arguments, bool native) {
     ensure(!running(), "X-Plane is already running from this launcher");
+    ensure(!nrJobRunning(),"Wait for NR import/check to finish before launching");
     preflight(root, native);
     if (!native) {
         graphics::ensureSimulatorClosed();
@@ -245,6 +256,12 @@ static void launch(const fs::path &root, const std::wstring &arguments, bool nat
             ensure((selected == 1 || selected == 3) ? graphics.scale == 0 : graphics.scale > 0,
                    "Choose a matching preset: Native AA needs Full scale; upscaling needs a lower "
                    "rendering scale");
+        }
+        const int nr=app::effectiveNeuralRendering(int(SendMessageW(neuralBox,CB_GETCURSEL,0,0)));
+        if(nr){
+            ensure(selected>0,"Choose FSR Native AA/upscaling for NR");
+            ensure(app::effectiveFrameGeneration(int(SendMessageW(fgBox,CB_GETCURSEL,0,0)))==0||preferences.nr[xpfsr::nr::AllowFG],"Enable experimental NR + FG testing in NR settings, or turn FG Off");
+            ensure(nrModelReady(),"Import your supported model with NR setup first");
         }
         install(root);
     }
@@ -260,6 +277,14 @@ static void launch(const fs::path &root, const std::wstring &arguments, bool nat
                             SendMessageW(ghostBox, BM_GETCHECK, 0, 0) == BST_CHECKED ? L"1" : L"0");
     auto mode = SendMessageW(modeBox, CB_GETCURSEL, 0, 0);
     auto fg = app::effectiveFrameGeneration(int(SendMessageW(fgBox, CB_GETCURSEL, 0, 0)));
+    int nr=app::effectiveNeuralRendering(int(SendMessageW(neuralBox,CB_GETCURSEL,0,0)));
+    ensure(native||!nr||mode>0,"Choose FSR Native AA/upscaling for NR");
+    ensure(native||!nr||!fg||preferences.nr[xpfsr::nr::AllowFG],"Enable experimental NR + FG testing, or turn FG Off");
+    if(!native&&nr)ensure(nrModelReady(),"Import your supported model with NR setup first");
+    SetEnvironmentVariableW(L"XPFSR24_NR",!native&&nr?std::to_wstring(nr).c_str():nullptr);
+    SetEnvironmentVariableW(L"XPFSR24_NR_ROOT",(appDirectory/L"nr").c_str());
+    SetEnvironmentVariableW(L"XPFSR24_NR_STATUS",(appDirectory/L"logs/renderer-nr-status.txt").c_str());
+    SetEnvironmentVariableW(L"XPFSR24_NR_ALLOW_FG",!native&&preferences.nr[xpfsr::nr::AllowFG]?L"1":nullptr);
     ensure(native || !fg || mode > 0,
            "Select Native AA or upscaling before enabling frame generation");
     if (!native && fg)
@@ -268,17 +293,26 @@ static void launch(const fs::path &root, const std::wstring &arguments, bool nat
     lastFGSelection = int(fg);
     SetEnvironmentVariableW(L"XPFSR24_FG_CONTROL",
                             (appDirectory / L"logs/renderer-fg-control.txt").c_str());
-    SetEnvironmentVariableW(L"XPFSR24_FG", !native && fg == 1   ? L"3.1.6"
-                                           : !native && fg == 2 ? L"4.0.2"
-                                                                : nullptr);
+    SetEnvironmentVariableW(L"XPFSR24_FG",native?nullptr:app::frameGenerationProvider(fg));
+    const bool synchronizedFG=!native&&app::synchronizedFrameGeneration(fg);
+    SetEnvironmentVariableW(L"XPFSR24_FG_PRESENTER",synchronizedFG?L"3.1.7":nullptr);
+    SetEnvironmentVariableW(L"XPFSR24_FG_SYNCHRONIZED",synchronizedFG?L"1":nullptr);
     SetEnvironmentVariableW(L"XPFSR24_MODE", (mode == 1 || mode == 3)   ? L"native-aa"
                                              : (mode == 2 || mode == 4) ? L"upscale"
                                                                         : L"observe");
     SetEnvironmentVariableW(L"XPFSR24_PROVIDER", mode >= 3 ? L"4.1.2" : L"3.1.6");
     std::ostringstream sessionChoices;
     sessionChoices << "requested_mode=" << mode << " provider=" << (mode >= 3 ? "4.1.2" : "3.1.6")
-                   << " frame_generation=" << fg << " native_comparison=" << native;
+                   << " frame_generation=" << fg << " neural_rendering=" << nr << " native_comparison=" << native;
     auto sessionId = session::prepare(appDirectory / L"logs", sessionChoices.str());
+    activeSessionToken=sessionId;
+    nrChannel.close();
+    if(!native&&app::neuralRenderingAvailable){
+        auto nrName=L"Local\\XPFSR24-NR-v4-"+wide(sessionId.c_str());
+        preferences.nr[xpfsr::nr::Enabled]=nr!=0;
+        ensure(nrChannel.create(nrName.c_str(),preferences.nr),"Cannot create live NR control channel");
+        SetEnvironmentVariableW(L"XPFSR24_NR_CONTROL",nrName.c_str());
+    }else SetEnvironmentVariableW(L"XPFSR24_NR_CONTROL",nullptr);
     SetEnvironmentVariableW(L"XPFSR24_SESSION", wide(sessionId.c_str()).c_str());
     SetEnvironmentVariableW(L"VK_LAYER_PATH", native ? nullptr : (appDirectory / L"layer").c_str());
     SetEnvironmentVariableW(L"VK_INSTANCE_LAYERS", native ? nullptr : L"VK_LAYER_XPFSR24");
@@ -306,6 +340,7 @@ static void launch(const fs::path &root, const std::wstring &arguments, bool nat
     child = process.hProcess;
     childId = process.dwProcessId;
     launchedNative = native;
+    launchedMode = native ? 0 : int(mode);
     runtimeMonitor.reset();
     activeNotificationSent = false;
     runtimeBanner(native ? launcher::RuntimeState::native : launcher::RuntimeState::starting, {});
@@ -315,6 +350,7 @@ static void launch(const fs::path &root, const std::wstring &arguments, bool nat
         << "Launcher PID " << GetCurrentProcessId() << "; X-Plane PID " << childId << '\n';
 }
 static void checkAA() {
+    ensure(!nrJobRunning(),"Wait for NR import/check to finish");
     checkingFG = false;
     checkingCockpit = false;
     ensure(!running(), "Close the simulator before running the isolated Native AA check");
@@ -351,6 +387,7 @@ static void checkAA() {
                    L"Running the isolated Native AA check: 48 small, fenced GPU frames...");
 }
 static void checkFG() {
+    ensure(!nrJobRunning(),"Wait for NR import/check to finish");
     ensure(app::frameGenerationAvailable,
            "Built-in frame generation is suspended in regular releases");
     checkingCockpit = false;
@@ -389,6 +426,7 @@ static void checkFG() {
                    L"Running frame generation check: 90 rendered frames in a temporary window...");
 }
 static void checkCockpit() {
+    ensure(!nrJobRunning(),"Wait for NR import/check to finish");
     ensure(!running(), "Close X-Plane before running the isolated cockpit check");
     ensure(!aaChild || WaitForSingleObject(aaChild, 0) != WAIT_TIMEOUT,
            "A GPU check is already running");
@@ -425,6 +463,7 @@ static void checkCockpit() {
         L"Running isolated Vulkan cockpit compositor check; no simulator files are changed.");
 }
 static void refresh() {
+    nrFinishJob();
     if (aaChild && WaitForSingleObject(aaChild, 0) != WAIT_TIMEOUT) {
         DWORD result{};
         GetExitCodeProcess(aaChild, &result);
@@ -474,43 +513,16 @@ static void refresh() {
     }
     app::Telemetry status{};
     bool available = app::readStatus(shared, status);
-    if (!available) {
-        std::ifstream f(appDirectory / L"logs/renderer-status.txt");
-        std::string reason, provider;
-        if (std::getline(f, reason) && std::getline(f, provider)) {
-            strncpy(status.reason, reason.c_str(), sizeof(status.reason) - 1);
-            strncpy(status.provider, provider.c_str(), sizeof(status.provider) - 1);
-            available = bool(f >> status.presents >> status.recordings >> status.bypasses >>
-                             status.renderWidth >> status.renderHeight >> status.outputWidth >>
-                             status.outputHeight >> status.active);
-            if (available) {
-                std::string ignored;
-                std::getline(f, ignored);
-                std::string fgProvider;
-                if (std::getline(f, fgProvider)) {
-                    strncpy(status.fgProvider, fgProvider.c_str(), 63);
-                    f >> status.fgPrepared >> status.fgGenerated >> status.displayedPresents >>
-                        status.fgActive;
-                    std::getline(f, ignored);
-                    std::string fgReason;
-                    std::getline(f, fgReason);
-                    strncpy(status.fgReason, fgReason.c_str(), 159);
-                    f >> status.cockpitRecordings >> status.cockpitActive >> status.cockpitScreens;
-                    std::getline(f, ignored);
-                    std::string cockpitReason;
-                    std::getline(f, cockpitReason);
-                    strncpy(status.cockpitReason, cockpitReason.c_str(), 159);
-                }
-            }
-        }
-    }
+    if (!available)
+        available=launcher::readRendererStatus(appDirectory/L"logs/renderer-status.txt",childId,
+                                                activeSessionToken,GetTickCount64(),status);
     auto state = runtimeMonitor.update(true, launchedNative, available, status,
                                        SendMessageW(toggle, BM_GETCHECK, 0, 0) == BST_CHECKED,
                                        GetTickCount64());
     runtimeBanner(state, status);
     if (available) {
         std::wostringstream line;
-        line << (status.active ? L"FSR reconstruction recorded" : L"Native rendering / waiting")
+        line << (state==launcher::RuntimeState::active ? L"Recent FSR recordings confirmed" : L"Native rendering / waiting")
              << L"\r\n"
              << wide(status.reason) << L"\r\n";
         if (status.provider[0])
@@ -527,6 +539,7 @@ static void refresh() {
                  << wide(status.fgReason) << L"\r\n";
         line << L"Cockpit: " << wide(status.cockpitReason) << L"\r\nRestore recordings: "
              << status.cockpitRecordings << L"\r\n";
+        line << nrLiveStatus() << L"\r\n";
         line << L"Counters are not measured FPS or a visual-quality guarantee.";
         SetWindowTextW(statusBox, line.str().c_str());
         if (shared)
@@ -556,9 +569,11 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, LPWSTR, int show) {
     preferences = launcher::load(appDirectory / L"settings.ini");
     simulator = preferences.simulator;
     int argc{};
+    bool launchSavedProfile=false;
     auto argv = CommandLineToArgvW(GetCommandLineW(), &argc);
     try {
-        for (int i = 1; i < argc; ++i)
+        for (int i = 1; i < argc; ++i){
+            if(std::wstring(argv[i])==L"--launch-fsr"){launchSavedProfile=true;continue;}
             if (std::wstring(argv[i]) == L"--preflight") {
                 if (i + 1 < argc)
                     simulator = argv[i + 1];
@@ -571,6 +586,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, LPWSTR, int show) {
                 CoUninitialize();
                 return 0;
             }
+        }
     } catch (const std::exception &e) {
         fs::create_directories(appDirectory / L"logs");
         std::ofstream(appDirectory / L"logs/preflight.txt") << "FAIL: " << e.what() << '\n';
@@ -619,6 +635,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, LPWSTR, int show) {
                                 nullptr, nullptr, instance, nullptr);
     ShowWindow(hwnd, show);
     UpdateWindow(hwnd);
+    if(launchSavedProfile)PostMessageW(hwnd,WM_COMMAND,20,0);
     MSG message{};
     while (GetMessageW(&message, nullptr, 0, 0) > 0) {
         if (intro::dialog && message.message == WM_KEYDOWN && message.wParam == VK_ESCAPE) {

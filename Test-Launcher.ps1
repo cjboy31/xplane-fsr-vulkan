@@ -13,7 +13,7 @@ foreach($name in @('launcher_tests','graphics_tests','session_log_tests','intro_
 }
 if($PreviousPlugin) {
     $exe=Join-Path $build 'launcher_install_tests.exe'
-    & $Compiler '-std=c++17' '-O2' '-static' '-municode' '-DWIN32_LEAN_AND_MEAN' '-DNOMINMAX' (Join-Path $PSScriptRoot 'src\launcher_install_tests.cpp') '-lcomctl32' '-lshell32' '-lole32' '-lgdi32' '-lbcrypt' '-lwinhttp' '-lgdiplus' '-ldwmapi' '-luxtheme' '-loleacc' '-luuid' '-lmfuuid' '-loleaut32' '-o' $exe
+    & $Compiler '-std=c++17' '-O2' '-static' '-municode' '-DWIN32_LEAN_AND_MEAN' '-DNOMINMAX' (Join-Path $PSScriptRoot 'src\launcher_install_tests.cpp') '-lcomdlg32' '-lcomctl32' '-lshell32' '-lole32' '-lgdi32' '-lbcrypt' '-lwinhttp' '-lgdiplus' '-ldwmapi' '-luxtheme' '-loleacc' '-luuid' '-lmfuuid' '-loleaut32' '-o' $exe
     if($LASTEXITCODE -ne 0){throw 'Plugin upgrade regression build failed'}
     & $exe (Join-Path $PSScriptRoot 'app') (Resolve-Path -LiteralPath $PreviousPlugin).Path (Join-Path $build ('plugin-upgrade-'+[guid]::NewGuid().ToString('N')))
     if($LASTEXITCODE -ne 0){throw 'Previous-release plugin upgrade failed'}

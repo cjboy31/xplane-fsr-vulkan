@@ -63,17 +63,31 @@ if ($FeatureVideo) {
     $videoHash = (Get-FileHash -LiteralPath $FeatureVideo).Hash.ToLowerInvariant()
     [IO.File]::AppendAllText((Join-Path $output 'SHA256SUMS.txt'), "$videoHash  $videoName`n", $utf8)
 }
-$channelSummary = if($Version -match '-experimental\.'){
+$channelSummary = if([version](($Version -split '-')[0]) -ge [version]'0.7.1' -and $result.nrModelsExcluded -eq 'PASS'){
+    $channel=if($Version -match '-experimental\.'){'Experimental: future development track.'}else{'Normal: recommended current feature release.'}
+    "$channel Both 0.7.1 channels include FSR AA/upscaling, independent NR, frame generation and synchronized compatibility options. Update to Normal for all current features. NR and FG start Off; NR needs compatible Windows RDNA4 FP8 hardware and your own supported local model. NR + FG requires explicit opt-in and retains visual/pacing limits. No NVIDIA DLL or model weights are included."
+}elseif($result.nrModelsExcluded -eq 'PASS'){
+    'Experimental NR channel: optional independent neural rendering for compatible Windows RDNA4 FP8 hardware. NR starts Off; import your own supported model locally. This is not official NVIDIA DLSS 5 support. NR + FG requires explicit experimental opt-in and remains subject to visual/pacing limitations.'
+}elseif($Version -match '-experimental\.'){
     'Experimental channel: opt-in frame-generation development. FG artifacts/flicker remain possible; this is not a new interpolation or pacing fix. Use Updates / Channel to return to Normal.'
 }else{
     'Normal channel: recommended project configuration, still an alpha preview. Built-in frame generation stays disabled. Use Updates / Channel to find the separate Experimental installer.'
 }
-$guideSummary = if([version](($Version -split '-')[0]) -ge [version]'0.6.5'){
-    'This maintenance package reuses the owner-approved 54-second 0.6.4 channel/display guide unchanged. Its on-screen version remains 0.6.4; current fixes and setup behavior are described above and in the instructions. No revised film or new rendering-quality comparison is claimed.'
-}elseif([version](($Version -split '-')[0]) -ge [version]'0.6.4'){
-    'This 54-second guide explains Normal / Experimental switching and deliberate display changes. The background still is reused from the previously approved guide; it is not a new before/after comparison or an FG quality demonstration.'
-}else{
-    'It includes a fresh 1080p FSR 3.1.6 Native AA comparison captured in X-Plane 12.4.4. This is an individual detail example, not a benchmark or a general ghosting-fix claim.'
+$guideSummary = "Read the included transcript and media provenance for this guide's content and capture limits."
+if($FeatureVideo){
+    $provenancePath=Join-Path (Split-Path $FeatureVideo -Parent) 'PROVENANCE.json'
+    if(Test-Path -LiteralPath $provenancePath){
+        $provenance=Get-Content -LiteralPath $provenancePath -Raw | ConvertFrom-Json
+        if($provenance.project.version -ne $Version -or $provenance.movie_sha256 -ne $videoHash){throw 'Guide provenance does not match this version and exact video'}
+        $seconds=[int][Math]::Round([double]$provenance.seconds)
+        if($provenance.approved_guide_reuse){
+            $guideSummary='This maintenance package reuses a previously approved guide unchanged, including its original on-screen version. Current fixes and setup behavior are described above and in the instructions. No revised film or new rendering-quality comparison is claimed.'
+        }elseif($provenance.project.capture.background_only){
+            $guideSummary="This $seconds-second guide explains this version's features and setup. A previously reviewed simulator still is used only as background; it is not an NR/FG before-after comparison or a performance demonstration."
+        }else{
+            $guideSummary="This $seconds-second guide includes the capture examples described in its provenance. They are individual detail examples, not benchmarks or general ghosting-fix guarantees."
+        }
+    }
 }
 $notes = @"
 ## FSR 3/4 + Frame Gen for X-Plane $Version

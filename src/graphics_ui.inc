@@ -42,6 +42,7 @@ static graphics::Options readGraphicsOptions() {
     auto &choice = graphics::outputChoices[size_t(selected)];
     o.outputWidth = choice.width;
     o.outputHeight = choice.height;
+    o.keepUISize=SendMessageW(keepUIBox,BM_GETCHECK,0,0)==BST_CHECKED;
     return o;
 }
 static void updatePresetSummary() {
@@ -105,8 +106,8 @@ static void selectResolutionPreset() {
     ensure(selected > 0 && size_t(selected) <= visiblePresets.size(),
            "Invalid resolution preset selection");
     auto &preset = *visiblePresets[size_t(selected) - 1];
-    auto backup = graphics::apply(fs::path(text(pathBox)), appDirectory / L"graphics-backups",
-                                  preset.settings);
+    auto options=preset.settings;options.keepUISize=SendMessageW(keepUIBox,BM_GETCHECK,0,0)==BST_CHECKED;
+    auto backup = graphics::apply(fs::path(text(pathBox)), appDirectory / L"graphics-backups",options);
     rememberGraphicsBackup(backup);
     preferences.presetId = preset.id;
     preferences.manualApplied = preferences.manualPending = false;
@@ -188,6 +189,8 @@ static void createGraphicsControls(HWND parent) {
         }
     }
     showGraphicsOptions(options);
+    keepUIBox=control(L"BUTTON",L"Keep X-Plane UI size when output changes",BS_AUTOCHECKBOX|WS_TABSTOP,0,0,400,30,114);
+    SendMessageW(keepUIBox,BM_SETCHECK,preferences.keepSimUISize?BST_CHECKED:BST_UNCHECKED,0);
     control(L"BUTTON", L"Apply graphics", BS_PUSHBUTTON | WS_TABSTOP, 0, 0, 200, 34, 106);
     graphicsStatus = control(L"STATIC",
                              preferences.manualPending

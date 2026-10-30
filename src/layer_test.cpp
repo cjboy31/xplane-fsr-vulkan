@@ -5,6 +5,8 @@
 #undef wmain
 #include "shared.hpp"
 #include "ground_camera.hpp"
+#include "nr_controls.hpp"
+#include <fstream>
 static std::vector<uint32_t> loadSpv(const wchar_t *path) {
     FILE *f = _wfopen(path, L"rb");
     require(f, "Test shader missing");
@@ -33,6 +35,19 @@ int wmain(int argc, wchar_t **argv) {
         const bool staleCamera = argc > 6 && std::wstring(argv[6]) == L"stale-camera";
         const bool groundCamera = argc > 6 && std::wstring(argv[6]) == L"ground-camera";
         const bool wrongDepth = argc > 6 && std::wstring(argv[6]) == L"depth-convention";
+        const bool nrOrder = argc > 6 && std::wstring(argv[6]) == L"nr-order";
+        struct Phase {int order,on,strength;};
+        const Phase phases[]={{0,1,25},{1,1,25},{0,1,25},{0,1,26},{1,1,26},
+                              {0,0,25},{0,1,27},{0,0,25},{1,1,25},{1,1,27},{1,0,25},{0,1,25}};
+        xpfsr::nr::ControlChannel nrChannel;xpfsr::nr::Controls nrControls;
+        unsigned phase=0,phaseFrames=0;uint64_t phaseStart=GetTickCount64();
+        if(nrOrder){
+            auto nrName=L"Local\\XPFSR-Test-NR-Order-"+std::to_wstring(GetCurrentProcessId());
+            nrControls[xpfsr::nr::Enabled]=1;nrControls[xpfsr::nr::Scope]=1;
+            require(nrChannel.create(nrName.c_str(),nrControls),"Create NR order control channel");
+            SetEnvironmentVariableW(L"XPFSR24_NR_CONTROL",nrName.c_str());
+            SetEnvironmentVariableW(L"XPFSR_TEST_NR_NATIVEAA",nativeAA?L"1":L"0");
+        }
         const uint32_t OW = nativeAA ? 256 : 384, OH = nativeAA ? 144 : 216;
         SetEnvironmentVariableW(L"XPFSR24_MODE", observe    ? L"observe"
                                                  : nativeAA ? L"native-aa"
@@ -392,8 +407,8 @@ int wmain(int argc, wchar_t **argv) {
                 nullptr, 0, nullptr, 1, &b);
             image.value.layout = target;
         };
-        for (uint64_t frame = 1; frame <= 18; ++frame) {
-            InterlockedExchange(&shared->enabled, (frame == 9 || frame == 10) ? 0 : 1);
+        for (uint64_t frame = 1; frame <= (nrOrder?3000:18); ++frame) {
+            InterlockedExchange(&shared->enabled, !nrOrder&&(frame == 9 || frame == 10) ? 0 : 1);
             app::Camera camera{};
             camera.valid = 1;
             camera.internal = 1;
@@ -654,7 +669,7 @@ int wmain(int argc, wchar_t **argv) {
                     "Map output");
             auto *pixel = static_cast<uint16_t *>(mapped) + ((OH / 2) * OW + OW / 2) * 4;
             float rgb[] = {half(pixel[0]), half(pixel[1]), half(pixel[2])};
-            if (frame == 18 && nativeAA) {
+            if (!nrOrder && frame == 18 && nativeAA) {
                 double rawError = 0, aaError = 0;
                 unsigned samples = 0;
                 auto *image = static_cast<uint16_t *>(mapped);
@@ -681,11 +696,12 @@ int wmain(int argc, wchar_t **argv) {
                                                  "improve diagonal edge coverage");
             }
             vk.dev<PFN_vkUnmapMemory>("vkUnmapMemory")(vk.device, memory);
-            require(std::abs(rgb[0] - .2f) < .05f && std::abs(rgb[1] - .4f) < .05f &&
+            if(!nrOrder)require(std::abs(rgb[0] - .2f) < .05f && std::abs(rgb[1] - .4f) < .05f &&
                         std::abs(rgb[2] - .6f) < .05f,
                     "Layer output readback differs");
             app::Telemetry status{};
             uint64_t expected = observe ? 0 : frame <= 8 ? frame : frame <= 10 ? 8 : frame - 2;
+            if(nrOrder)expected=frame;
             if (!observe && groundCamera && frame >= 12)
                 expected -= std::min<uint64_t>(frame - 11, 3);
             if (!observe && wrongDepth && frame >= 12)
@@ -694,15 +710,6 @@ int wmain(int argc, wchar_t **argv) {
                 --expected;
             require(app::readStatus(shared, status) && status.recordings == expected,
                     "Layer replacement/toggle count differs");
-            wchar_t publicFg[8]{};
-            if (GetEnvironmentVariableW(L"XPFSR24_EXPECT_NO_FG", publicFg, 8)) {
-                require(!status.fgActive && !status.fgPrepared && !status.fgGenerated &&
-                            !status.displayedPresents && !status.fgProvider[0] &&
-                            strstr(status.fgReason, "Suspended in regular releases"),
-                        "Public build must not prepare or activate FG despite forced requests");
-                require(GetModuleHandleW(L"amd_fidelityfx_framegeneration_vk.dll") == nullptr,
-                        "Public build loaded the suspended FG runtime");
-            }
             if (staleCamera && frame == 12 && !observe)
                 require(!status.active && strstr(status.reason, "camera frame mismatch"),
                         "Stale scene must explain native fallback");
@@ -712,10 +719,34 @@ int wmain(int argc, wchar_t **argv) {
             if (wrongDepth && frame >= 12 && frame <= 14 && !observe)
                 require(!status.active && strstr(status.reason, "Camera depth convention mismatch"),
                         "Incompatible publisher must leave the native frame and explain recovery");
-            std::cout << "Source frame " << frame << ": completed, RGB " << rgb[0] << ',' << rgb[1]
+            if(nrOrder){
+                const auto p=phases[phase];
+                const float before[]={.1f,.3f,.5f},after[]={.3f,.1f,.2f},original[]={.2f,.4f,.6f};
+                auto wanted=p.on&&p.strength==25?(p.order?after:before):original;
+                bool match=true;for(int i=0;i<3;++i){require(std::isfinite(rgb[i]),"Non-finite NR/FSR output");match&=std::abs(rgb[i]-wanted[i])<.025f;}
+                if(p.on){
+                    wchar_t statusPath[32768]{};GetEnvironmentVariableW(L"XPFSR24_NR_STATUS",statusPath,32768);
+                    std::ifstream nrStatus{std::filesystem::path(statusPath)};
+                    std::string all((std::istreambuf_iterator<char>(nrStatus)),{});
+                    const auto marker=std::string("NR order probe: ")+(p.order?"after":"before")+"; "+
+                        std::to_string(p.order&&!nativeAA?384:256)+"x"+std::to_string(p.order&&!nativeAA?216:144)+
+                        "; result="+std::to_string(p.strength==25?1:p.strength==26?0:-1);
+                    match&=all.find(marker)!=std::string::npos;
+                }
+                phaseFrames=match?phaseFrames+1:0;
+                require(GetTickCount64()-phaseStart<30000,"NR stage never produced the expected output or bypass");
+                if(phaseFrames>=4){
+                    std::cout<<"PASS: NR phase "<<phase<<" order="<<p.order<<" enabled="<<p.on<<" strength="<<p.strength<<" RGB="<<rgb[0]<<','<<rgb[1]<<','<<rgb[2]<<'\n';
+                    if(++phase==sizeof(phases)/sizeof(*phases))break;
+                    nrControls[xpfsr::nr::Order]=phases[phase].order;nrControls[xpfsr::nr::Enabled]=phases[phase].on;nrControls[xpfsr::nr::Intensity]=phases[phase].strength;nrChannel.write(nrControls);
+                    phaseFrames=0;phaseStart=GetTickCount64();
+                }
+                Sleep(20);
+            }else std::cout << "Source frame " << frame << ": completed, RGB " << rgb[0] << ',' << rgb[1]
                       << ',' << rgb[2] << ", FSR recordings " << status.recordings << ", provider "
                       << status.provider << '\n';
         }
+        require(!nrOrder||phase==sizeof(phases)/sizeof(*phases),"NR order phases incomplete");
         vkcheck(vk.waitIdle(vk.device), "Test idle");
         vk.dev<PFN_vkDestroyPipeline>("vkDestroyPipeline")(vk.device, graphics, nullptr);
         vk.dev<PFN_vkDestroyPipeline>("vkDestroyPipeline")(vk.device, postPipeline, nullptr);

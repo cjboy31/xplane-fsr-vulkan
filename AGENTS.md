@@ -41,3 +41,29 @@ https://discord.com/channels/1565487749832777830/1565816821523681290
 - Verify the sent message and record its permalink. If Discord access fails,
   retain the prepared announcement and report that it has not been posted.
 
+## Repository maintenance after major features
+
+After publishing and verifying a major feature release, refresh the README's
+download/channel table and repository description to match delivered features.
+Review stale drafts, completed pull requests and branches. Remove only verified
+obsolete drafts or fully merged temporary development branches; retain active
+experimental/platform work. Keep versioned published releases, tags and assets
+available for existing users and updaters. Do not commit runtime/model/user files.
+
+## Regression checks
+
+Recheck proposed work against the published main and development changes before
+merging, and retain their fixes. Run Test-Regression.ps1 for launcher, settings,
+logging, update/channel or shared-policy changes. Push/PR CI runs source policy
+and the Windows CPU/native-UI suite. Renderer changes also require relevant
+SDK/GPU fixtures and live simulator checks when available; CI alone does not
+establish visual quality. Resolve failures before releasing and report limits.
+
+## In-simulator setup direction
+
+After publishing the current NR/FG update, implement the in-simulator setup.
+The owner requests LuminaXP as the reference for its in-sim workflow and controls:
+an accessible X-Plane panel, live supported adjustments and activation compatible
+with third-party launchers. Study documented behavior; implement original code
+and artwork without copying restricted LuminaXP internals. Distinguish plugin
+presence from confirmed renderer activity. See docs/IN-SIM-PLUGIN.md.

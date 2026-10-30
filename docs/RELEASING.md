@@ -60,14 +60,19 @@ release/upload API when available; otherwise use the normal release editor.
 For 0.6.4 and later, release channels are independent of GitHub's prerelease
 badge. `alpha`, `beta`, `rc` and final versions belong to Normal;
 `experimental.N` belongs to Experimental. Both alpha and experimental packages
-must be marked prerelease. Build Normal without flags; build Experimental from
-its separate branch with `-FrameGenerationDevelopment`. Keep their staged
+must be marked prerelease. Build Normal without flags; build Experimental with
+`-FrameGenerationDevelopment -NeuralRenderingDevelopment`. Starting with 0.7.1,
+both channels include NR, FG and synchronized compatibility options; build flags
+choose the version/channel rather than gating those features. Run Build-NR.ps1
+for each staged payload (or copy its verified allow-listed files and manifest),
+and pass `-NeuralRenderingDevelopment` to both installer builds. Keep their staged
 binaries, version resources, notices, video manifests and installer test evidence
 separate. Never upload a development binary under a Normal tag.
 
 After both installer checks pass, run `installer/Test-ReleaseChannels.ps1` with
 the exact two setup files. Verify Normal -> Experimental -> Normal transitions,
-settings preservation and removal of the two owned FG components on return.
+settings preservation and the correct NR/FG payload in both channels. Older
+Normal packages below 0.7.1 still omit FG; do not apply that rule to newer builds.
 The selector must offer the published Experimental installer even if its version
 is older; same-channel automatic checks must never downgrade or cross channels.
 Do not remove old tagged releases. Keep the independent native-motion experiment
@@ -94,4 +99,3 @@ release link. Keep the tone friendly and avoid unsupported quality/FPS claims.
 Verify the visible message and save its permalink. Keep the prior feature-video
 approval gate. If access is unavailable, prepare the text and report the pending
 announcement rather than claiming success.
-

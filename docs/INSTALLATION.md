@@ -1,4 +1,14 @@
-0.6.6: CHANNEL SWITCHING AND SETUP
+# 0.7.1: current Windows setup
+
+Update to **Normal** for all current NR, FG and synchronized compatibility
+features. Experimental includes the same current features and receives future
+development updates. NR and FG start Off on first use. NR requires compatible
+Windows RDNA4 FP8 hardware and your own supported local model. Start with Before
+upscaling, Subtle strength, one pass and FG Off. Read the complete
+[installation and use instructions](../installer/NR-INSTALLATION-AND-USE.txt)
+for required sim settings, model import, live controls and limitations.
+
+## Historical 0.6.6 channel-switching behavior
 Close X-Plane and GPU checks. Open Updates / Channel and select Normal or
 Experimental. Wait for the check to finish, then use the enabled install button.
 
@@ -24,16 +34,10 @@ Missing media does not block the launcher. Keep all media credits and notices.
 
 # Install FSR 3/4 + Frame Gen for X-Plane
 
-Built-in frame generation remains temporarily suspended in regular releases.
-The disabled selector shows **Off — Temporarily suspended**; its help explains
-why. Old settings and environment variables cannot enable it. FSR 3/4 Native AA
-and upscaling still work. Keep using the same application folder when updating;
-your other choices are preserved. Previous FG choices are retained when saving
-unrelated settings, but this build launches with FG Off.
-
-Fresh regular installers omit FrameGenCheck.exe and the AMD FG runtime. Returning from Experimental through setup removes the two owned FG components;
-this Normal launcher/layer do not load or enable that path. FG remains development-only on the separate experimental
-branch and should not be used as a remedy for unstable base frame times.
+Both Windows 0.7.1 channels include FrameGenCheck.exe, the reviewed AMD FG runtime
+and the independent NR runtime without model weights. Select your desired mode
+explicitly; FG cannot repair unstable base frame times. Keep the same official
+application folder when updating so your saved choices and local models remain.
 
 0.6.0 introduces a redesigned charcoal/champagne launcher. Presets, AA, input
 scale and output controls remain on the main screen; resize or scroll when
@@ -59,7 +63,7 @@ is explained in that setting's help; renaming it does not broaden compatibility.
 Open **Updates / Channel** and choose **Normal** or **Experimental**. Opening
 the dialog checks availability; **Check now** retries manually. Startup automatic
 checks can be disabled independently. Channel selection and this preference are
-remembered. Normal includes alpha releases; Experimental has development FG options.
+remembered. Normal includes alpha releases; Experimental receives early development updates.
 
 For an official installation, **Download and install** or **Switch and install**
 downloads setup, verifies its size and SHA-256 against GitHub's HTTPS metadata,

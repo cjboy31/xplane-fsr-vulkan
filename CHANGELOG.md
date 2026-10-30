@@ -1,5 +1,118 @@
 # Changes
 
+## 0.7.1-alpha
+
+- Ship the current NR, FG and synchronized compatibility options in both
+  Windows channels. Normal is the recommended full-feature release; channel
+  selection controls future updates rather than access to these features.
+  NR and FG remain Off on first use; model/hardware checks and explicit NR + FG
+  opt-in remain. No NVIDIA DLL or model weights are included.
+- Preserve display-encoded SDR color through FG when X-Plane uses an sRGB
+  backbuffer. Private UNORM images avoid decoding the source before interpolation
+  and then copying a darker result directly to present. A regression reproduces
+  dark/bright levels 3/164 instead of 31/210 on the old path; the adapter preserves
+  31/210 with both generation providers. Actual HDR/10-bit formats are unchanged;
+  no full HDR compatibility claim is added.
+- Configure the matching frame before PrepareV2 and suppress redundant
+  configuration. Retain source-submission validation before Present.
+- Add optional synchronized compatibility tests for FSR 3/4, requesting the
+  official 3.1.7 presenter and draining its paced work after a generated present.
+  These trade overlap/performance for stricter synchronization and are optional
+  tests in both channels. Ordinary modes retain automatic presenter selection.
+- Add opt-in local real/generated pixel diagnostics without per-frame GPU waits,
+  and `--launch-fsr` to launch a saved profile through the normal validation path.
+- Add a saved, live NR Processing order selector: Before upscaling is the
+  recommended default; After upscaling processes output-resolution color.
+  Both precede supported cockpit-screen restoration and optional FG.
+- Use matching background contexts, stage-specific scratch images and history
+  resets; keep valid FSR input/output when NR prepares, bypasses or fails.
+  Show recorded order and dimensions in live NR status.
+- Add a read-only live renderer log with automatic refresh, Follow latest,
+  current/last-session labels and a bounded tail. Retain fresh-session rotation
+  and preserve current evidence across renderer reloads.
+- Add UTC/PID log timestamps, periodic renderer heartbeats and instance/device
+  lifecycle evidence. Distinguish bypass/wait states from a layer unload.
+- Base activity on advancing FSR recordings even when another pass bypasses.
+  Retain prior layer confirmation during stale telemetry; reject fallback status
+  from an old/wrong process, session or timestamp.
+- Verify both orders, repeated live switches, Off and dirty-scratch bypass/error
+  recovery in 48 real Vulkan/FSR 3/4 fixture phases. Pass a real-model HDR GPU
+  check, saved-choice/migration checks and native UI/log refresh regressions.
+  After-mode live-flight quality remains unverified; no artifact/FPS guarantee.
+- Defer optional NR/FG until at least three seconds and 30 coherent initial
+  source frames; prepare NR at lower CPU priority and allocate only the selected
+  pass budget. Record first-use FSR initialization timings for diagnosis.
+- Hold the complete real frame when a generation callback lacks matching or
+  unconsumed source metadata. Report zero generated outputs on callback/SDK
+  failure, reset history for recovery and retain synchronous SDK pacing.
+- Test injected missing-source gaps on both FG providers: 90 real frames,
+  87 non-black generated readbacks and three safe holds per provider. This
+  validates the fallback path. The owner also confirmed that the encoded-color
+  correction stopped visible flicker in an R9700 live NR + FSR 4 + FG session;
+  broader hardware, display and long-flight quality remain unverified.
+- Add an isolated opt-in async FG fixture and A/B/A timing harness. Both async
+  providers pass the same gap/readback checks; this small workload shows no
+  meaningful throughput gain. Application scheduling remains synchronized.
+- Include a skippable, narrated feature guide for the updated features.
+  NVIDIA DLLs/model weights and test-only backends remain excluded.
+
+## 0.7.1-experimental.1
+
+- Includes the same current feature set as Normal 0.7.1: independent NR with
+  live On/Off, scope, budgets and Before/After upscaling order; FSR 3/4; frame
+  generation with corrected sRGB display encoding; and optional synchronized
+  compatibility pacing for both FG providers.
+- Includes initial NR/FG startup deferral, selected-pass allocations, current
+  session logs, clearer layer status and safe real-frame holds on missing input.
+- Normal is now the recommended download for all current features. Experimental
+  remains a separate future development update track. Hardware/model checks,
+  NR + FG opt-in, saved selections and user-owned model/cache preservation remain.
+- The owner confirmed the color correction stopped the reported live flicker
+  with NR + FSR 4 + FG on an R9700. Broader display/hardware and long-flight
+  testing remain open; neither channel is a universal artifact/FPS guarantee.
+- No NVIDIA DLLs or neural model weights are included. Both installers include
+  the matching skippable feature guide and plain installation instructions.
+
+## 0.7.0-experimental.1
+
+Experimental NR preview with the owner-approved feature guide.
+
+- Add optional independent neural rendering before FSR on a private linear
+  scene-color image, retaining original FSR input on bypass.
+- Add saved Off/Subtle/Balanced/Strong/Custom controls, verified local model import,
+  a separate-process GPU check and fresh per-session recording/pause reasons.
+- Make NR On/Off, artistic controls, style, history, passes and scene scope live.
+  Prepare model/resolution changes in the background; retain contexts until
+  their command buffers can safely release them. Add 33/50/67% budget profiles.
+- Store NR preferences independently so older Normal builds cannot erase them
+  when saving their own settings. Migrate earlier prototype NR choices.
+- Default to External only; offer Full scene for cockpit and exterior NR.
+  Ground-camera safety remains active and temporal histories reset on changes.
+  NR + FG requires an explicit experimental opt-in; FG provider changes still
+  need a new simulator session. No artifact-free combination is claimed.
+- Preserve proportional simulator UI size on supported single-display output
+  changes, with opt-out and exact backed-up accessibility preference restoration.
+- Fix launcher scrolling fragments and broken status/diagnostics repainting.
+  Move controls in batches, repaint descendants in a buffered view and make
+  wheel/scrollbar input at either limit a no-op. Retain partial wheel deltas.
+  Correct runtime locking of controls after reparenting into the scroll view.
+- Pair frame-generation callback reset metadata with its source frame rather
+  than mutable latest-frame state; retain SDK pacing and synchronous defaults.
+- Enable required Vulkan features without duplicate aggregate aliases; support
+  core 1.4 pipeline robustness without a missing extension name.
+- Compile pinned MIT shaders through the driver. No ACO binaries, loader
+  proxies, NVIDIA DLLs or model weights are included in source/downloads.
+- Pass live-control HDR fixtures and reduced-copy/copy-path output equivalence
+  on the R9700. Synthetic GPU timings are NR-pass measurements, not simulator
+  FPS or live-flight visual-quality guarantees.
+- Exercise live NR On/Off, background model budgets and full-scene cockpit
+  scope in X-Plane 12.4.4-r1. Also run NR with FSR 4.0.2 FG, retaining live NR
+  bypass/re-enable. Both simulator sessions exit normally. Keep the combination
+  experimental; these checks do not establish artifact-free flight quality.
+- Document in-sim/third-party-launcher activation design and AMD denoiser input
+  and backend requirements. These investigations do not add an implicit layer,
+  Visual Engine certification or an unsupported denoising toggle.
+
 ## 0.6.7-alpha
 
 - Fix stale text and button fragments when scrolling the launcher, including

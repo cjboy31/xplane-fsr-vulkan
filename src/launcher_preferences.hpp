@@ -1,12 +1,15 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 #include "graphics_presets.hpp"
+#include "nr_controls.hpp"
 #include <cstring>
 namespace launcher {
 struct Preferences {
     std::wstring simulator{L"D:\\X-Plane 12"}, arguments;
     std::string presetId;
-    int mode{}, frameGeneration{};
+    int mode{}, frameGeneration{}, neuralRendering{};
+    xpfsr::nr::Controls nr;
+    bool keepSimUISize{true};
     bool enabled{true}, ghostReduction{true}, cockpitRestore{true}, alignmentTint{};
     graphics::Options manual{};
     bool manualApplied{}, manualPending{};
@@ -34,8 +37,9 @@ inline std::wstring readSetting(const graphics::fs::path &file, const wchar_t *s
     GetPrivateProfileStringW(section, key, fallback, value, 32768, file.c_str());
     return value;
 }
-inline int integer(const graphics::fs::path &file, const wchar_t *key, int fallback, int maximum) {
-    auto value = readSetting(file, L"Launcher", key, std::to_wstring(fallback).c_str());
+inline int integer(const graphics::fs::path &file, const wchar_t *key, int fallback, int maximum,
+                   const wchar_t *section = L"Launcher") {
+    auto value = readSetting(file, section, key, std::to_wstring(fallback).c_str());
     try {
         size_t used{};
         int n = std::stoi(value, &used);
@@ -79,7 +83,19 @@ inline Preferences load(const graphics::fs::path &file) {
     p.arguments = decode(
         readSetting(file, L"Launcher", L"ArgumentsHex", encode(p.arguments).c_str()), p.arguments);
     p.mode = integer(file, L"Mode", 0, 4);
-    p.frameGeneration = integer(file, L"FrameGeneration", 0, 2);
+    p.frameGeneration = integer(file, L"FrameGeneration", 0, 4);
+    // Older Normal releases replace their Launcher section on save. Keep NR
+    // independently, migrating the unreleased prototype's keys on first save.
+    const bool separateNR=readSetting(file,L"NeuralRendering",L"Schema")==L"1";
+    const auto nrSection=separateNR?L"NeuralRendering":L"Launcher";
+    p.neuralRendering=integer(file,separateNR?L"Mode":L"NeuralRendering",0,4,nrSection);
+    p.keepSimUISize=integer(file,L"KeepSimUISize",1,1);
+    for(int i=0;i<xpfsr::nr::Count;++i){
+        auto &setting=xpfsr::nr::settings[i];
+        try{size_t used{};auto s=readSetting(file,nrSection,setting.key,std::to_wstring(setting.initial).c_str());int n=std::stoi(s,&used);if(used==s.size()&&n>=setting.minimum&&n<=setting.maximum)p.nr.value[i]=n;}catch(...){}
+    }
+    if(!p.nr.valid())p.nr=xpfsr::nr::Controls{};
+    p.nr[xpfsr::nr::Enabled]=p.neuralRendering!=0;
     p.enabled = integer(file, L"Enabled", 1, 1);
     p.ghostReduction = integer(file, L"GhostReduction", 1, 1);
     p.cockpitRestore = integer(file, L"CockpitRestore", 1, 1);
@@ -118,6 +134,9 @@ inline std::wstring serialized(const Preferences &p) {
     add(L"Preset", std::wstring(p.presetId.begin(), p.presetId.end()));
     add(L"Mode", std::to_wstring(p.mode));
     add(L"FrameGeneration", std::to_wstring(p.frameGeneration));
+    add(L"NeuralRendering",std::to_wstring(p.neuralRendering));
+    add(L"KeepSimUISize",std::to_wstring(p.keepSimUISize));
+    for(int i=0;i<xpfsr::nr::Count;++i)add(xpfsr::nr::settings[i].key,std::to_wstring(i==xpfsr::nr::Enabled?int(p.neuralRendering!=0):p.nr.value[i]));
     add(L"Enabled", std::to_wstring(p.enabled));
     add(L"GhostReduction", std::to_wstring(p.ghostReduction));
     add(L"CockpitRestore", std::to_wstring(p.cockpitRestore));
@@ -141,6 +160,15 @@ inline void save(const graphics::fs::path &file, const Preferences &p) {
     graphics::require(
         WritePrivateProfileSectionW(L"Launcher", section.c_str(), file.c_str()) != FALSE,
         "Could not save choices to settings.ini; choose a writable application folder");
+    std::wstring nrSection=L"Schema=1";nrSection+=L'\0';
+    nrSection+=L"Mode="+std::to_wstring(p.neuralRendering);nrSection+=L'\0';
+    for(int i=0;i<xpfsr::nr::Count;++i){
+        nrSection+=xpfsr::nr::settings[i].key;nrSection+=L'=';
+        nrSection+=std::to_wstring(i==xpfsr::nr::Enabled?int(p.neuralRendering!=0):p.nr.value[i]);nrSection+=L'\0';
+    }
+    nrSection+=L'\0';
+    graphics::require(WritePrivateProfileSectionW(L"NeuralRendering",nrSection.c_str(),file.c_str())!=FALSE,
+                      "Could not save NR choices to settings.ini");
     WritePrivateProfileStringW(nullptr, nullptr, nullptr, file.c_str());
     graphics::require(serialized(load(file)) == section,
                       "Saved choices could not be verified; settings.ini may not be writable");

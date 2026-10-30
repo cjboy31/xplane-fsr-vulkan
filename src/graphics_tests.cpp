@@ -152,6 +152,16 @@ int wmain(int argc, wchar_t **argv) {
                 "Applied custom graphics also preserve display geometry");
         std::cout << "PASS: 84 reopened preset launches preserve window mode, output and UI scale; "
                      "custom outputs stay remembered; unapplied edits require Apply graphics.\n";
+        write(main,original);
+        auto full=set(windows,"monitor/0/m_is_fullscreen","wmgr_mode_fullscreen");write(screen,full);write(misc,accessibility);
+        Options ui{0,0,2,3840,2160};auto uiBackup=apply(root,base/L"backups",ui,false);
+        require(get(read(misc),"pixel_multiplier")=="2.250000"&&get(read(misc),"base_font_size")=="18","Resolution changed the logical UI size or font");
+        restore(root,uiBackup);require(read(misc)==accessibility,"UI scaling restore must be exact");
+        ui.keepUISize=false;auto unmanaged=apply(root,base/L"backups",ui,false);require(read(misc)==accessibility,"UI preservation opt-out ignored");restore(root,unmanaged);
+        auto windowBounds=windows+"monitor/0/m_window_bounds/1 0\nmonitor/0/m_window_bounds/3 1080\n";write(screen,windowBounds);
+        ui.keepUISize=true;auto resized=apply(root,base/L"backups",ui,false);require(get(read(misc),"pixel_multiplier")=="2.812500","Window-to-fullscreen UI must respect minimum logical canvas limits");restore(root,resized);
+        require(read(screen)==windowBounds&&read(misc)==accessibility,"Windowed UI restoration");
+        std::cout<<"PASS: fullscreen/windowed resolution changes preserve logical UI, retain fonts, honor opt-out and restore exact accessibility bytes\n";
         std::cout << "PASS: exact backups, MSAA/FXAA/scale/4K output, selective restore, "
                      "duplicate/missing keys, conflict refusal, multi-monitor refusal and rollback "
                      "after write failure. Only workspace fixture files changed.\n";

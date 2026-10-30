@@ -128,7 +128,7 @@ static void startUpdateCheck() {
                                L"Ordinary updates never downgrade within a channel."
                              : L"No compatible installer is published for your selected "
                                L"channel. Ordinary updates never downgrade within a channel. "
-                               L"Normal includes this project's alpha releases; it keeps FG Off.";
+                               L"Normal includes this project's alpha releases and current NR/FG features.";
         } catch (const std::exception &e) {
             std::lock_guard<std::mutex> guard(j->mutex);
             j->phase = UpdateJob::failed;
@@ -140,6 +140,7 @@ static void startUpdateCheck() {
     refreshUpdateUI();
 }
 static void beginUpdateInstall() {
+    ensure(!nrJobRunning(),"Wait for NR import/check to finish before updating");
     graphics::ensureSimulatorClosed();
     ensure(!running() && (!aaChild || WaitForSingleObject(aaChild, 0) != WAIT_TIMEOUT),
            "Close X-Plane and all GPU checks before updating");
@@ -221,6 +222,7 @@ static void pollUpdate() {
         return;
     try {
         updates::require(!j->cancel, "Update canceled");
+        ensure(!nrJobRunning(),"Wait for NR import/check to finish before updating");
         graphics::ensureSimulatorClosed();
         ensure(!running() && (!aaChild || WaitForSingleObject(aaChild, 0) != WAIT_TIMEOUT),
                "Close all GPU checks before updating");
@@ -374,16 +376,16 @@ static void showUpdates() {
     channelBox = scaledControl(L"COMBOBOX", L"", CBS_DROPDOWNLIST | WS_TABSTOP, 155, 54, 510, 150,
                                151, updateWindow);
     SendMessageW(channelBox, CB_ADDSTRING, 0,
-                 LPARAM(L"Normal - recommended / frame generation Off"));
+                 LPARAM(L"Normal - all current features (recommended)"));
     SendMessageW(channelBox, CB_ADDSTRING, 0,
-                 LPARAM(L"Experimental - frame generation development"));
+                 LPARAM(L"Experimental - early development builds"));
     SendMessageW(autoCheckBox, BM_SETCHECK, autoCheckUpdates ? BST_CHECKED : BST_UNCHECKED, 0);
     SendMessageW(channelBox, CB_SETCURSEL, releaseChannel == updates::Channel::Experimental ? 1 : 0,
                  0);
     theme::name(channelBox, L"Release channel: Normal or Experimental");
     scaledControl(L"STATIC",
-                  L"Normal includes alpha updates with FG Off. Experimental offers development "
-                  L"builds with FG options; artifacts remain possible. Selecting a channel only "
+                  L"Normal includes current NR, FG and compatibility options. Experimental "
+                  L"receives future development builds. Hardware/model requirements still apply. Selecting a channel only "
                   L"checks releases. Install explicitly, with X-Plane closed.",
                   0, 20, 96, 645, 64, 0, updateWindow);
     updateText = scaledControl(L"EDIT", L"", ES_MULTILINE | ES_READONLY | WS_VSCROLL, 20, 170, 645,

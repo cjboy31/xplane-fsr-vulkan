@@ -228,7 +228,7 @@ inline LRESULT CALLBACK controlProc(HWND h, UINT m, WPARAM w, LPARAM l, UINT_PTR
             COLORREF fill = primary ? (pressed ? RGB(198, 167, 118) : gold)
                                     : (s->hover ? RGB(40, 49, 64) : field);
             rounded(dc, r, fill, focus ? gold : (primary ? fill : border),
-                    id >= 200 && id <= 214 ? 12 : 9);
+                    id >= 200 && id <= 216 ? 12 : 9);
             if (s->kind == 2) {
                 RECT tr{px(13), 0, r.right - px(32), r.bottom};
                 text(dc, captionText.c_str(), tr, fonts[0], fg);

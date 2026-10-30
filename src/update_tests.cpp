@@ -19,8 +19,6 @@ static std::string release(const std::string &tag, bool preview = true,
 template <class F> static void rejects(F fn) {
     bool rejected = false;
     try {
-        require((installedChannel() == Channel::Experimental) == app::frameGenerationAvailable,
-                "Installed channel must match the compiled FG policy");
         fn();
     } catch (...) {
         rejected = true;

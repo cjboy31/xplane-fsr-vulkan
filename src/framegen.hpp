@@ -1,9 +1,12 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 #include "fsr24.hpp"
+#include "framegen_callback_state.hpp"
 #include <atomic>
 #include <ffx_framegeneration.h>
 #include <vk/ffx_api_framegeneration_vk.h>
+#include "framegen_pixel_probe.hpp"
+#include "framegen_encoded_color.hpp"
 
 namespace xpfsr {
 struct CameraBasis {
@@ -170,50 +173,94 @@ class FrameGenerator {
     ffxConfigureDescFrameGeneration configure_{};
     uint32_t width_{}, height_{};
     uint64_t prepared_{};
-    bool reset_{true}, configured_{}, enabled_{};
-    static ffxReturnCode_t generate(ffxDispatchDescFrameGeneration *params, void *pointer) {
+    bool reset_{true}, configured_{}, enabled_{}, async_{};
+    std::atomic<bool> resetAfterSkip_{true};
+    FrameCallbackState callbackFrames_;
+    std::unique_ptr<FramePixelProbe> pixelProbe_;
+    std::unique_ptr<FrameEncodedColor> encodedColor_;
+    static ffxReturnCode_t generate(ffxDispatchDescFrameGeneration *params, void *pointer) try {
         auto &self = *static_cast<FrameGenerator *>(pointer);
-        if (params->frameID != self.prepared_) {
-            self.failure.store(FFX_API_RETURN_ERROR_PARAMETER);
-            return FFX_API_RETURN_ERROR_PARAMETER;
+        bool reset=true;
+        if (!self.callbackFrames_.consume(params->frameID,reset)) {
+            // The SDK presenter checks numGeneratedFrames even when a callback
+            // fails. Never advertise an unwritten interpolation surface. Zero
+            // leaves the complete real backbuffer visible (hold/repeat), using
+            // the SDK's own acquire/semaphore/present ownership.
+            params->numGeneratedFrames=0;params->reset=true;
+            self.resetAfterSkip_=true;++self.skipped;
+            return FFX_API_RETURN_OK;
         }
-        params->reset = params->reset || self.reset_;
-        auto result = self.api_.dispatch(&self.context_, &params->header);
-        if (result == FFX_API_RETURN_OK)
+        params->reset = params->reset || reset;
+        if(params->reset)++self.resetDispatches;
+        auto dispatch=*params;
+        if(self.encodedColor_)self.encodedColor_->before(*params,dispatch);
+        auto result = self.api_.dispatch(&self.context_, &dispatch.header);
+        params->numGeneratedFrames=dispatch.numGeneratedFrames;
+        if(result==FFX_API_RETURN_OK && params->numGeneratedFrames && self.encodedColor_)self.encodedColor_->after(*params);
+        if (result == FFX_API_RETURN_OK) {
+            // A valid reset dispatch primes the SDK's history. Its defined
+            // reset output must complete so the presenter can leave reset mode.
             self.generated.fetch_add(params->numGeneratedFrames);
-        else
+        } else {
+            params->numGeneratedFrames=0;self.resetAfterSkip_=true;++self.skipped;
             self.failure.store(result);
+        }
 #ifdef XPFSR_FG_TEST_READBACK
-        if (result == FFX_API_RETURN_OK && self.inspect)
+        if (result == FFX_API_RETURN_OK && params->numGeneratedFrames && self.inspect)
             self.inspect(*params, self.inspectContext);
 #endif
+        if (result == FFX_API_RETURN_OK && params->numGeneratedFrames && self.pixelProbe_)
+            self.pixelProbe_->record(*params);
         return result;
+    }catch(...){
+        params->numGeneratedFrames=0;
+        auto &self=*static_cast<FrameGenerator*>(pointer);self.failure=FFX_API_RETURN_ERROR_RUNTIME_ERROR;
+        self.resetAfterSkip_=true;++self.skipped;
+        return FFX_API_RETURN_ERROR_RUNTIME_ERROR;
     }
 
   public:
     std::atomic<uint64_t> generated{};
+    std::atomic<uint64_t> skipped{};
     std::atomic<uint32_t> failure{};
+    std::atomic<uint64_t> resetDispatches{};
+    void enablePixelProbe(const VkPhysicalDeviceMemoryProperties &memory) {
+        require(context_ && !pixelProbe_, "FG pixel probe needs an initialized context");
+        pixelProbe_=std::make_unique<FramePixelProbe>(backend_.deviceContext,memory);
+    }
+    FramePixelProbe *pixelProbe() {return pixelProbe_.get();}
+    bool encodedColorActive() const {return bool(encodedColor_);}
 #ifdef XPFSR_FG_TEST_READBACK
+    bool unadaptedSrgbForTest{};
     void (*inspect)(const ffxDispatchDescFrameGeneration &, void *){};
     void *inspectContext{};
+    void discardPreparedForTest(uint64_t frame){bool reset{};callbackFrames_.consume(frame,reset);}
 #endif
     explicit FrameGenerator(Api api) : api_(api) {}
     FrameGenerator(const FrameGenerator &) = delete;
     FrameGenerator &operator=(const FrameGenerator &) = delete;
     void create(VkDeviceContext device, uint32_t rw, uint32_t rh, uint32_t ow, uint32_t oh,
-                VkFormat format, bool reverse, bool infinite, const std::string &provider) {
+                VkFormat format, bool reverse, bool infinite, const std::string &provider,
+                bool asyncWorkloads = false,const VkPhysicalDeviceMemoryProperties *memory = nullptr) {
         require(!context_ && api_.configure && rw && rh && ow && oh,
                 "Invalid FG context parameters");
         width_ = ow;
         height_ = oh;
+        async_=asyncWorkloads;
         create_.header.type = FFX_API_CREATE_CONTEXT_DESC_TYPE_FRAMEGENERATION;
         create_.maxRenderSize = {rw, rh};
         create_.displaySize = {ow, oh};
-        create_.backBufferFormat = ffxApiGetSurfaceFormatVK(format);
+        bool adaptColor=encodedColorFormat(format)!=format;
+#ifdef XPFSR_FG_TEST_READBACK
+        adaptColor &= !unadaptedSrgbForTest;
+#endif
+        require(!adaptColor || memory,"sRGB FG requires encoded-color adapter memory properties");
+        create_.backBufferFormat = ffxApiGetSurfaceFormatVK(adaptColor?encodedColorFormat(format):format);
         require(create_.backBufferFormat != FFX_API_SURFACE_FORMAT_UNKNOWN,
                 "FG backbuffer format unsupported");
         create_.flags = (reverse ? FFX_FRAMEGENERATION_ENABLE_DEPTH_INVERTED : 0) |
                         (infinite ? FFX_FRAMEGENERATION_ENABLE_DEPTH_INFINITE : 0);
+        if(async_)create_.flags|=FFX_FRAMEGENERATION_ENABLE_ASYNC_WORKLOAD_SUPPORT;
         if (format == VK_FORMAT_R16G16B16A16_SFLOAT || format == VK_FORMAT_A2B10G10R10_UNORM_PACK32)
             create_.flags |= FFX_FRAMEGENERATION_ENABLE_HIGH_DYNAMIC_RANGE;
         version_.header.type = FFX_API_CREATE_CONTEXT_DESC_TYPE_FRAMEGENERATION_VERSION;
@@ -229,6 +276,7 @@ class FrameGenerator {
             backend_.header.pNext = &override_.header;
         }
         check(api_.create(&context_, &create_.header, nullptr), "Create frame generator");
+        if(adaptColor)encodedColor_=std::make_unique<FrameEncodedColor>(device,encodedColorFormat(format),ow,oh,*memory);
     }
     std::string provider() {
         ffxQueryGetProviderVersion q{};
@@ -239,12 +287,15 @@ class FrameGenerator {
     void configure(VkSwapchainKHR swapchain, uint64_t frame, bool enabled) {
         if (!enabled && configured_ && !enabled_)
             return;
+        if(configured_ && enabled_==enabled && configure_.frameID==frame)
+            return;
         configure_ = {};
         configure_.header.type = FFX_API_CONFIGURE_DESC_TYPE_FRAMEGENERATION;
         configure_.swapChain = reinterpret_cast<void *>(swapchain);
         configure_.frameID = frame;
         configure_.frameGenerationEnabled = enabled;
-        configure_.allowAsyncWorkloads = false;
+        configure_.allowAsyncWorkloads = async_;
+        configure_.onlyPresentGenerated = false;
         configure_.generationRect = {0, 0, int32_t(width_), int32_t(height_)};
         if (enabled) {
             configure_.frameGenerationCallback = generate;
@@ -255,12 +306,15 @@ class FrameGenerator {
         enabled_ = enabled;
     }
     void prepare(VkSwapchainKHR swapchain, uint64_t frame, const Frame &input,
-                 const CameraBasis &camera, bool deferConfiguration = false) {
+                 const CameraBasis &camera) {
         require(context_ && input.commands && input.depth.handle && input.motion.handle,
                 "Missing FG prepare inputs");
-        reset_ = input.reset || !prepared_ || frame != prepared_ + 1;
-        if (!deferConfiguration)
-            configure(swapchain, frame, true);
+        const bool resetAfterSkip=resetAfterSkip_.exchange(false);
+        reset_ = input.reset || resetAfterSkip || !prepared_ || frame != prepared_ + 1;
+        // Configure this frame before PrepareV2, as required by the SDK. The
+        // layer still rechecks submitted source identity immediately before
+        // Present and disables FG there if this recorded prepare was not used.
+        configure(swapchain, frame, true);
         ffxDispatchDescFrameGenerationPrepareV2 p{};
         p.header.type = FFX_API_DISPATCH_DESC_TYPE_FRAMEGENERATION_PREPARE_V2;
         p.commandList = reinterpret_cast<void *>(input.commands);
@@ -282,6 +336,7 @@ class FrameGenerator {
         memcpy(p.cameraRight, camera.right, 12);
         memcpy(p.cameraForward, camera.forward, 12);
         check(api_.dispatch(&context_, &p.header), "Prepare frame generation V2");
+        callbackFrames_.prepared(frame,reset_);
         prepared_ = frame;
     }
     ~FrameGenerator() {
