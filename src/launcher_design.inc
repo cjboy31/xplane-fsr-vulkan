@@ -2,6 +2,8 @@
 // Shared launcher layout. Native controls retain keyboard and accessibility behavior.
 static int designScroll{}, designBottom{}, designPage{};
 static bool designLayoutBusy{};
+static theme::Layout designMoves;
+static int designWheelRemainder{};
 static HWND designCanvas{};
 static HWND designControl(int id) {
     auto h = GetDlgItem(window, id);
@@ -43,9 +45,7 @@ static void designPlace(HWND h, int x, int y, int width, int height, bool fixed 
     if (!h)
         return;
     int top = theme::px(y - (fixed ? 0 : designScroll));
-    SetWindowPos(h, nullptr, theme::px(x), top, theme::px(width), theme::px(height),
-                 SWP_NOZORDER | SWP_NOACTIVATE);
-    ShowWindow(h, SW_SHOWNA);
+    designMoves.place(h, theme::px(x), top, theme::px(width), theme::px(height));
 }
 static void designHelp(int id, int x, int y) { designPlace(designControl(id), x, y, 24, 24); }
 static void designLayout(HWND hwnd) {
@@ -69,8 +69,7 @@ static void designLayout(HWND hwnd) {
         diagnosticY = connectionY + 254;
     designBottom = std::max(leftBottom + (designHasMotion() ? 68 : 40), diagnosticY + 258);
     designPage = std::max(1, height - 88);
-    SetWindowPos(designCanvas, nullptr, 0, 0, client.right, theme::px(designPage),
-                 SWP_NOZORDER | SWP_NOACTIVATE);
+    designMoves.place(designCanvas, 0, 0, client.right, theme::px(designPage));
     designScroll = std::clamp(designScroll, 0, std::max(0, designBottom - designPage));
     SCROLLINFO si{sizeof(si),
                   SIF_RANGE | SIF_PAGE | SIF_POS,
@@ -79,7 +78,7 @@ static void designLayout(HWND hwnd) {
                   UINT(designPage),
                   designScroll,
                   0};
-    SetScrollInfo(hwnd, SB_VERT, &si, TRUE);
+    SetScrollInfo(hwnd, SB_VERT, &si, FALSE);
     designCards.clear();
     auto card = [&](int x, int y, int w, int h) {
         designCards.push_back({theme::px(x), theme::px(y - designScroll), theme::px(x + w),
@@ -171,8 +170,7 @@ static void designLayout(HWND hwnd) {
     designPlace(designControl(21), nativeX, height - 66, 210, 44, true);
     designPlace(footerStatus, left, height - 75, std::max(240, nativeX - left - 20), 42, true);
     designPlace(savedLabel, left, height - 29, std::max(240, nativeX - left - 20), 21, true);
-    InvalidateRect(hwnd, nullptr, FALSE);
-    InvalidateRect(designCanvas, nullptr, FALSE);
+    designMoves.commit(hwnd);
     designLayoutBusy = false;
 }
 static void designPaint(HWND h, bool canvas) {
@@ -202,9 +200,21 @@ static void designPaint(HWND h, bool canvas) {
     DeleteDC(dc);
     EndPaint(h, &paint);
 }
-static void designWheel(HWND h, int delta) {
-    designScroll -= delta / WHEEL_DELTA * 72;
+static bool designScrollTo(HWND h, int next) {
+    next = std::clamp(next, 0, std::max(0, designBottom - designPage));
+    if (next == designScroll)
+        return false;
+    designScroll = next;
     designLayout(h);
+    return true;
+}
+static void designWheel(HWND h, int delta) {
+    designWheelRemainder += delta;
+    const int steps = designWheelRemainder / WHEEL_DELTA;
+    designWheelRemainder %= WHEEL_DELTA;
+    if (!steps)
+        return;
+    designScrollTo(h, designScroll - steps * 72);
 }
 static void designFocus(HWND h, HWND control) {
     int id = GetDlgCtrlID(control);
@@ -217,12 +227,11 @@ static void designFocus(HWND h, HWND control) {
     MapWindowPoints(HWND_DESKTOP, h, reinterpret_cast<POINT *>(&r), 2);
     int top = MulDiv(r.top, 96, theme::dpi), bottom = MulDiv(r.bottom, 96, theme::dpi);
     if (top < 12)
-        designScroll += top - 12;
+        designScrollTo(h, designScroll + top - 12);
     else if (bottom > designPage - 12)
-        designScroll += bottom - designPage + 12;
+        designScrollTo(h, designScroll + bottom - designPage + 12);
     else
         return;
-    designLayout(h);
 }
 static void createMainControls(HWND hwnd) {
     window = hwnd;

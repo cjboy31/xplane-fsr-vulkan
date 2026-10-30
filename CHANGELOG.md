@@ -1,5 +1,25 @@
 # Changes
 
+## 0.6.7-alpha
+
+- Fix stale text and button fragments when scrolling the launcher, including
+  the live status and diagnostics cards. Move controls together and repaint
+  the complete buffered view, including partially clipped native controls.
+- Stop redundant movement/repainting at either scroll limit; retain partial
+  wheel deltas from precision mice. Keep the launch footer fixed.
+- Fix simulator-session locking of controls in the scroll view. Preserve saved
+  choices. Add real native UI regressions at 96/120/144/192 DPI in two layouts.
+- Normal continues to keep FG Off. NR development is separate. This maintenance
+  release reuses the approved 0.6.4 guide unchanged; rendering is unchanged.
+
+## 0.6.7-experimental.1
+
+- Include the same scrolling, status/diagnostics repaint and runtime control
+  fixes with DPI, clipping and repeated-edge-input regression coverage.
+- Retain existing experimental FG options and limitations. This is a launcher
+  maintenance patch, with no new NR, interpolation or motion-vector algorithm.
+- Reuse the approved 0.6.4 guide unchanged; settings remain preserved.
+
 ## 0.6.6-alpha
 
 - Fix a disabled install action when a release is available but the launcher

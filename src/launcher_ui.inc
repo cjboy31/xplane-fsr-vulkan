@@ -267,30 +267,31 @@ static LRESULT CALLBACK procedure(HWND hwnd, UINT message, WPARAM w, LPARAM l) {
     case WM_VSCROLL: {
         SCROLLINFO si{sizeof(si), SIF_ALL};
         GetScrollInfo(hwnd, SB_VERT, &si);
+        int next = designScroll;
         switch (LOWORD(w)) {
         case SB_THUMBTRACK:
-            designScroll = si.nTrackPos;
+            next = si.nTrackPos;
             break;
         case SB_LINEUP:
-            designScroll -= 36;
+            next -= 36;
             break;
         case SB_LINEDOWN:
-            designScroll += 36;
+            next += 36;
             break;
         case SB_PAGEUP:
-            designScroll -= designPage;
+            next -= designPage;
             break;
         case SB_PAGEDOWN:
-            designScroll += designPage;
+            next += designPage;
             break;
         case SB_TOP:
-            designScroll = 0;
+            next = 0;
             break;
         case SB_BOTTOM:
-            designScroll = designBottom;
+            next = designBottom;
             break;
         }
-        designLayout(hwnd);
+        designScrollTo(hwnd, next);
         return 0;
     }
     case WM_GETMINMAXINFO: {

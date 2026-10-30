@@ -5,6 +5,7 @@
 #include "runtime_status.hpp"
 #include "session_logs.hpp"
 #include "launcher_theme.hpp"
+#include "native_layout.hpp"
 #include "framegen_policy.hpp"
 #include <algorithm>
 #include <bcrypt.h>
@@ -27,6 +28,7 @@ static HWND window{}, pathBox{}, argsBox{}, statusBox{}, toggle{}, modeBox{}, fg
 static HWND presetBox{}, presetNote{}, savedLabel{}, injectionBanner{}, motionSetupNote{},
     footerStatus{};
 static const wchar_t *designSetupHint();
+static HWND designControl(int id);
 static launcher::Preferences preferences;
 static launcher::RuntimeMonitor runtimeMonitor;
 static launcher::RuntimeState bannerState{};
@@ -443,7 +445,7 @@ static void refresh() {
 
     bool activeProcess = running();
     for (int id : {10, 11, 12, 20, 21, 35, 40, 42, 43, 44, 107, 109})
-        EnableWindow(GetDlgItem(window, id), !activeProcess);
+        EnableWindow(designControl(id), !activeProcess);
     if (!activeProcess) {
         runtimeBanner(launcher::RuntimeState::stopped, {});
         if (child) {
@@ -611,7 +613,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, LPWSTR, int show) {
     AdjustWindowRectEx(&size, style, FALSE, 0);
     int width = std::min(int(size.right - size.left), int(work.right - work.left) - theme::px(24));
     int height = std::min(int(size.bottom - size.top), int(work.bottom - work.top) - theme::px(24));
-    auto hwnd = CreateWindowExW(0, c.lpszClassName, L"FSR 3/4 + Frame Gen for X-Plane", style,
+    auto hwnd = CreateWindowExW(WS_EX_COMPOSITED, c.lpszClassName, L"FSR 3/4 + Frame Gen for X-Plane", style,
                                 work.left + (work.right - work.left - width) / 2,
                                 work.top + (work.bottom - work.top - height) / 2, width, height,
                                 nullptr, nullptr, instance, nullptr);

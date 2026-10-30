@@ -103,3 +103,8 @@ The default build embeds `0.6.4-alpha` and enforces FG Off. The installer reject
 mismatched package/resource versions; only an `experimental.N` package includes
 the verified AMD FG DLL and FrameGenCheck. Do not enable this flag for Normal
 packages. The independent native-motion branch is unchanged.
+
+`Test-LauncherUI.ps1 -Compiler <compiler>` exercises native scroll/repaint behavior,
+clipping, diagnostics, fixed footer, precision wheel deltas and repeated limit
+input at four DPI values in wide/narrow layouts. Its brief visible UI fixtures
+make no network requests and never launch the simulator.
