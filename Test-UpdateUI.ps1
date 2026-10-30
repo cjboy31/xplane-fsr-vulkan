@@ -2,6 +2,7 @@
 param([Parameter(Mandatory)][string]$Compiler)
 $ErrorActionPreference='Stop'
 $build=Join-Path $PSScriptRoot 'build'
+New-Item -ItemType Directory -Path $build -Force | Out-Null
 foreach($variant in @('normal','experimental')){
  $exe=Join-Path $build ('update_ui_tests-'+$variant+'.exe')
  [string[]]$flags=if($variant -eq 'experimental'){@('-DXPFSR_FG_DEVELOPMENT=1')}else{@()}

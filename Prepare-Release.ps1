@@ -69,7 +69,7 @@ $channelSummary = if($Version -match '-experimental\.'){
     'Normal channel: recommended project configuration, still an alpha preview. Built-in frame generation stays disabled. Use Updates / Channel to find the separate Experimental installer.'
 }
 $guideSummary = if([version](($Version -split '-')[0]) -ge [version]'0.6.5'){
-    'This maintenance package reuses the owner-approved 54-second 0.6.4 channel/display guide unchanged. Its on-screen version remains 0.6.4; the dropdown hotfix is described above. No revised film or new rendering-quality comparison is claimed.'
+    'This maintenance package reuses the owner-approved 54-second 0.6.4 channel/display guide unchanged. Its on-screen version remains 0.6.4; current fixes and setup behavior are described above and in the instructions. No revised film or new rendering-quality comparison is claimed.'
 }elseif([version](($Version -split '-')[0]) -ge [version]'0.6.4'){
     'This 54-second guide explains Normal / Experimental switching and deliberate display changes. The background still is reused from the previously approved guide; it is not a new before/after comparison or an FG quality demonstration.'
 }else{

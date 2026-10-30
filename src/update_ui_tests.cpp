@@ -77,6 +77,7 @@ int wmain(int argc, wchar_t **argv) {
                            "A dropdown row is blank or has an unpainted background");
                 }
                 SendMessageW(channelBox, CB_SETCURSEL, row, 0);
+                updateJob->channel = row ? updates::Channel::Experimental : updates::Channel::Normal;
                 SendMessageW(updateWindow, WM_COMMAND, MAKEWPARAM(151, CBN_SELCHANGE),
                              LPARAM(channelBox));
                 ensure(updates::loadChannel(appDirectory / L"settings.ini") ==

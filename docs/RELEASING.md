@@ -72,3 +72,12 @@ The selector must offer the published Experimental installer even if its version
 is older; same-channel automatic checks must never downgrade or cross channels.
 Do not remove old tagged releases. Keep the independent native-motion experiment
 separate from the FG development package.
+
+For updater changes, run `Test-UpdateUI.ps1`, `Test-UpdateFlow.ps1` and
+`Test-Updater.ps1` with the Windows compiler. The flow checks drive real dialog
+commands and background jobs with injected network/process boundaries; they must
+cover both installation-marker states, both channel directions, delayed/stale
+checks, download cancellation/retry, integrity rejection and installer arguments.
+Installer fixtures additionally verify new-install choice imports, preservation
+of existing settings and rejection of missing/invalid/oversized import files.
+Verify the actual open dropdown and the enabled installation action in the app.

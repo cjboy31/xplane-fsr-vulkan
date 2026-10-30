@@ -112,6 +112,34 @@ $code=Run-Setup ('/S /TEST=1 /AUTOUPDATE=1 /PARENT='+$parent.Id+' /D='+$installe
 if($code -ne 0 -or $elapsed.ElapsedMilliseconds -lt 1200){throw "Automatic handoff did not wait for parent and install: $code"}
 if((Get-FileHash -LiteralPath $settings).Hash -ne $settingsHash){throw 'Automatic update changed saved settings'}
 foreach($file in $manifest.files){if((Get-FileHash -LiteralPath (Join-Path $installed $file.path)).Hash.ToLowerInvariant() -ne $file.sha256){throw "Automatic update hash mismatch: $($file.path)"}}
+# Portable-copy migration uses full setup, never automatic mode or an assumed
+# target. Import only into a new installation and keep existing choices intact.
+$importSource=Join-Path $testRoot 'portable choices.ini'
+$importTarget=Join-Path $testRoot 'new installation'
+$importText="[Launcher]`r`nMode=4`r`nPreset=fsr4-4k-quality`r`nFrameGeneration=2`r`nSimulatorHex=0044003a005c0058002d0050006c0061006e0065002000310032`r`n[Updates]`r`nChannel=experimental`r`nAutomaticChecks=0`r`n[FeatureVideo]`r`nAutomatic=0`r`nMuted=1`r`n[Window]`r`nClientWidth=1100`r`nClientHeight=850`r`n"
+[IO.File]::WriteAllText($importSource,$importText,[Text.Encoding]::Unicode)
+$importHash=(Get-FileHash -LiteralPath $importSource).Hash
+$code=Run-Setup ('/S /TEST=1 /IMPORTSETTINGS="'+$importSource+'" /D='+$importTarget)
+if($code -ne 0 -or (Get-FileHash -LiteralPath (Join-Path $importTarget 'settings.ini')).Hash -ne $importHash){throw "New installation did not import exact saved choices: $code"}
+[IO.File]::WriteAllText($importSource,($importText -replace 'Mode=4','Mode=3'),[Text.Encoding]::Unicode)
+$sourceHash=(Get-FileHash -LiteralPath $importSource).Hash
+$code=Run-Setup ('/S /TEST=1 /IMPORTSETTINGS="'+$importSource+'" /D='+$importTarget)
+if($code -ne 0 -or (Get-FileHash -LiteralPath (Join-Path $importTarget 'settings.ini')).Hash -ne $importHash){throw 'Setup replaced an existing installation settings file during import'}
+if((Get-FileHash -LiteralPath $importSource).Hash -ne $sourceHash){throw 'Setup changed the portable source choices'}
+foreach($badKind in @('missing','unrelated','oversized')){
+ $badSource=Join-Path $testRoot ($badKind+'.ini')
+ if($badKind -eq 'unrelated'){[IO.File]::WriteAllText($badSource,'Unrelated file')}
+ if($badKind -eq 'oversized'){[IO.File]::WriteAllBytes($badSource,[byte[]]::new(1048577))}
+ $badTarget=Join-Path $testRoot ('rejected-import-'+$badKind)
+ $code=Run-Setup ('/S /TEST=1 /IMPORTSETTINGS="'+$badSource+'" /D='+$badTarget)
+ if($code -ne 8 -or (Test-Path -LiteralPath $badTarget)){throw "Invalid import was not rejected before installation: $badKind / $code"}
+}
+$code=Run-Setup ('/S /TEST=1 /IMPORTSETTINGS="'+$importSource+'" /D='+$unrelated)
+if($code -ne 4 -or @(Get-ChildItem -LiteralPath $unrelated).Count -ne 1){throw 'Choices import bypassed unrelated-folder protection'}
+$importUninstaller=Join-Path $testRoot 'import-uninstall.exe'
+Copy-Item -LiteralPath (Join-Path $importTarget 'Uninstall.exe') -Destination $importUninstaller
+$importUninstall=Start-Process -FilePath $importUninstaller -ArgumentList ('/S _?='+$importTarget) -WindowStyle Hidden -PassThru -Wait
+if($importUninstall.ExitCode -ne 0 -or (Get-FileHash -LiteralPath $importSource).Hash -ne $sourceHash){throw 'Imported installation uninstall changed source choices'}
 $uninstallCopy = Join-Path $testRoot 'test-uninstall.exe'
 Copy-Item -LiteralPath (Join-Path $installed 'Uninstall.exe') -Destination $uninstallCopy
 $process = Start-Process -FilePath $uninstallCopy -ArgumentList ('/S _?='+$installed) -WindowStyle Hidden -PassThru -Wait
@@ -132,6 +160,10 @@ $result.parentWait='PASS'
 $result.runningLauncherRejected='PASS'
 $result.lockedPayloadRejected='PASS'
 $result.unownedAutomaticUpdateRejected='PASS'
+$result.portableChoicesImported='PASS'
+$result.existingSettingsNotOverwrittenByImport='PASS'
+$result.invalidImportRejectedBeforeInstall='PASS'
+$result.portableSourceChoicesUnchanged='PASS'
 if($featureVideo){
   $result.featureVideoVersion=$featureVideo.version
   $result.featureVideoSha256=$featureVideo.sha256

@@ -1,29 +1,26 @@
-0.6.3: CAMERA RECONSTRUCTION AND FEATURE GUIDE
-A captioned 100-second overview plays once after opening each installed version.
-It explains presets, AA/input/output setup, live status and current limits, with
-fresh real simulator Native AA before/after detail shots and subtle synthetic
-voice narration. Skip / Continue, Escape or Close returns immediately to the app.
-Use What's new to replay. Pause and Mute are available. Turn off Show a feature
-video after future app updates to opt out; mute and opt-out are remembered.
-The player runs offline with Windows Media Foundation; no service, speech model
-or codec downloader is installed. Missing media does not block the launcher.
-If your Windows edition lacks its optional media components, use the included
-media/TRANSCRIPT.txt or standalone MP4. The player remains skippable on errors.
+0.6.6: CHANNEL SWITCHING AND SETUP
+Close X-Plane and GPU checks. Open Updates / Channel and select Normal or
+Experimental. Wait for the check to finish, then use the enabled install button.
 
-This update corrects the camera projection used for Vulkan depth and motion
-reconstruction. Close X-Plane and every old launcher before installing, choose
-the existing owned app folder, then launch from the updated app. Its recognized
-camera plugin is backed up and updated automatically. Restarting X-Plane is
-required; replacing only the layer or using an older publisher is unsupported.
-If the app reports a camera depth mismatch, close X-Plane and launch again from
-the updated installation. Do not copy another mod over the camera plugin.
+An app installed with official setup uses Switch and install. An extracted copy
+or a copy missing its installation marker uses Switch using setup... instead.
+It downloads and verifies the official installer, then opens the setup wizard.
+Choose an empty application folder or an existing official installation folder.
+Do not choose the portable folder if setup says it is unrecognized/nonempty.
+New installations import the current saved choices; an existing installation
+keeps its own settings. The source copy and its choices are left intact.
+Open the newly installed app from the Start menu or the selected install folder.
+Choosing a channel alone does not replace the installed build or enable FG.
 
-The guide's comparison shows one stationary external view at 1080p, corrected
-FSR 3.1.6 Native AA versus bypassed, with MSAA/FXAA/FG Off and identical HDR-to-SDR
-conversion. It does not prove an FPS gain or a universal ghosting fix.
-Built-in frame generation stays suspended. Linux/Mac preview packages are
-separate and unchanged by this Windows update. Keep media credits with the app.
-Every future regular Windows release must include its own matching feature guide.
+Normal keeps built-in FG Off. Experimental includes FG testing options with
+known flicker, artifacts and pacing limitations. This patch changes the updater
+and setup, not rendering or interpolation algorithms. Linux/Mac previews are unchanged.
+
+The captioned, narrated 54-second 0.6.4 channel/display guide is reused unchanged.
+Its on-screen version remains 0.6.4. Current setup behavior is explained here.
+Skip / Continue, Escape or Close returns immediately. Replay from What's new;
+pause, mute and opt out of future videos in the player. Media plays offline.
+Missing media does not block the launcher. Keep all media credits and notices.
 
 # Install FSR 3/4 + Frame Gen for X-Plane
 
@@ -34,9 +31,8 @@ and upscaling still work. Keep using the same application folder when updating;
 your other choices are preserved. Previous FG choices are retained when saving
 unrelated settings, but this build launches with FG Off.
 
-Fresh regular installers omit FrameGenCheck.exe and the AMD FG runtime. Older
-owned installations may retain unused copies; this launcher/layer do not load
-or enable that path. FG remains development-only on the separate experimental
+Fresh regular installers omit FrameGenCheck.exe and the AMD FG runtime. Returning from Experimental through setup removes the two owned FG components;
+this Normal launcher/layer do not load or enable that path. FG remains development-only on the separate experimental
 branch and should not be used as a remedy for unstable base frame times.
 
 0.6.0 introduces a redesigned charcoal/champagne launcher. Presets, AA, input
@@ -60,20 +56,30 @@ is explained in that setting's help; renaming it does not broaden compatibility.
 
 ## App updates
 
-Install version 0.5.4-alpha or later once using the full official installer.
-The launcher then checks this project's public GitHub Releases when it opens.
-Click **Updates...** to check manually, read the release notes and choose
-**Download and install**. Close every X-Plane process and all GPU checks first.
-The launcher saves your choices, downloads standalone setup, verifies its size
-and SHA-256 against GitHub's HTTPS metadata, closes, installs into the same owned
-application folder and reopens. The installer does not edit simulator preferences.
-A portable copy must first be installed with official setup.
+Open **Updates / Channel** and choose **Normal** or **Experimental**. Opening
+the dialog checks availability; **Check now** retries manually. Startup automatic
+checks can be disabled independently. Channel selection and this preference are
+remembered. Normal includes alpha releases; Experimental has development FG options.
 
-Automatic checks and preview releases can each be disabled in Updates. Both
-start enabled in this alpha and are remembered in settings.ini. Disabling
-previews selects stable releases only; it never downgrades an alpha. There is
-no background service or mid-flight installation. No GitHub login is needed;
-simulator paths/settings/logs are not sent to GitHub.
+For an official installation, **Download and install** or **Switch and install**
+downloads setup, verifies its size and SHA-256 against GitHub's HTTPS metadata,
+closes the launcher, installs into the recognized app folder and reopens it.
+The selected simulator and saved choices are preserved. Close X-Plane and GPU checks.
+
+For an extracted copy without a setup marker, **Install using setup...** or
+**Switch using setup...** performs the same download verification, then opens
+full setup so you can choose the target. It imports the current settings only
+when the target has no settings.ini. Existing installation settings are never
+replaced by an import. Unrecognized nonempty folders remain protected. Use the
+newly installed launcher afterward; the portable source remains unchanged.
+
+If the selected channel is already installed and current, the dialog says so;
+choose the other channel to switch. Failed release checks can retry with Check
+now. Failed downloads or installer handoffs can retry with the install button.
+Changing channels while checking cancels the old check; an old result cannot
+install the wrong build. The selector is locked during download/handoff.
+There is no background service or mid-flight installation. No GitHub login is
+needed; simulator paths, settings and logs are not sent to GitHub.
 
 Offline, rate-limited, interrupted or invalid downloads show a retry message.
 **Close / cancel download** cancels the download. Setup waits for launcher exit
@@ -234,8 +240,8 @@ object/cloud motion are unsupported. Read STATUS.md before contributing results.
 Open **Updates / Channel**, choose **Normal** or **Experimental**, then **Check
 now**. Normal includes this project's alpha releases and keeps built-in frame
 generation disabled. Experimental offers development builds with frame-generation
-options. Choosing a channel only checks availability; **Switch and install**
-downloads, verifies and installs it with X-Plane and GPU checks closed. The
+options. Choosing a channel only checks availability; **Switch and install** (recognized installation) or **Switch using setup...**
+(extracted copy) downloads and verifies its installer with X-Plane and GPU checks closed. The
 installed channel/version and selected download channel are shown separately.
 The selection and rendering choices survive reopening and recognized updates.
 Return to Normal through the same selector. A channel switch may deliberately

@@ -31,10 +31,15 @@ Var Parameters
 Var AutoUpdate
 Var InstallLock
 Var ParentProcess
+Var ImportSettings
 
 !define MUI_ABORTWARNING
 !define MUI_WELCOMEPAGE_TITLE "FSR 3/4 + Frame Gen for X-Plane 12"
-!define MUI_WELCOMEPAGE_TEXT "Install the experimental Native AA and upscaling launcher. Built-in frame generation is temporarily suspended in this regular release.$\r$\n$\r$\nClose X-Plane and the FSR launcher before continuing. This preview can produce visual artifacts and is not a production-ready graphics upgrade.$\r$\n$\r$\nSetup installs for your Windows account. The camera plugin is installed by the launcher on first use."
+!ifdef FG_DEVELOPMENT
+!define MUI_WELCOMEPAGE_TEXT "Install the Experimental Native AA, upscaling and frame-generation development launcher. FG testing options are included; flicker, artifacts and uneven pacing remain possible.$\r$\n$\r$\nClose X-Plane and the FSR launcher before continuing.$\r$\n$\r$\nSetup installs for your Windows account. The camera plugin is installed by the launcher on first use."
+!else
+!define MUI_WELCOMEPAGE_TEXT "Install the Normal Native AA and upscaling launcher. Built-in frame generation remains disabled in this channel.$\r$\n$\r$\nClose X-Plane and the FSR launcher before continuing. This is an alpha preview.$\r$\n$\r$\nSetup installs for your Windows account. The camera plugin is installed by the launcher on first use."
+!endif
 !insertmacro MUI_PAGE_WELCOME
 Page custom SimulatorPage SimulatorLeave
 !define MUI_DIRECTORYPAGE_TEXT_TOP "Choose an empty writable folder for the application, or a folder installed by this setup. Keep the default for a normal per-user installation. Do not select X-Plane's plugins folder."
@@ -67,13 +72,20 @@ Function .onInit
   StrCpy $InstallLock -1
   StrCpy $DesktopWanted 0
   StrCpy $XPlaneDir ""
+  StrCpy $ImportSettings ""
   ${GetParameters} $Parameters
   ClearErrors
   ${GetOptions} $Parameters "/TEST=" $0
   ${If} $0 == "1"
     StrCpy $TestMode 1
   ${EndIf}
+  ClearErrors
+  ${GetOptions} $Parameters "/IMPORTSETTINGS=" $ImportSettings
+  ${If} $ImportSettings != ""
+    Call ValidateImportSettings
+  ${EndIf}
   ${If} $TestMode != 1
+  ${AndIf} $ImportSettings == ""
     IfFileExists "D:\X-Plane 12\X-Plane.exe" 0 +2
       StrCpy $XPlaneDir "D:\X-Plane 12"
   ${EndIf}
@@ -118,11 +130,41 @@ Function .onInit
   doneInit:
 FunctionEnd
 
+Function ValidateImportSettings
+  ; Local choices only. Reject missing, empty, oversized or unrelated files before
+  ; creating the installation target; never replace an existing settings.ini.
+  ClearErrors
+  FileOpen $0 "$ImportSettings" r
+  IfErrors badImport
+  FileSeek $0 0 END $1
+  FileClose $0
+  ${If} $1 <= 0
+  ${OrIf} $1 > 1048576
+    Goto badImport
+  ${EndIf}
+  ClearErrors
+  ReadINIStr $0 "$ImportSettings" "Launcher" "Mode"
+  IfErrors badImport
+  ${If} $0 != "0"
+  ${AndIf} $0 != "1"
+  ${AndIf} $0 != "2"
+  ${AndIf} $0 != "3"
+  ${AndIf} $0 != "4"
+    Goto badImport
+  ${EndIf}
+  Return
+  badImport:
+    IfSilent +2
+      MessageBox MB_OK|MB_ICONSTOP "Saved choices could not be read. Reopen the launcher and download setup again. No installation files were changed."
+    SetErrorLevel 8
+    Quit
+FunctionEnd
+
 Function SimulatorPage
   !insertmacro MUI_HEADER_TEXT "Choose X-Plane" "Select your simulator folder, or leave it blank to choose later."
   nsDialogs::Create 1018
   Pop $Dialog
-  ${NSD_CreateLabel} 0 0 100% 30u "Choose the folder containing X-Plane.exe. The launcher copies its camera plugin on first selected-mode launch; setup does not change the simulator."
+  ${NSD_CreateLabel} 0 0 100% 30u "Choose the folder containing X-Plane.exe, or leave blank to keep imported/saved launcher choices. The camera plugin is copied on first selected-mode launch; setup does not change the simulator."
   Pop $0
   ${NSD_CreateDirRequest} 0 40u 78% 13u "$XPlaneDir"
   Pop $FolderEdit
@@ -250,13 +292,24 @@ Section "Application"
     ${EndIf}
   !endif
   !include "${GENERATED}\InstallFiles.nsh"
-  ${If} $XPlaneDir != ""
-    WriteINIStr "$INSTDIR\settings.ini" "Application" "Simulator" "$XPlaneDir"
-  ${EndIf}
+  ; The verified target now contains our payload. Keep it recognizable if a
+  ; later preferences write fails so setup can safely repair the installation.
   WriteINIStr "$INSTDIR\XPFSR24-Installation.ini" "Installation" "Product" "XPFSR24-community-alpha"
   WriteINIStr "$INSTDIR\XPFSR24-Installation.ini" "Installation" "Version" "${PACKAGE_VERSION}"
   WriteINIStr "$INSTDIR\XPFSR24-Installation.ini" "Installation" "TestMode" "$TestMode"
   WriteINIStr "$INSTDIR\XPFSR24-Installation.ini" "Installation" "DesktopShortcut" "$DesktopWanted"
+  ${If} $ImportSettings != ""
+  ${AndIfNot} ${FileExists} "$INSTDIR\settings.ini"
+    ClearErrors
+    CopyFiles /SILENT "$ImportSettings" "$INSTDIR\settings.ini"
+    ${If} ${Errors}
+      SetErrorLevel 8
+      Abort "Could not import saved choices. Run setup again into this folder."
+    ${EndIf}
+  ${EndIf}
+  ${If} $XPlaneDir != ""
+    WriteINIStr "$INSTDIR\settings.ini" "Application" "Simulator" "$XPlaneDir"
+  ${EndIf}
   WriteUninstaller "$INSTDIR\Uninstall.exe"
   ${If} $TestMode != 1
     ; Remove only shortcut names created by previous owned installs.

@@ -1,5 +1,33 @@
 # Changes
 
+## 0.6.6-alpha
+
+- Fix a disabled install action when a release is available but the launcher
+  is running from an extracted copy or has no recognized setup marker. Offer
+  **Switch using setup...** instead: verify the download, open full setup and
+  let the user choose an empty or recognized installation folder. Import the
+  current choices only into a new installation; keep existing settings intact.
+- Keep the automatic **Switch and install** route for recognized installations.
+  Recheck ownership before handoff. Never silently overwrite an unknown folder.
+- Cancel stale release checks when channels change, refresh on worker completion,
+  enable retries after download/handoff failure, clean cancelled/retried staging,
+  and explain when the selected channel is already installed. Center the updater
+  on the launcher's monitor and check on its first opening.
+- Add full dialog/worker/verification/handoff regression tests for both builds,
+  plus setup migration, invalid-import and saved-choice preservation checks.
+  Keep the dropdown drawing/DPI checks. Correct channel-specific setup wording.
+- Normal continues to enforce FG Off. Rendering algorithms are unchanged.
+  Reuse the owner-approved 0.6.4 guide byte-for-byte with reuse disclosed.
+
+## 0.6.6-experimental.1
+
+- Include the same actionable channel switching, verified setup fallback,
+  saved-choice migration, retry/cancellation fixes and full-flow tests.
+- Correct Experimental setup wording to describe its included FG testing options.
+  Existing FG artifacts/flicker and pacing limitations remain; no interpolation,
+  motion-vector or rendering algorithm changes are introduced.
+- Bundle the owner-approved 0.6.4 guide unchanged, with reuse disclosed.
+
 ## 0.6.5-alpha
 
 - Fix the blank release-channel dropdown by forwarding the updater window's

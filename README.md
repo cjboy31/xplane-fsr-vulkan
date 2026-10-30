@@ -16,9 +16,9 @@ Laminar Research product, and is not a complete solution to ghosting or stutter.
 
 ## Downloads and current source
 
-- **Windows Normal:** [0.6.5-alpha installer and instructions](https://github.com/cjboy31/xplane-fsr-vulkan/releases/tag/v0.6.5-alpha). Recommended project channel; built-in frame generation remains disabled.
-- **Windows Experimental:** [0.6.5-experimental.1 FG development installer](https://github.com/cjboy31/xplane-fsr-vulkan/releases/tag/v0.6.5-experimental.1). Includes FG testing options with known artifact/flicker limitations. Switch builds through **Updates / Channel**.
-- **Feature video:** [Watch or download the captioned narrated guide](https://github.com/cjboy31/xplane-fsr-vulkan/releases/download/v0.6.5-alpha/XPlane-FSR3-4-0.6.5-alpha-Feature-Guide.mp4). The previously approved 0.6.4 channel/display guide is included unchanged in the 0.6.5 maintenance package, with captions and immediate Skip. [Versioned-video workflow](https://github.com/cjboy31/xplane-fsr-vulkan/blob/main/docs/FEATURE-VIDEOS.md).
+- **Windows Normal:** [0.6.6-alpha installer and instructions](https://github.com/cjboy31/xplane-fsr-vulkan/releases/tag/v0.6.6-alpha). Recommended project channel; built-in frame generation remains disabled.
+- **Windows Experimental:** [0.6.6-experimental.1 FG development installer](https://github.com/cjboy31/xplane-fsr-vulkan/releases/tag/v0.6.6-experimental.1). Includes FG testing options with known artifact/flicker limitations. Switch builds through **Updates / Channel**.
+- **Feature video:** [Watch or download the captioned narrated guide](https://github.com/cjboy31/xplane-fsr-vulkan/releases/download/v0.6.6-alpha/XPlane-FSR3-4-0.6.6-alpha-Feature-Guide.mp4). The previously approved 0.6.4 channel/display guide is included unchanged in the 0.6.6 maintenance package, with captions and immediate Skip. [Versioned-video workflow](https://github.com/cjboy31/xplane-fsr-vulkan/blob/main/docs/FEATURE-VIDEOS.md).
 - **Linux:** [Native FSR 3.1 preview downloads](https://github.com/cjboy31/xplane-fsr-vulkan/releases/tag/native-preview-2026.10.29.1) — requires MSAA off and FSR supersampling enabled; real-flight validation is pending.
 - **Mac:** [Universal compatibility-probe download](https://github.com/cjboy31/xplane-fsr-vulkan/releases/tag/native-preview-2026.10.29.1) — diagnostics only; **Mac FSR/Metal rendering is not implemented**.
 - **Combined Linux/Mac RAR:** [Download the native preview package](https://github.com/cjboy31/xplane-fsr-vulkan/releases/download/native-preview-2026.10.29.1/XPlane-FSR-Native-0.6.2-platform-preview.1.rar). Includes installation instructions and validation notes.
@@ -127,7 +127,8 @@ No endorsement by AMD, Laminar Research, X-Plane or reference-mod authors is cla
 The 0.6.4 source adds **Updates / Channel > Normal / Experimental**. Normal
 includes the project's alpha builds with FG disabled. Experimental installers
 are separate development packages; selecting a channel only checks availability.
-The app shows installed and selected channels separately and requires **Switch
-and install** to change builds. See [installation guidance](docs/INSTALLATION.md)
+The app shows installed and selected channels separately and requires an explicit install action to change builds. Recognized installations use
+**Switch and install**; extracted copies use **Switch using setup...** with a
+verified installer and a folder-selection wizard. See [installation guidance](docs/INSTALLATION.md)
 and [release policy](docs/RELEASING.md). Both versioned downloads are listed above;
 selecting a channel never turns on FG in an already installed Normal build.

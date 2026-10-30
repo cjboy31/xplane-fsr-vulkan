@@ -138,3 +138,8 @@ manifests, source scripts and public provenance explicitly identify this reuse;
 release notes describe the dropdown correction separately. No revised narration,
 footage, caption or new rendering-benefit claim is introduced. Approval of new
 video revisions remains required.
+
+The 0.6.6 updater/setup maintenance release uses the same approved guide without
+changes. Its current install actions and new-install choice import are explained
+in the release notes and installation text; the older film is not presented as
+a recording of the revised setup wizard. No new video approval is inferred.
