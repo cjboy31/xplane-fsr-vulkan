@@ -7,6 +7,11 @@
 #include "feature_sizes.hpp"
 #include "framegen.hpp"
 #include "framegen_policy.hpp"
+#include "nr_api.hpp"
+#include "nr_features.hpp"
+#include <thread>
+#include <condition_variable>
+#include <optional>
 #include "frame_sequence.hpp"
 #include "fsr24.hpp"
 #include "pacing.hpp"
@@ -38,6 +43,7 @@ struct SdkScope {
     SdkScope() { ++sdkNesting; }
     ~SdkScope() { --sdkNesting; }
 };
+#include "nr_layer.inc"
 struct SwapchainGeneration {
     std::shared_ptr<xpfsr::Presentation> presentation;
     uint32_t width{}, height{};
@@ -45,7 +51,7 @@ struct SwapchainGeneration {
     bool retired{};
 };
 std::string requestedFrameGeneration() {
-    if (!app::frameGenerationAvailable)
+    if (!app::frameGenerationAvailable || (requestedNeuralRendering()&&!allowNeuralFrameGeneration()))
         return {};
     wchar_t mode[32]{};
     GetEnvironmentVariableW(L"XPFSR24_FG", mode, 32);
@@ -225,6 +231,8 @@ struct Device {
     Mode mode = Mode::Observe;
     std::array<uint32_t, 6> activeContext{};
     uint64_t jitterFrame{};
+    NeuralRenderer neural;
+    bool previousNeuralApplied{};
     std::string fgRequested = requestedFrameGeneration();
     bool fgFailed{}, fgLiveEnabled = true;
     uint32_t fgQueueBase = UINT32_MAX;
@@ -276,6 +284,10 @@ struct Device {
                 MapViewOfFile(mapping, FILE_MAP_ALL_ACCESS, 0, 0, sizeof(app::Shared)));
     }
     void publish(const char *reason) {
+        if (!enabled) neural.pause("NR paused with processing disabled");
+        else if (camera.internal&&!neural.fullScene()) neural.pause("NR paused: external-only scope");
+        else if (groundSafety.active) neural.pause("NR paused by ground camera safety");
+        neural.report();
         if (reason != status.reason)
             strncpy(status.reason, reason, sizeof(status.reason) - 1);
         attach();
@@ -471,7 +483,8 @@ struct DepthCapture {
 struct FrameResources {
     Device *device{};
     std::shared_ptr<DepthCapture> depthOwner;
-    OwnedImage color, depth, motion, reactive, output;
+    std::shared_ptr<void> neuralOwner;
+    OwnedImage color, depth, motion, reactive, output, neuralColor;
     std::unique_ptr<cockpit::Frame> cockpitFrame;
     VkImageView depthView{};
     VkBuffer uniform{};
@@ -1589,6 +1602,45 @@ bool replace(Device &d, VkCommandBuffer cb, Command &command) {
             transition(d, cb, f.depth, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
             command.probes.push_back(&probe);
         }
+        bool neuralApplied = false;
+        if (d.neural.enabled()) {
+            if (!d.fgRequested.empty()&&!d.neural.allowFG()) d.neural.pause("NR paused: enable the experimental NR + FG option to combine them");
+            else if (d.camera.internal&&!d.neural.fullScene()) d.neural.pause("NR paused: external-only scope");
+            else {
+                xpfsr::nr::Host host{};
+                host.instance=d.instance->handle;host.physical=d.physical;host.device=d.handle;
+                host.queueFamily=d.graphicsFamily;
+                d.fn<PFN_vkGetDeviceQueue>("vkGetDeviceQueue")(d.handle,d.graphicsFamily,0,&host.queue);
+                host.physicalDispatch=d.instance->next;host.user=&d;
+                host.lockQueue=[](void*p){static_cast<Device*>(p)->lock.lock();};
+                host.unlockQueue=[](void*p){static_cast<Device*>(p)->lock.unlock();};
+                host.log=[](const char*line){log("NR: %s",line);};
+                if (d.neural.ready(host,rw,rh,ic.format)) {
+                    if(!f.neuralColor.value.handle)f.neuralColor.create(d,rw,rh,ic.format);
+                    transition(d,cb,f.color,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+                    transition(d,cb,f.neuralColor,VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+                    VkImageCopy nrCopy{};
+                    nrCopy.srcSubresource=nrCopy.dstSubresource={VK_IMAGE_ASPECT_COLOR_BIT,0,0,1};
+                    nrCopy.extent={rw,rh,1};
+                    d.fn<PFN_vkCmdCopyImage>("vkCmdCopyImage")(cb,f.color.value.handle,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                        f.neuralColor.value.handle,VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,1,&nrCopy);
+                    transition(d,cb,f.color,VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+                    transition(d,cb,f.neuralColor,VK_IMAGE_LAYOUT_GENERAL);
+                    neuralApplied=d.neural.apply(cb,f.neuralColor.value.handle,d.camera.frame,frame.reset,f.neuralOwner);
+                    if(neuralApplied){
+                        transition(d,cb,f.neuralColor,VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+                        frame.color=f.neuralColor.value;
+                    }
+                }
+            }
+        }
+        if(neuralSessionCapable()){
+            frame.reset|=d.neural.consumeReset();
+            // FSR must never carry an unenhanced frame's history across NR's
+            // activation, a cockpit pause, or an error/resize bypass.
+            if(neuralApplied!=d.previousNeuralApplied)frame.reset=true;
+            d.previousNeuralApplied=neuralApplied;
+        }
         context->record(frame);
         restoreCockpit(d, cb, f, rw, rh, ow, oh, depth.jitterX, depth.jitterY, depth.ySign);
         prepareGeneration(d, cb, command, frame, rw, rh, ow, oh);
@@ -1842,6 +1894,17 @@ static VKAPI_ATTR VkResult VKAPI_CALL L_CreateDevice(VkPhysicalDevice physical,
         VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TIMELINE_SEMAPHORE_FEATURES};
     bool foundTimeline = false;
     bool foundFloats = false, foundCoop = false, foundFp8 = false;
+    xpfsr::nr::Features neuralFeatures;
+    bool neuralSupported = neuralSessionCapable() && cloned && coop.cooperativeMatrix &&
+        fp8.shaderFloat8 && fp8.shaderFloat8CooperativeMatrix && neuralFeatures.query(physical,getFeatures);
+    if (neuralSupported) {
+        neuralSupported = add(VK_KHR_WORKGROUP_MEMORY_EXPLICIT_LAYOUT_EXTENSION_NAME);
+        if (neuralFeatures.robust.pipelineRobustness) {
+            VkPhysicalDeviceProperties properties{};
+            reinterpret_cast<PFN_vkGetPhysicalDeviceProperties>(instance->next(instance->handle,"vkGetPhysicalDeviceProperties"))(physical,&properties);
+            neuralSupported = (properties.apiVersion>=VK_API_VERSION_1_4 || add(VK_EXT_PIPELINE_ROBUSTNESS_EXTENSION_NAME)) && neuralSupported;
+        }
+    }
     if (cloned) {
         for (auto *node = first; node; node = node->pNext) {
             if (node->sType ==
@@ -1891,6 +1954,7 @@ static VKAPI_ATTR VkResult VKAPI_CALL L_CreateDevice(VkPhysicalDevice physical,
             *tail = node;
             tail = &node->pNext;
         };
+        if (neuralSupported) neuralFeatures.enable(first,append);
         if ((derivatives.computeDerivativeGroupLinear || derivatives.computeDerivativeGroupQuads) &&
             add(VK_KHR_COMPUTE_SHADER_DERIVATIVES_EXTENSION_NAME) && !foundDerivatives) {
             requestDerivatives.computeDerivativeGroupLinear =
@@ -1978,6 +2042,7 @@ static VKAPI_ATTR VkResult VKAPI_CALL L_CreateDevice(VkPhysicalDevice physical,
     state->next = next;
     state->instance = instance;
     state->featuresReady = cloned;
+    state->neural.features(neuralSupported);
     state->mode = selectedMode();
     if (!app::frameGenerationAvailable) {
         strncpy(state->status.fgReason,
@@ -2058,6 +2123,7 @@ static VKAPI_ATTR void VKAPI_CALL L_DestroyDevice(VkDevice device,
     auto d = deviceFor(device);
     if (!d)
         return;
+    d->neural.join();
     d->fn<PFN_vkDeviceWaitIdle>("vkDeviceWaitIdle")(device);
     stopGenerator(*d);
     {
@@ -2067,6 +2133,7 @@ static VKAPI_ATTR void VKAPI_CALL L_DestroyDevice(VkDevice device,
     }
     d->fn<PFN_vkDeviceWaitIdle>("vkDeviceWaitIdle")(device);
     d->commands.clear();
+    d->neural.stop();
     d->cockpitCompositor.reset();
     d->probes.clear();
     d->contexts.clear();
@@ -2453,6 +2520,7 @@ static VKAPI_ATTR VkResult VKAPI_CALL L_BeginCommandBuffer(VkCommandBuffer cb,
         auto family = old.family;
         auto secondary = old.secondary;
         auto resources = std::move(old.resources);
+        if(resources)resources->neuralOwner.reset();
         auto captures = std::move(old.capturedDepths);
         if (!old.submitted) {
             resources.reset();

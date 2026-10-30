@@ -35,7 +35,9 @@ Var ImportSettings
 
 !define MUI_ABORTWARNING
 !define MUI_WELCOMEPAGE_TITLE "FSR 3/4 + Frame Gen for X-Plane 12"
-!ifdef FG_DEVELOPMENT
+!ifdef NR_DEVELOPMENT
+!define MUI_WELCOMEPAGE_TEXT "Install Experimental FSR AA/upscaling with optional independent neural rendering and FG testing. NR is Off by default. Import your own supported model locally; NVIDIA DLLs and model weights are not included.$\r$\n$\r$\nNR On/Off, appearance and scene scope adjust live. Model budgets prepare in the background. NR + FG requires explicit experimental opt-in.$\r$\n$\r$\nClose X-Plane and the launcher before continuing."
+!else ifdef FG_DEVELOPMENT
 !define MUI_WELCOMEPAGE_TEXT "Install the Experimental Native AA, upscaling and frame-generation development launcher. FG testing options are included; flicker, artifacts and uneven pacing remain possible.$\r$\n$\r$\nClose X-Plane and the FSR launcher before continuing.$\r$\n$\r$\nSetup installs for your Windows account. The camera plugin is installed by the launcher on first use."
 !else
 !define MUI_WELCOMEPAGE_TEXT "Install the Normal Native AA and upscaling launcher. Built-in frame generation remains disabled in this channel.$\r$\n$\r$\nClose X-Plane and the FSR launcher before continuing. This is an alpha preview.$\r$\n$\r$\nSetup installs for your Windows account. The camera plugin is installed by the launcher on first use."
@@ -176,7 +178,7 @@ Function SimulatorPage
   ${If} $DesktopWanted == 1
     ${NSD_Check} $DesktopCheck
   ${EndIf}
-  ${NSD_CreateLabel} 0 103u 100% 44u "Tested: X-Plane 12.4.4-b5, Radeon AI PRO R9700.$\r$\nLater betas and other hardware may be unsupported.$\r$\nCompatibility AA is the suggested starting mode; FG is optional."
+  ${NSD_CreateLabel} 0 103u 100% 44u "Tested: X-Plane 12.4.4-r1, Radeon AI PRO R9700.$\r$\nLater betas and other hardware may be unsupported.$\r$\nCompatibility AA is the suggested starting mode; FG is optional."
   Pop $0
   nsDialogs::Show
 FunctionEnd
@@ -275,6 +277,9 @@ Section "Application"
   !insertmacro CheckUnlocked "FrameGenCheck.exe"
   !insertmacro CheckUnlocked "runtime\amd_fidelityfx_framegeneration_vk.dll"
   !insertmacro CheckUnlocked "CockpitRestoreCheck.exe"
+  !insertmacro CheckUnlocked "nr\XPFSRNeuralRendering.dll"
+  !insertmacro CheckUnlocked "nr\ImportNRModel.exe"
+  !insertmacro CheckUnlocked "nr\NRCheck.exe"
   SetOverwrite on
   !ifndef FG_DEVELOPMENT
     ; Normal removes only the two FG components from a recognized owned install.

@@ -21,7 +21,7 @@ int wmain(int argc, wchar_t **argv) {
         auto file = dir / L"settings.ini";
         auto defaults = launcher::load(file);
         require(defaults.mode == 0 && defaults.enabled && defaults.cockpitRestore &&
-                    defaults.frameGeneration == 0 && defaults.presetId.empty(),
+                    defaults.frameGeneration == 0 && defaults.neuralRendering == 0 && defaults.presetId.empty(),
                 "First-run defaults");
         // Exercise upgrading the ANSI file created by the old launcher/installer.
         graphics::write(file, "[Application]\r\nSimulator=D:\\Simulator "
@@ -37,6 +37,9 @@ int wmain(int argc, wchar_t **argv) {
             p.presetId = preset.id;
             p.mode = preset.launcherMode;
             p.frameGeneration = 2;
+            p.neuralRendering = 3;
+            p.nr[xpfsr::nr::Intensity]=37;p.nr[xpfsr::nr::Tone]=63;p.nr[xpfsr::nr::Structure]=125;
+            p.nr[xpfsr::nr::Scale]=33;p.nr[xpfsr::nr::Style]=2;p.nr[xpfsr::nr::Passes]=3;p.nr[xpfsr::nr::AllowFG]=1;
             p.cockpitRestore = false;
             p.alignmentTint = true;
             p.enabled = false;
@@ -94,9 +97,10 @@ int wmain(int argc, wchar_t **argv) {
         SetFileAttributesW(file.c_str(), FILE_ATTRIBUTE_NORMAL);
         WritePrivateProfileStringW(L"Launcher", L"Mode", L"999", file.c_str());
         WritePrivateProfileStringW(L"Launcher", L"FrameGeneration", L"nonsense", file.c_str());
+        WritePrivateProfileStringW(L"Launcher", L"NeuralRendering", L"999", file.c_str());
         WritePrivateProfileStringW(L"Launcher", L"Preset", L"unknown", file.c_str());
         auto invalid = launcher::load(file);
-        require(invalid.mode == 0 && invalid.frameGeneration == 0 && invalid.presetId.empty(),
+        require(invalid.mode == 0 && invalid.frameGeneration == 0 && invalid.neuralRendering == 0 && invalid.presetId.empty(),
                 "Corrupt saved selectors use safe defaults");
         launcher::RuntimeMonitor monitor;
         using S = launcher::RuntimeState;

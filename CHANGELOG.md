@@ -1,5 +1,43 @@
 # Changes
 
+## 0.7.0-experimental.1
+
+Experimental NR release candidate; feature-guide publication review pending.
+
+- Add optional independent neural rendering before FSR on a private linear
+  scene-color image, retaining original FSR input on bypass.
+- Add saved Off/Subtle/Balanced/Strong/Custom controls, verified local model import,
+  a separate-process GPU check and fresh per-session recording/pause reasons.
+- Make NR On/Off, artistic controls, style, history, passes and scene scope live.
+  Prepare model/resolution changes in the background; retain contexts until
+  their command buffers can safely release them. Add 33/50/67% budget profiles.
+- Default to External only; offer Full scene for cockpit and exterior NR.
+  Ground-camera safety remains active and temporal histories reset on changes.
+  NR + FG requires an explicit experimental opt-in; FG provider changes still
+  need a new simulator session. No artifact-free combination is claimed.
+- Preserve proportional simulator UI size on supported single-display output
+  changes, with opt-out and exact backed-up accessibility preference restoration.
+- Fix launcher scrolling fragments and broken status/diagnostics repainting.
+  Move controls in batches, repaint descendants in a buffered view and make
+  wheel/scrollbar input at either limit a no-op. Retain partial wheel deltas.
+  Correct runtime locking of controls after reparenting into the scroll view.
+- Pair frame-generation callback reset metadata with its source frame rather
+  than mutable latest-frame state; retain SDK pacing and synchronous defaults.
+- Enable required Vulkan features without duplicate aggregate aliases; support
+  core 1.4 pipeline robustness without a missing extension name.
+- Compile pinned MIT shaders through the driver. No ACO binaries, loader
+  proxies, NVIDIA DLLs or model weights are included in source/downloads.
+- Pass live-control HDR fixtures and reduced-copy/copy-path output equivalence
+  on the R9700. Synthetic GPU timings are NR-pass measurements, not simulator
+  FPS or live-flight visual-quality guarantees.
+- Exercise live NR On/Off, background model budgets and full-scene cockpit
+  scope in X-Plane 12.4.4-r1. Also run NR with FSR 4.0.2 FG, retaining live NR
+  bypass/re-enable. Both simulator sessions exit normally. Keep the combination
+  experimental; these checks do not establish artifact-free flight quality.
+- Document in-sim/third-party-launcher activation design and AMD denoiser input
+  and backend requirements. These investigations do not add an implicit layer,
+  Visual Engine certification or an unsupported denoising toggle.
+
 ## 0.6.7-alpha
 
 - Fix stale text and button fragments when scrolling the launcher, including

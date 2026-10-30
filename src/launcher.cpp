@@ -7,9 +7,11 @@
 #include "launcher_theme.hpp"
 #include "native_layout.hpp"
 #include "framegen_policy.hpp"
+#include "nr_policy.hpp"
 #include <algorithm>
 #include <bcrypt.h>
 #include <commctrl.h>
+#include <commdlg.h>
 #include <filesystem>
 #include <fstream>
 #include <functional>
@@ -23,21 +25,27 @@
 namespace fs = std::filesystem;
 static fs::path appDirectory, simulator;
 static std::wstring launcherWindowClass;
+static std::string activeSessionToken;
+static xpfsr::nr::ControlChannel nrChannel;
 static HWND window{}, pathBox{}, argsBox{}, statusBox{}, toggle{}, modeBox{}, fgBox{}, ghostBox{},
-    cockpitBox{}, tintBox{};
+    cockpitBox{}, tintBox{}, neuralBox{}, keepUIBox{};
 static HWND presetBox{}, presetNote{}, savedLabel{}, injectionBanner{}, motionSetupNote{},
     footerStatus{};
-static const wchar_t *designSetupHint();
 static HWND designControl(int id);
+static const wchar_t *designSetupHint();
 static launcher::Preferences preferences;
 static launcher::RuntimeMonitor runtimeMonitor;
 static launcher::RuntimeState bannerState{};
 static bool controlsReady{}, launchedNative{}, activeNotificationSent{};
 static void saveChoices();
+static bool nrModelReady();
+static std::wstring nrLiveStatus();
+static void nrFinishJob();
+static bool nrJobRunning();
 static void runtimeBanner(launcher::RuntimeState, const app::Telemetry &);
 static HANDLE child{}, mapping{}, aaChild{};
 static DWORD childId{};
-static int launchedFG{}, lastFGSelection{};
+static int launchedFG{}, launchedMode{}, lastFGSelection{};
 static bool checkingFG{}, checkingCockpit{};
 static app::Shared *shared{};
 static HFONT font{}, titleFont{};
@@ -218,6 +226,7 @@ struct EnvironmentScope {
              {L"XPFSR24_COCKPIT_RESTORE", L"XPFSR24_GHOST_REDUCTION", L"VK_LAYER_PATH",
               L"VK_INSTANCE_LAYERS", L"VK_LOADER_LAYERS_ENABLE", L"VK_LOADER_DEBUG",
               L"DISABLE_VULKAN_OBS_CAPTURE", L"XPFSR24_FG_CONTROL", L"XPFSR24_MODE",
+              L"XPFSR24_NR",L"XPFSR24_NR_ROOT",L"XPFSR24_NR_STATUS",L"XPFSR24_NR_CONTROL",L"XPFSR24_NR_ALLOW_FG",
               L"XPFSR24_SESSION", L"XPFSR24_PROVIDER", L"XPFSR24_FG", L"XPFSR24_RUNTIME",
               L"XPFSR24_LOG", L"XPFSR24_STATUS", L"XPFSR24_CONTROL"}) {
             wchar_t value[32768]{};
@@ -233,6 +242,7 @@ struct EnvironmentScope {
 };
 static void launch(const fs::path &root, const std::wstring &arguments, bool native) {
     ensure(!running(), "X-Plane is already running from this launcher");
+    ensure(!nrJobRunning(),"Wait for NR import/check to finish before launching");
     preflight(root, native);
     if (!native) {
         graphics::ensureSimulatorClosed();
@@ -245,6 +255,12 @@ static void launch(const fs::path &root, const std::wstring &arguments, bool nat
             ensure((selected == 1 || selected == 3) ? graphics.scale == 0 : graphics.scale > 0,
                    "Choose a matching preset: Native AA needs Full scale; upscaling needs a lower "
                    "rendering scale");
+        }
+        const int nr=app::effectiveNeuralRendering(int(SendMessageW(neuralBox,CB_GETCURSEL,0,0)));
+        if(nr){
+            ensure(selected>0,"Choose FSR Native AA/upscaling for NR");
+            ensure(app::effectiveFrameGeneration(int(SendMessageW(fgBox,CB_GETCURSEL,0,0)))==0||preferences.nr[xpfsr::nr::AllowFG],"Enable experimental NR + FG testing in NR settings, or turn FG Off");
+            ensure(nrModelReady(),"Import your supported model with NR setup first");
         }
         install(root);
     }
@@ -260,6 +276,14 @@ static void launch(const fs::path &root, const std::wstring &arguments, bool nat
                             SendMessageW(ghostBox, BM_GETCHECK, 0, 0) == BST_CHECKED ? L"1" : L"0");
     auto mode = SendMessageW(modeBox, CB_GETCURSEL, 0, 0);
     auto fg = app::effectiveFrameGeneration(int(SendMessageW(fgBox, CB_GETCURSEL, 0, 0)));
+    int nr=app::effectiveNeuralRendering(int(SendMessageW(neuralBox,CB_GETCURSEL,0,0)));
+    ensure(native||!nr||mode>0,"Choose FSR Native AA/upscaling for NR");
+    ensure(native||!nr||!fg||preferences.nr[xpfsr::nr::AllowFG],"Enable experimental NR + FG testing, or turn FG Off");
+    if(!native&&nr)ensure(nrModelReady(),"Import your supported model with NR setup first");
+    SetEnvironmentVariableW(L"XPFSR24_NR",!native&&nr?std::to_wstring(nr).c_str():nullptr);
+    SetEnvironmentVariableW(L"XPFSR24_NR_ROOT",(appDirectory/L"nr").c_str());
+    SetEnvironmentVariableW(L"XPFSR24_NR_STATUS",(appDirectory/L"logs/renderer-nr-status.txt").c_str());
+    SetEnvironmentVariableW(L"XPFSR24_NR_ALLOW_FG",!native&&preferences.nr[xpfsr::nr::AllowFG]?L"1":nullptr);
     ensure(native || !fg || mode > 0,
            "Select Native AA or upscaling before enabling frame generation");
     if (!native && fg)
@@ -277,8 +301,16 @@ static void launch(const fs::path &root, const std::wstring &arguments, bool nat
     SetEnvironmentVariableW(L"XPFSR24_PROVIDER", mode >= 3 ? L"4.1.2" : L"3.1.6");
     std::ostringstream sessionChoices;
     sessionChoices << "requested_mode=" << mode << " provider=" << (mode >= 3 ? "4.1.2" : "3.1.6")
-                   << " frame_generation=" << fg << " native_comparison=" << native;
+                   << " frame_generation=" << fg << " neural_rendering=" << nr << " native_comparison=" << native;
     auto sessionId = session::prepare(appDirectory / L"logs", sessionChoices.str());
+    activeSessionToken=sessionId;
+    nrChannel.close();
+    if(!native&&app::neuralRenderingAvailable){
+        auto nrName=L"Local\\XPFSR24-NR-v3-"+wide(sessionId.c_str());
+        preferences.nr[xpfsr::nr::Enabled]=nr!=0;
+        ensure(nrChannel.create(nrName.c_str(),preferences.nr),"Cannot create live NR control channel");
+        SetEnvironmentVariableW(L"XPFSR24_NR_CONTROL",nrName.c_str());
+    }else SetEnvironmentVariableW(L"XPFSR24_NR_CONTROL",nullptr);
     SetEnvironmentVariableW(L"XPFSR24_SESSION", wide(sessionId.c_str()).c_str());
     SetEnvironmentVariableW(L"VK_LAYER_PATH", native ? nullptr : (appDirectory / L"layer").c_str());
     SetEnvironmentVariableW(L"VK_INSTANCE_LAYERS", native ? nullptr : L"VK_LAYER_XPFSR24");
@@ -306,6 +338,7 @@ static void launch(const fs::path &root, const std::wstring &arguments, bool nat
     child = process.hProcess;
     childId = process.dwProcessId;
     launchedNative = native;
+    launchedMode = native ? 0 : int(mode);
     runtimeMonitor.reset();
     activeNotificationSent = false;
     runtimeBanner(native ? launcher::RuntimeState::native : launcher::RuntimeState::starting, {});
@@ -315,6 +348,7 @@ static void launch(const fs::path &root, const std::wstring &arguments, bool nat
         << "Launcher PID " << GetCurrentProcessId() << "; X-Plane PID " << childId << '\n';
 }
 static void checkAA() {
+    ensure(!nrJobRunning(),"Wait for NR import/check to finish");
     checkingFG = false;
     checkingCockpit = false;
     ensure(!running(), "Close the simulator before running the isolated Native AA check");
@@ -351,6 +385,7 @@ static void checkAA() {
                    L"Running the isolated Native AA check: 48 small, fenced GPU frames...");
 }
 static void checkFG() {
+    ensure(!nrJobRunning(),"Wait for NR import/check to finish");
     ensure(app::frameGenerationAvailable,
            "Built-in frame generation is suspended in regular releases");
     checkingCockpit = false;
@@ -389,6 +424,7 @@ static void checkFG() {
                    L"Running frame generation check: 90 rendered frames in a temporary window...");
 }
 static void checkCockpit() {
+    ensure(!nrJobRunning(),"Wait for NR import/check to finish");
     ensure(!running(), "Close X-Plane before running the isolated cockpit check");
     ensure(!aaChild || WaitForSingleObject(aaChild, 0) != WAIT_TIMEOUT,
            "A GPU check is already running");
@@ -425,6 +461,7 @@ static void checkCockpit() {
         L"Running isolated Vulkan cockpit compositor check; no simulator files are changed.");
 }
 static void refresh() {
+    nrFinishJob();
     if (aaChild && WaitForSingleObject(aaChild, 0) != WAIT_TIMEOUT) {
         DWORD result{};
         GetExitCodeProcess(aaChild, &result);
@@ -527,6 +564,7 @@ static void refresh() {
                  << wide(status.fgReason) << L"\r\n";
         line << L"Cockpit: " << wide(status.cockpitReason) << L"\r\nRestore recordings: "
              << status.cockpitRecordings << L"\r\n";
+        line << nrLiveStatus() << L"\r\n";
         line << L"Counters are not measured FPS or a visual-quality guarantee.";
         SetWindowTextW(statusBox, line.str().c_str());
         if (shared)

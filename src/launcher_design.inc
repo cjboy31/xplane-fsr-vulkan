@@ -25,7 +25,7 @@ static LRESULT CALLBACK designCanvasProc(HWND h, UINT m, WPARAM w, LPARAM l) {
 }
 static std::vector<RECT> designCards;
 static HWND designHero{}, designSubtitle{}, designVersion{}, designPlatform{};
-static HWND designHeads[7]{}, designLabels[9]{};
+static HWND designHeads[7]{}, designLabels[10]{};
 static bool designHasMotion() {
 #ifdef XPFSR_NATIVE_MOTION
     return true;
@@ -62,8 +62,8 @@ static void designLayout(HWND hwnd) {
         right = wide ? left + leftWidth + 24 : left;
     int rightWidth = wide ? 368 : leftWidth;
     const int profileY = 144, profileH = 152, engineY = 316,
-              engineH = designHasMotion() ? 220 : 148;
-    int qualityY = engineY + engineH + 20, qualityH = 254, temporalY = qualityY + qualityH + 20;
+              engineH = designHasMotion() ? 292 : 220;
+    int qualityY = engineY + engineH + 20, qualityH = 292, temporalY = qualityY + qualityH + 20;
     int leftBottom = temporalY + 148;
     int statusY = wide ? 144 : leftBottom + 76, connectionY = statusY + 282,
         diagnosticY = connectionY + 254;
@@ -120,6 +120,10 @@ static void designLayout(HWND hwnd) {
     designPlace(motionBox, lx, engineY + 166, leftWidth - 48, 150);
     designHelp(214, left + leftWidth - 48, engineY + 133);
 #endif
+    const int nrY=engineY+(designHasMotion()?210:138);
+    fieldLabel(designLabels[9],lx,nrY,leftWidth-88);designHelp(215,left+leftWidth-48,nrY-5);
+    designPlace(neuralBox,lx,nrY+28,half,180);
+    designPlace(designControl(47),rx,nrY+25,half,36);
     fieldLabel(designLabels[4], lx, qualityY + 56, half - 32);
     designHelp(210, lx + half - 24, qualityY + 51);
     fieldLabel(designLabels[5], rx, qualityY + 56, half - 32);
@@ -134,6 +138,8 @@ static void designLayout(HWND hwnd) {
     designPlace(designControl(107), lx, qualityY + 197, half, 34);
     designPlace(designControl(106), rx, qualityY + 197, half, 34);
     designPlace(graphicsStatus, lx, qualityY + 234, leftWidth - 48, 18);
+    designPlace(keepUIBox,lx,qualityY+259,leftWidth-88,28);
+    designHelp(216,left+leftWidth-48,qualityY+258);
     designPlace(toggle, lx, temporalY + 59, half - 32, 30);
     designHelp(205, lx + half - 24, temporalY + 61);
     designPlace(cockpitBox, rx, temporalY + 59, half - 32, 30);
@@ -275,9 +281,9 @@ static void createMainControls(HWND hwnd) {
     const wchar_t *labels[] = {
         L"RESOLUTION PRESET", L"FSR MODE",       L"FRAME GENERATION",
         L"MOTION SOURCE",     L"MSAA",           L"INPUT SCALE",
-        L"OUTPUT RESOLUTION", L"X-PLANE FOLDER", L"OPTIONAL LAUNCH ARGUMENTS"};
-    for (int i = 0; i < 9; ++i) {
-        designLabels[i] = make(L"STATIC", labels[i], 0, 520 + i);
+        L"OUTPUT RESOLUTION", L"X-PLANE FOLDER", L"OPTIONAL LAUNCH ARGUMENTS",L"AMD NEURAL RENDERING - EXPERIMENTAL"};
+    for (int i = 0; i < 10; ++i) {
+        designLabels[i] = make(L"STATIC", labels[i], 0, i==9?543:520+i);
         small(designLabels[i]);
     }
     if (!designHasMotion())
@@ -300,6 +306,16 @@ static void createMainControls(HWND hwnd) {
         SendMessageW(modeBox, CB_ADDSTRING, 0, LPARAM(label));
     SendMessageW(modeBox, CB_SETCURSEL, preferences.mode, 0);
     fgBox = combo(41);
+    neuralBox=combo(46);
+    for(auto label:{L"Off - Live bypass",L"Subtle - 25% - Live",L"Balanced - 50% - Live",L"Strong - 100% - Live",L"Custom - Live NR settings"})
+        SendMessageW(neuralBox,CB_ADDSTRING,0,LPARAM(label));
+    SendMessageW(neuralBox,CB_SETCURSEL,app::effectiveNeuralRendering(preferences.neuralRendering),0);
+    if(!app::neuralRenderingAvailable)EnableWindow(neuralBox,FALSE);
+    theme::name(neuralBox,L"AMD neural rendering");
+    make(L"BUTTON",L"NR settings / Model",BS_PUSHBUTTON|WS_TABSTOP,47);
+    if(!app::neuralRenderingAvailable)EnableWindow(designControl(47),FALSE);
+    helpIcon(hwnd,215,0,0);
+    helpIcon(hwnd,216,0,0);
     for (auto *label :
          {L"Off · Recommended first", L"FSR 3.1.6 · 2x frames", L"FSR 4.0.2 · 2x frames (ML)"})
         SendMessageW(fgBox, CB_ADDSTRING, 0, LPARAM(label));

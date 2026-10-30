@@ -1,0 +1,71 @@
+{
+  "version": "0.7.0-experimental.1",
+  "voice": "bm_george",
+  "speed": 1.0,
+  "capture": {
+    "background_only": true
+  },
+  "preview_id": "v1",
+  "edition": "Private NR feature-guide review; owner approval required before publication",
+  "scenes": [
+    {
+      "kind": "welcome",
+      "chapter": "WELCOME",
+      "eyebrow": "0.7 / EXPERIMENTAL FLIGHT BRIEF",
+      "title": "Neural rendering.\nYour scene, refined.",
+      "lines": [
+        "Optional neural rendering before FSR",
+        "Live control, from exterior to cockpit"
+      ],
+      "narration": "Explore optional neural rendering before F S R. This experimental update adds live appearance controls and a choice of external views or the full scene, including the cockpit."
+    },
+    {
+      "kind": "settings",
+      "chapter": "LIVE CONTROLS",
+      "eyebrow": "01 / ADJUST DURING FLIGHT",
+      "title": "Fine tune without restarting.",
+      "lines": [
+        "Enable or bypass NR live",
+        "Adjust strength, tone, color, detail and history",
+        "Choose External only or Full scene"
+      ],
+      "narration": "Enable or bypass neural rendering during your flight. Adjust strength, lighting, color, detail and history live. Choose External only, or Full scene to include the cockpit. Your choices are saved."
+    },
+    {
+      "kind": "budget",
+      "chapter": "GPU BUDGET",
+      "eyebrow": "02 / CHOOSE YOUR PROCESSING BUDGET",
+      "title": "Balance detail and GPU time.",
+      "lines": [
+        "Performance 33%  /  Balanced 50%  /  Quality 67%",
+        "Model changes prepare while FSR continues",
+        "Start with Subtle strength and one pass"
+      ],
+      "narration": "Performance, Balanced and Quality profiles adjust the neural processing resolution. Model changes prepare in the background while F S R continues. Start with Subtle strength and one pass. Lower budgets can reduce detail and processing cost."
+    },
+    {
+      "kind": "setup",
+      "chapter": "LOCAL SETUP",
+      "eyebrow": "03 / SET UP ONCE",
+      "title": "Your model stays local.",
+      "lines": [
+        "Import your own supported model DLL with X-Plane closed",
+        "Run the separate NR hardware check",
+        "Windows RDNA4 preview  /  NR starts Off"
+      ],
+      "narration": "With X Plane closed, import your own supported model D L L, then run the separate hardware check. Model files stay local. This is a Windows R D N A four preview, with neural rendering off by default."
+    },
+    {
+      "kind": "guidance",
+      "chapter": "READY FOR FLIGHT",
+      "eyebrow": "04 / STAY IN CONTROL",
+      "title": "Test at your own pace.",
+      "lines": [
+        "Start with frame generation Off",
+        "NR + FG needs explicit experimental opt-in",
+        "Skip now  /  replay from What\u2019s new"
+      ],
+      "narration": "Start with frame generation off. Combining it with neural rendering needs explicit experimental opt in, and visual or pacing issues remain possible. Skip this guide whenever you like, or replay it from Whats New."
+    }
+  ]
+}

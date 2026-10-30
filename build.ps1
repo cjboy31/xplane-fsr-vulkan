@@ -5,14 +5,24 @@ param(
  [Parameter(Mandatory)][string]$VulkanHeaders,
  [Parameter(Mandatory)][string]$XPlaneSdk,
  [Parameter(Mandatory)][string]$FsrSdk,
- [switch]$FrameGenerationDevelopment
+ [switch]$FrameGenerationDevelopment,
+ [switch]$NeuralRenderingDevelopment,
+ [string]$OutputDirectory=''
 )
 $ErrorActionPreference='Stop'
+$Compiler=(Resolve-Path -LiteralPath $Compiler).Path
+$Glslang=(Resolve-Path -LiteralPath $Glslang).Path
+$VulkanHeaders=(Resolve-Path -LiteralPath $VulkanHeaders).Path
+$XPlaneSdk=(Resolve-Path -LiteralPath $XPlaneSdk).Path
+$FsrSdk=(Resolve-Path -LiteralPath $FsrSdk).Path
 $root=$PSScriptRoot
 $source=Join-Path $root 'src'
 $bin=Join-Path $root 'app'
+if($OutputDirectory){$bin=[IO.Path]::GetFullPath($OutputDirectory)}
+if($NeuralRenderingDevelopment -and -not $FrameGenerationDevelopment){throw 'NR development requires the explicit Experimental build flag as well'}
 $build=Join-Path $root 'build'
 [string[]]$channelFlags = if($FrameGenerationDevelopment){@('-DXPFSR_FG_DEVELOPMENT=1')}else{@()}
+if($NeuralRenderingDevelopment){$channelFlags+='-DXPFSR_NR_DEVELOPMENT=1'}
 New-Item -ItemType Directory -Force -Path $bin,$build,(Join-Path $bin 'layer'),(Join-Path $bin 'plugin\64'),(Join-Path $bin 'runtime'),(Join-Path $build 'generated') | Out-Null
 foreach($format in @('16','32')){
  $shaderArgs=@('-V','--target-env','vulkan1.2','-S','comp')
@@ -38,7 +48,7 @@ if($LASTEXITCODE -ne 0){throw 'Layer build failed'}
 & $Compiler '-std=c++17' '-O2' '-static' '-shared' '-Wl,--no-insert-timestamp' '-DWIN32_LEAN_AND_MEAN' '-DNOMINMAX' ('-I'+(Join-Path $XPlaneSdk 'CHeaders\XPLM')) (Join-Path $source 'plugin.cpp') (Join-Path $XPlaneSdk 'Libraries\Win\XPLM_64.lib') '-o' (Join-Path $bin 'plugin\64\win.xpl')
 if($LASTEXITCODE -ne 0){throw 'Plugin build failed'}
 if(Test-Path (Join-Path $source 'launcher.cpp')){
- & $Compiler '-std=c++17' '-O2' '-static' '-municode' '-mwindows' '-Wl,--no-insert-timestamp' '-DWIN32_LEAN_AND_MEAN' '-DNOMINMAX' @channelFlags (Join-Path $source 'launcher.cpp') (Join-Path $build 'app-icon.o') '-lcomctl32' '-lshell32' '-lole32' '-lbcrypt' '-lwinhttp' '-lgdiplus' '-ldwmapi' '-luxtheme' '-loleacc' '-luuid' '-lmfuuid' '-loleaut32' '-o' (Join-Path $bin 'XPlaneFSR24.exe')
+ & $Compiler '-std=c++17' '-O2' '-static' '-municode' '-mwindows' '-Wl,--no-insert-timestamp' '-DWIN32_LEAN_AND_MEAN' '-DNOMINMAX' @channelFlags (Join-Path $source 'launcher.cpp') (Join-Path $build 'app-icon.o') '-lcomctl32' '-lshell32' '-lole32' '-lbcrypt' '-lwinhttp' '-lcomdlg32' '-lgdiplus' '-ldwmapi' '-luxtheme' '-loleacc' '-luuid' '-lmfuuid' '-loleaut32' '-o' (Join-Path $bin 'XPlaneFSR24.exe')
  if($LASTEXITCODE -ne 0){throw 'Launcher build failed'}
 }
 & $Compiler '-std=c++17' '-O2' '-static' '-municode' '-Wl,--no-insert-timestamp' '-DWIN32_LEAN_AND_MEAN' '-DNOMINMAX' @includes (Join-Path $source 'aa_test.cpp') '-o' (Join-Path $bin 'NativeAACheck.exe')

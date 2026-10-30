@@ -140,6 +140,7 @@ static void startUpdateCheck() {
     refreshUpdateUI();
 }
 static void beginUpdateInstall() {
+    ensure(!nrJobRunning(),"Wait for NR import/check to finish before updating");
     graphics::ensureSimulatorClosed();
     ensure(!running() && (!aaChild || WaitForSingleObject(aaChild, 0) != WAIT_TIMEOUT),
            "Close X-Plane and all GPU checks before updating");
@@ -221,6 +222,7 @@ static void pollUpdate() {
         return;
     try {
         updates::require(!j->cancel, "Update canceled");
+        ensure(!nrJobRunning(),"Wait for NR import/check to finish before updating");
         graphics::ensureSimulatorClosed();
         ensure(!running() && (!aaChild || WaitForSingleObject(aaChild, 0) != WAIT_TIMEOUT),
                "Close all GPU checks before updating");

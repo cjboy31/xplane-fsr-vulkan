@@ -12,7 +12,8 @@ param(
   [string]$IconPath = '',
   [string]$SetupScript = (Join-Path $PSScriptRoot 'Setup.nsi'),
   [string]$MingwNotices = '',
-  [string]$FeatureVideoDirectory = ''
+  [string]$FeatureVideoDirectory = '',
+  [switch]$NeuralRenderingDevelopment
 )
 $ErrorActionPreference = 'Stop'
 $taskRoot = (Resolve-Path -LiteralPath $WorkspaceRoot).Path
@@ -39,6 +40,23 @@ if($fgDevelopment){$originalFiles += 'FrameGenCheck.exe'}
 $builtVersion = (Get-Item -LiteralPath (Join-Path $app 'XPlaneFSR24.exe')).VersionInfo.FileVersion
 if($builtVersion -ne $PackageVersion){throw "App resource version $builtVersion does not match package $PackageVersion"}
 foreach($relative in $originalFiles){ Add-Payload (Join-Path $app $relative) $relative 'Original MIT; API/compiler-runtime notices in licenses' }
+if($NeuralRenderingDevelopment){
+ if(-not $fgDevelopment){throw 'NR is available only in an explicitly experimental package'}
+ $nrManifest=Join-Path $app 'nr\NR-BUILD.json'
+ $nr=Get-Content -LiteralPath $nrManifest -Raw | ConvertFrom-Json
+ if($nr.sourceCommit -ne '960038fd1cb892742548f408355e0f3b2fd30d6f' -or $nr.modelsIncluded -ne $false -or $nr.acoIncluded -ne $false -or $nr.files.Count -lt 70){throw 'Unreviewed NR component manifest'}
+ $seen=@{}
+ foreach($entry in $nr.files){
+  if($entry.path -notmatch '^(XPFSRNeuralRendering\.dll|ImportNRModel\.exe|NRCheck\.exe|dlssnr-amd/shaders/(?:[a-z0-9_-]+/)?[a-z0-9_-]+\.(spv|txt))$' -or $seen.ContainsKey($entry.path)){throw 'NR payload is outside the explicit code/shader allow-list'}
+  $seen[$entry.path]=$true
+  $source=Join-Path $app ('nr/'+$entry.path)
+  if((Get-FileHash -LiteralPath $source).Hash.ToLowerInvariant() -ne $entry.sha256 -or (Get-Item -LiteralPath $source).Length -ne $entry.bytes){throw 'NR payload integrity mismatch'}
+  Add-Payload $source ('nr/'+$entry.path) 'Original adapter + pinned DLSSNR-AMD MIT; FSR1 MIT shader notices'
+ }
+ foreach($required in @('XPFSRNeuralRendering.dll','ImportNRModel.exe','NRCheck.exe')){if(-not $seen.ContainsKey($required)){throw 'NR component is incomplete'}}
+ Add-Payload $nrManifest 'nr\NR-BUILD.json' 'Original MIT build provenance; no models'
+ foreach($name in @('DLSSNR-AMD-MIT.txt','DLSSNR-AMD-UPSTREAM-NOTICES.md','FidelityFX-FSR1-MIT.txt')){Add-Payload (Join-Path $app ('licenses/'+$name)) ('licenses/'+$name) 'Upstream MIT and component notices, preserved intact'}
+}
 if([version](($PackageVersion -split '-')[0]) -ge [version]'0.6.2') {
   if(-not $FeatureVideoDirectory){throw 'A matching feature video is required for every Windows release starting with 0.6.2'}
   $videoFile = Join-Path $FeatureVideoDirectory ($PackageVersion+'.mp4')
@@ -107,12 +125,18 @@ foreach($relative in ($allFiles | Sort-Object)){
   $install.Add('File "'+(Join-Path $payload $winRelative)+'"')
   $uninstall.Add('Delete "$INSTDIR\'+$winRelative+'"')
 }
-foreach($directory in @('plugin\64','plugin','layer','runtime','licenses','media')){ $uninstall.Add('RMDir "$INSTDIR\'+$directory+'"') }
+$directories=@{}
+foreach($relative in $allFiles){
+ $parent=Split-Path $relative.Replace('/','\') -Parent
+ while($parent){$directories[$parent]=$true;$parent=Split-Path $parent -Parent}
+}
+foreach($directory in ($directories.Keys | Sort-Object Length -Descending)){ $uninstall.Add('RMDir "$INSTDIR\'+$directory+'"') }
 Write-Text (Join-Path $generated 'InstallFiles.nsh') ($install -join "`n")
 Write-Text (Join-Path $generated 'UninstallFiles.nsh') ($uninstall -join "`n")
 [string[]]$iconArguments = @()
 if($IconPath){$iconArguments += ('/DAPP_ICON='+(Resolve-Path -LiteralPath $IconPath).Path)}
 if($fgDevelopment){$iconArguments += '/DFG_DEVELOPMENT=1'}
+if($NeuralRenderingDevelopment){$iconArguments += '/DNR_DEVELOPMENT=1'}
 & $Nsis '/V3' ('/DPACKAGE='+$package) ('/DGENERATED='+$generated) ('/DPACKAGE_VERSION='+$PackageVersion) ('/DWINDOWS_VERSION='+$WindowsVersion) @iconArguments $SetupScript
 if($LASTEXITCODE -ne 0){throw 'NSIS compilation failed'}
 Copy-Item -LiteralPath (Join-Path $DocumentationFolder 'INSTALLATION-AND-USE.txt') -Destination (Join-Path $package 'READ-ME-FIRST.txt') -Force

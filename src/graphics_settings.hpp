@@ -2,6 +2,8 @@
 // Narrow, reversible preference edits. No private datarefs or simulator hooks.
 #pragma once
 #include <atomic>
+#include <cmath>
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
@@ -16,6 +18,7 @@ namespace fs = std::filesystem;
 struct Options {
     int msaa{}, fxaa{}, scale{};
     int outputWidth{}, outputHeight{};
+    bool keepUISize{true};
 };
 struct Change {
     std::string file, key, before, after;
@@ -125,6 +128,7 @@ inline Options current(const fs::path &root) {
     return o;
 }
 inline bool allowed(const Change &c) {
+    if(c.file=="Miscellaneous.prf")return c.key=="pixel_multiplier";
     if (c.file == "X-Plane.prf")
         return c.key == "renopt_MSAA" || c.key == "renopt_FXAA" || c.key == "renopt_FSR_04";
     if (c.file == "X-Plane Window Positions.prf")
@@ -194,6 +198,24 @@ inline fs::path apply(const fs::path &root, const fs::path &backupRoot, const Op
         change("X-Plane Window Positions.prf", "monitor/0/m_y_res_full",
                std::to_string(o.outputHeight));
         change("X-Plane Window Positions.prf", "monitor/0/m_is_fullscreen", "wmgr_mode_fullscreen");
+        // Preserve the logical UI canvas when this app changes output. Leave
+        // font size and unrecognized/older accessibility layouts untouched.
+        const auto misc=prefs(root)/L"Miscellaneous.prf";
+        if(o.keepUISize&&fs::is_regular_file(misc)){
+            auto text=read(misc);double oldHeight=0,multiplier=0;
+            try{
+                multiplier=std::stod(get(text,"pixel_multiplier"));
+                if(get(windows,"monitor/0/m_is_fullscreen")=="wmgr_mode_fullscreen")oldHeight=std::stod(get(windows,"monitor/0/m_y_res_full"));
+                else oldHeight=std::stod(get(windows,"monitor/0/m_window_bounds/3"))-std::stod(get(windows,"monitor/0/m_window_bounds/1"));
+            }catch(...){oldHeight=0;}
+            if(std::isfinite(multiplier)&&multiplier>=1&&multiplier<=4&&oldHeight>=720&&oldHeight<=8640&&oldHeight!=o.outputHeight){
+                double scaled=std::clamp(multiplier*o.outputHeight/oldHeight,1.0,4.0);
+                scaled=std::min(scaled,std::min(o.outputWidth/1024.0,o.outputHeight/768.0));
+                scaled=std::max(1.0,scaled);
+                std::ostringstream value;value<<std::fixed<<std::setprecision(6)<<scaled;
+                change("Miscellaneous.prf","pixel_multiplier",value.str());
+            }
+        }
     }
     if (changes.empty())
         return {};

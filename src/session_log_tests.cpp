@@ -19,13 +19,14 @@ int wmain(int argc, wchar_t **argv) {
         require(!session::fs::exists(directory), "Refusing to reuse a log fixture");
         session::fs::create_directories(directory);
         for (auto name : {L"renderer.log", L"renderer-status.txt", L"exit-status.txt",
-                          L"launch.txt", L"renderer-status.txt.tmp"})
+                          L"launch.txt", L"renderer-nr-status.txt", L"renderer-status.txt.tmp",
+                          L"renderer-nr-status.txt.tmp"})
             session::write(directory / name, "old-session-contents\n");
         session::write(directory / L"keep-user-file.txt", "unrelated\n");
         auto first = session::prepare(directory, "mode=upscale provider=4.1.2 fg=Off");
         require(first.size() == 32, "Session token");
         for (auto name :
-             {L"renderer.log", L"renderer-status.txt", L"exit-status.txt", L"launch.txt"})
+             {L"renderer.log", L"renderer-status.txt", L"exit-status.txt", L"launch.txt", L"renderer-nr-status.txt"})
             require(read((directory / name).wstring() + L".previous") == "old-session-contents\n",
                     "Previous diagnostics not preserved");
         require(read(directory / L"renderer.log").find("old-session") == std::string::npos &&
@@ -33,7 +34,9 @@ int wmain(int argc, wchar_t **argv) {
                 "Old renderer session leaked");
         require(read(directory / L"renderer-status.txt").empty() &&
                     read(directory / L"exit-status.txt").empty() &&
-                    !session::fs::exists(directory / L"renderer-status.txt.tmp"),
+                    read(directory / L"renderer-nr-status.txt").empty() &&
+                    !session::fs::exists(directory / L"renderer-status.txt.tmp") &&
+                    !session::fs::exists(directory / L"renderer-nr-status.txt.tmp"),
                 "Stale status/exit/temp survived");
         session::write(directory / L"renderer.log", "first-session-only\n");
         auto second = session::prepare(directory, "mode=native");

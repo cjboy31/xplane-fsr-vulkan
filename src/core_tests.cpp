@@ -2,6 +2,7 @@
 #include "shared.hpp"
 #include "camera_continuity.hpp"
 #include "frame_sequence.hpp"
+#include "framegen_callback_state.hpp"
 #include <atomic>
 #include <iostream>
 #include <stdexcept>
@@ -15,6 +16,12 @@ int main() {
         double p[16] = {2, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, -1, 0, 0, .1, 0};
         app::Camera before{}, after{};
         xpfsr::FrameSequence sequence;
+        xpfsr::FrameCallbackState callbacks;bool reset=false;
+        callbacks.prepared(10,false);callbacks.prepared(11,true);
+        expect(callbacks.read(10,reset)&&!reset,"Delayed FG callback used a newer frame's reset or was rejected");
+        expect(callbacks.read(11,reset)&&reset,"NR/camera reset lost in FG callback");
+        callbacks.prepared(27,false);
+        expect(!callbacks.read(11,reset)&&!callbacks.read(999,reset),"Overwritten/unknown FG metadata accepted");
         expect(sequence.canPrepare() && !sequence.ready(), "Initial FG source state");
         sequence.prepared = 10;
         expect(!sequence.canPrepare() && !sequence.ready(), "Unsubmitted prepare was presented");

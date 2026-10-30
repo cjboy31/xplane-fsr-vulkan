@@ -131,6 +131,9 @@ static const SettingHelp *helpById(int id) {
 static void helpIcon(HWND parent, int id, int x, int y) {
     auto button = control(L"BUTTON", L"?", BS_PUSHBUTTON | WS_TABSTOP, x, y, 25, 25, id, parent);
     auto *h = helpById(id);
+    if(id==215){theme::name(button,L"Help: AMD neural rendering");return;}
+    if(id==216){theme::name(button,L"Help: Keep X-Plane UI size");return;}
+    if(!h)return;
     theme::name(button, (std::wstring(L"Help: ") + h->title).c_str());
     auto tip = CreateWindowExW(WS_EX_TOPMOST, TOOLTIPS_CLASSW, nullptr, WS_POPUP | TTS_ALWAYSTIP, 0,
                                0, 0, 0, parent, nullptr, GetModuleHandleW(nullptr), nullptr);
@@ -144,7 +147,10 @@ static void helpIcon(HWND parent, int id, int x, int y) {
     SendMessageW(tip, TTM_SETDELAYTIME, TTDT_AUTOPOP, 30000);
 }
 #include "launcher_help.inc"
+#include "nr_ui.inc"
 static bool showHelp(HWND parent, int id) {
+    if(id==216){modernHelp(parent,L"Keep X-Plane UI size",L"When this app changes output resolution, it adjusts X-Plane's saved UI pixel multiplier in proportion to the previous output/window height. Base font size is retained. Minimum readable UI limits still apply.\n\nBest use: leave On when switching between 1080p, 1440p and 4K. Turn Off to let X-Plane manage scaling. Recognized single-monitor preferences are edited with an exact backup; Restore graphics undoes the edit. Ordinary launches keep current display and UI bytes unchanged.");return true;}
+    if(id==215){modernHelp(parent,L"AMD neural rendering - Experimental",nrSetupText().c_str());return true;}
     if (id == 204 && !app::frameGenerationAvailable) {
         modernHelp(parent, L"Frame generation temporarily suspended",
                    app::frameGenerationSuspension);
@@ -157,6 +163,8 @@ static bool showHelp(HWND parent, int id) {
     return true;
 }
 static void collectChoices() {
+    if(keepUIBox)preferences.keepSimUISize=SendMessageW(keepUIBox,BM_GETCHECK,0,0)==BST_CHECKED;
+    if(app::neuralRenderingAvailable)preferences.neuralRendering=int(SendMessageW(neuralBox,CB_GETCURSEL,0,0));
     preferences.simulator = text(pathBox);
     preferences.arguments = text(argsBox);
     preferences.mode = int(SendMessageW(modeBox, CB_GETCURSEL, 0, 0));
@@ -176,6 +184,8 @@ static void saveChoices() {
         SetWindowTextW(motionSetupNote, designSetupHint());
     try {
         launcher::save(appDirectory / L"settings.ini", preferences);
+        preferences.nr[xpfsr::nr::Enabled]=preferences.neuralRendering!=0;
+        nrChannel.write(preferences.nr);
         SetWindowTextW(savedLabel, L"Choices saved automatically");
         theme::tone(savedLabel, theme::green);
     } catch (...) {
@@ -354,6 +364,17 @@ static LRESULT CALLBACK procedure(HWND hwnd, UINT message, WPARAM w, LPARAM l) {
                 return 0;
             }
             switch (id) {
+            case 114:if(event==BN_CLICKED)saveChoices();break;
+            case 46:
+                if(event==CBN_SELCHANGE){
+                    auto selected=SendMessageW(neuralBox,CB_GETCURSEL,0,0);
+                    if(selected>0&&running()&&(launchedNative||!launchedMode||(launchedFG&&!preferences.nr[xpfsr::nr::AllowFG]))){SendMessageW(neuralBox,CB_SETCURSEL,preferences.neuralRendering,0);throw std::runtime_error(launchedNative||!launchedMode?"This session has no FSR reconstruction path for NR. Launch with FSR Native AA or upscaling to use NR live.":"Enable NR + frame generation testing in NR settings first, or use an FG-Off session.");}
+                    if(selected>=1&&selected<=3)preferences.nr[xpfsr::nr::Intensity]=selected==1?25:selected==2?50:100;
+                    if(selected>0&&!running()&&!preferences.nr[xpfsr::nr::AllowFG])SendMessageW(fgBox,CB_SETCURSEL,0,0);
+                    saveChoices();
+                }
+                break;
+            case 47:showNRSetup();break;
             case 251:
                 intro::show(hwnd, false);
                 break;
@@ -416,6 +437,7 @@ static LRESULT CALLBACK procedure(HWND hwnd, UINT message, WPARAM w, LPARAM l) {
                             "Restart X-Plane to change the frame generation provider");
                     }
                     if (selected && !running()) {
+                        if(!preferences.nr[xpfsr::nr::AllowFG])SendMessageW(neuralBox, CB_SETCURSEL, 0, 0);
                         SendMessageW(cockpitBox, BM_SETCHECK, BST_UNCHECKED, 0);
                         SendMessageW(tintBox, BM_SETCHECK, BST_UNCHECKED, 0);
                     }
@@ -513,6 +535,8 @@ static LRESULT CALLBACK procedure(HWND hwnd, UINT message, WPARAM w, LPARAM l) {
         }
         return 0;
     case WM_CLOSE:
+        if(nrJobRunning()){MessageBoxW(hwnd,L"Wait for the NR import/check to finish.",L"NR task active",MB_OK);return 0;}
+        nrFinishJob();
         intro::close();
         updateJob->cancel = true;
         try {
@@ -531,6 +555,7 @@ static LRESULT CALLBACK procedure(HWND hwnd, UINT message, WPARAM w, LPARAM l) {
         KillTimer(hwnd, 4);
         KillTimer(hwnd, 5);
         detach();
+        nrChannel.close();
         NOTIFYICONDATAW tray{sizeof(tray)};
         tray.hWnd = hwnd;
         tray.uID = 1;

@@ -53,19 +53,22 @@ inline std::string prepare(const fs::path &directory, const std::string &choices
     const auto token = id();
     // Copy every previous diagnostic first. Only these owned, known filenames
     // are touched. Opening the launcher again never calls this function.
-    for (auto name : {L"renderer.log", L"renderer-status.txt", L"exit-status.txt", L"launch.txt"}) {
+    for (auto name : {L"renderer.log", L"renderer-status.txt", L"exit-status.txt",
+                      L"renderer-nr-status.txt", L"launch.txt"}) {
         auto path = directory / name;
         if (fs::exists(path))
             fs::copy_file(path, path.wstring() + L".previous",
                           fs::copy_options::overwrite_existing);
     }
     write(directory / L"renderer.log", header(token, "launcher-prepared"));
-    for (auto name : {L"renderer-status.txt", L"exit-status.txt"})
+    for (auto name : {L"renderer-status.txt", L"exit-status.txt", L"renderer-nr-status.txt"})
         write(directory / name, "");
-    auto temporary = directory / L"renderer-status.txt.tmp";
-    if (fs::exists(temporary) && !fs::remove(temporary))
-        throw std::runtime_error(
-            "Cannot clear the previous renderer status temporary file; simulator was not started.");
+    for (auto name : {L"renderer-status.txt.tmp", L"renderer-nr-status.txt.tmp"}) {
+        auto temporary = directory / name;
+        if (fs::exists(temporary) && !fs::remove(temporary))
+            throw std::runtime_error(
+                "Cannot clear the previous renderer status temporary file; simulator was not started.");
+    }
     write(directory / L"launch.txt", header(token, "launcher") + choices + "\n");
     return token;
 }

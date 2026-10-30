@@ -82,9 +82,29 @@ int wmain(int argc,wchar_t**argv) {
         }
         // Main controls were reparented; runtime enabling must still find them.
         child=CreateEventW(nullptr,TRUE,FALSE,nullptr);refresh();
-        ensure(!IsWindowEnabled(modeBox)&&!IsWindowEnabled(presetBox),
+        ensure(!IsWindowEnabled(modeBox)&&!IsWindowEnabled(presetBox)&&IsWindowEnabled(neuralBox)==app::neuralRenderingAvailable,
                "Runtime control gating lost reparented controls");
         SetEvent(child);CloseHandle(child);child=nullptr;refresh();ensure(IsWindowEnabled(modeBox)&&IsWindowEnabled(presetBox),"Controls did not unlock");
+        if(app::neuralRenderingAvailable) {
+            showNRSetup();KillTimer(nrWindow,1);
+            RECT modalBounds{};GetWindowRect(nrWindow,&modalBounds);
+            MONITORINFO monitor{sizeof(monitor)};GetMonitorInfoW(MonitorFromWindow(window,MONITOR_DEFAULTTONEAREST),&monitor);
+            ensure(modalBounds.left>=monitor.rcWork.left&&modalBounds.top>=monitor.rcWork.top&&modalBounds.right<=monitor.rcWork.right&&modalBounds.bottom<=monitor.rcWork.bottom,"NR settings escaped the owner's monitor");
+            EnumChildWindows(nrWindow,[](HWND h,LPARAM)->BOOL{SetWindowSubclass(h,countPaint,91,0);return TRUE;},0);
+            ensure(SendMessageW(nrFields[xpfsr::nr::Scope],CB_GETCOUNT,0,0)==2,"Both NR scopes must be available");
+            SendMessageW(nrFields[xpfsr::nr::Scope],CB_SETCURSEL,1,0);nrChangeSetting(170+xpfsr::nr::Scope);
+            ensure(launcher::load(appDirectory/L"settings.ini").nr[xpfsr::nr::Scope]==1,"Full-scene scope did not save");
+            for(int edge:{0,99999}) {
+                nrScrollTo(edge);pump();paints.clear();moves.clear();int position=nrScroll;
+                for(int repeat=0;repeat<100;++repeat) {
+                    SendMessageW(nrWindow,WM_MOUSEWHEEL,MAKEWPARAM(0,edge?-WHEEL_DELTA:WHEEL_DELTA),0);
+                    SendMessageW(nrWindow,WM_VSCROLL,edge?SB_BOTTOM:SB_TOP,0);
+                }
+                pump();ensure(nrScroll==position&&moves.empty()&&paints.empty(),"NR modal overscroll repainted or moved the view");
+            }
+            SendMessageW(nrWindow,WM_COMMAND,IDCANCEL,0);ensure(!nrWindow&&IsWindowEnabled(window),"Escape did not close NR settings");
+            std::cout<<"PASS: NR scope persistence, modal scroll limits and Escape\n";
+        }
         // Avoid normal app teardown/reopening/tray behavior in the test process.
         NOTIFYICONDATAW tray{sizeof(tray)};tray.hWnd=window;tray.uID=1;Shell_NotifyIconW(NIM_DELETE,&tray);
         SetWindowLongPtrW(window,GWLP_WNDPROC,LONG_PTR(DefWindowProcW));DestroyWindow(window);theme::shutdown();CoUninitialize();

@@ -16,6 +16,14 @@ Laminar Research product, and is not a complete solution to ghosting or stutter.
 
 ## Downloads and current source
 
+**This branch: AMD neural rendering prototype.** Independent NR is being adapted
+on `experimental/amd-neural-rendering`, using the pinned MIT DLSSNR-AMD Vulkan
+runtime. It is an opt-in feature, off by default, for Windows RDNA4 FP8 hardware
+with External only or Full scene cockpit/exterior scope. It is not NVIDIA's official DLSS 5 integration. The 0.8.0
+reference is used for design research only; its restricted software, NVIDIA DLL
+and extracted weights are not redistributed. See [NR setup and validation](docs/NEURAL-RENDERING.md).
+The existing public downloads below do not contain this prototype.
+
 - **Windows Normal:** [0.6.7-alpha installer and instructions](https://github.com/cjboy31/xplane-fsr-vulkan/releases/tag/v0.6.7-alpha). Recommended project channel; built-in frame generation remains disabled.
 - **Windows Experimental:** [0.6.7-experimental.1 FG development installer](https://github.com/cjboy31/xplane-fsr-vulkan/releases/tag/v0.6.7-experimental.1). Includes FG testing options with known artifact/flicker limitations. Switch builds through **Updates / Channel**.
 - **Feature video:** [Watch or download the captioned narrated guide](https://github.com/cjboy31/xplane-fsr-vulkan/releases/download/v0.6.7-alpha/XPlane-FSR3-4-0.6.7-alpha-Feature-Guide.mp4). The previously approved 0.6.4 channel/display guide is included unchanged in the 0.6.7 maintenance package, with captions and immediate Skip. [Versioned-video workflow](https://github.com/cjboy31/xplane-fsr-vulkan/blob/main/docs/FEATURE-VIDEOS.md).

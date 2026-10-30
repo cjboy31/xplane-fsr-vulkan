@@ -9,7 +9,9 @@
 #include <tuple>
 #include <vector>
 namespace updates {
-#ifdef XPFSR_FG_DEVELOPMENT
+#ifdef XPFSR_NR_DEVELOPMENT
+inline constexpr char currentVersion[] = "0.7.0-experimental.1";
+#elif defined(XPFSR_FG_DEVELOPMENT)
 inline constexpr char currentVersion[] = "0.6.7-experimental.1";
 #else
 inline constexpr char currentVersion[] = "0.6.7-alpha";

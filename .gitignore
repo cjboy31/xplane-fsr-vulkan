@@ -21,6 +21,8 @@ __pycache__/
 *.mp4
 *.wav
 *.onnx
+*.bin
+USER-MODELS.ini
 *.log
 settings.ini
 launcher.lock

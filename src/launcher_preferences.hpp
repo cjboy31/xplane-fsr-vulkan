@@ -1,12 +1,15 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 #include "graphics_presets.hpp"
+#include "nr_controls.hpp"
 #include <cstring>
 namespace launcher {
 struct Preferences {
     std::wstring simulator{L"D:\\X-Plane 12"}, arguments;
     std::string presetId;
-    int mode{}, frameGeneration{};
+    int mode{}, frameGeneration{}, neuralRendering{};
+    xpfsr::nr::Controls nr;
+    bool keepSimUISize{true};
     bool enabled{true}, ghostReduction{true}, cockpitRestore{true}, alignmentTint{};
     graphics::Options manual{};
     bool manualApplied{}, manualPending{};
@@ -80,6 +83,14 @@ inline Preferences load(const graphics::fs::path &file) {
         readSetting(file, L"Launcher", L"ArgumentsHex", encode(p.arguments).c_str()), p.arguments);
     p.mode = integer(file, L"Mode", 0, 4);
     p.frameGeneration = integer(file, L"FrameGeneration", 0, 2);
+    p.neuralRendering=integer(file,L"NeuralRendering",0,4);
+    p.keepSimUISize=integer(file,L"KeepSimUISize",1,1);
+    for(int i=0;i<xpfsr::nr::Count;++i){
+        auto &setting=xpfsr::nr::settings[i];
+        try{size_t used{};auto s=readSetting(file,L"Launcher",setting.key,std::to_wstring(setting.initial).c_str());int n=std::stoi(s,&used);if(used==s.size()&&n>=setting.minimum&&n<=setting.maximum)p.nr.value[i]=n;}catch(...){}
+    }
+    if(!p.nr.valid())p.nr=xpfsr::nr::Controls{};
+    p.nr[xpfsr::nr::Enabled]=p.neuralRendering!=0;
     p.enabled = integer(file, L"Enabled", 1, 1);
     p.ghostReduction = integer(file, L"GhostReduction", 1, 1);
     p.cockpitRestore = integer(file, L"CockpitRestore", 1, 1);
@@ -118,6 +129,9 @@ inline std::wstring serialized(const Preferences &p) {
     add(L"Preset", std::wstring(p.presetId.begin(), p.presetId.end()));
     add(L"Mode", std::to_wstring(p.mode));
     add(L"FrameGeneration", std::to_wstring(p.frameGeneration));
+    add(L"NeuralRendering",std::to_wstring(p.neuralRendering));
+    add(L"KeepSimUISize",std::to_wstring(p.keepSimUISize));
+    for(int i=0;i<xpfsr::nr::Count;++i)add(xpfsr::nr::settings[i].key,std::to_wstring(i==xpfsr::nr::Enabled?int(p.neuralRendering!=0):p.nr.value[i]));
     add(L"Enabled", std::to_wstring(p.enabled));
     add(L"GhostReduction", std::to_wstring(p.ghostReduction));
     add(L"CockpitRestore", std::to_wstring(p.cockpitRestore));

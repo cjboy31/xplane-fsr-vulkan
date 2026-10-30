@@ -1,0 +1,40 @@
+REDISTRIBUTION REVIEW - 0.7.0-experimental.1
+
+Original launcher, Vulkan adapter/layer, camera metadata plugin, checks,
+instruction text, media edit/narration and artwork: project MIT license.
+
+Independent NR runtime source is mochizuki0323/DLSSNR-AMD, pinned to
+960038fd1cb892742548f408355e0f3b2fd30d6f, MIT. Its Windows Vulkan core and
+generated driver-compiled SPIR-V shaders are built from that source. Original
+C ABI adapter and importer/check integration are MIT. Preserve
+DLSSNR-AMD-MIT.txt, DLSSNR-AMD-UPSTREAM-NOTICES.md and FidelityFX-FSR1-MIT.txt.
+NR-BUILD.json lists exact generated files, sizes and SHA-256 values. No ACO
+machine code, ReShade, OptiScaler, NGX, DXVK, D3D or MinHook binary is included.
+
+AMD FidelityFX SDK 2.4.0 Vulkan loader, upscaler and frame-generation runtime:
+AMD binary redistribution terms in AMD-SDK-license.md and third-party notices.
+Only the reviewed runtime DLLs are packaged; development headers/libraries,
+samples and build tools are excluded. The downloaded AMD runtime signatures
+and expected SHA-256 identities are checked during packaging.
+
+Vulkan headers, XPLM SDK and LLVM/MinGW compiler runtime notices are included
+for compiled API/runtime use. Full source headers, SDK libraries and simulator
+files are not packaged. The NSIS installer includes its required notice.
+
+The original feature-guide edit uses local Kokoro-generated narration under
+the speech component terms and the original app icon. Its prior approved
+simulator still is decorative background, not an NR or FG comparison. Captured
+simulator visuals retain their owners. Preserve the media credits/provenance.
+Speech build tools, voice/model packs and private capture evidence are excluded.
+
+EXCLUDED FROM SOURCE AND DOWNLOADS
+- NVIDIA nvngx_dlssnr.dll and extracted small/original neural model weights.
+- The restrictive DLSS-NR-on-AMD 0.8.0 reference software/assets. Its published
+  controls/docs were design research only; no implementation was copied.
+- Simulator/aircraft/scenery assets, other add-on DLLs/plugins, screenshots,
+  private logs, user preferences, models, caches and GPU test readbacks.
+- SDK development archives, reference checkouts, toolchains and credentials.
+
+The installer uses an explicit code/shader/media/license file allow-list and
+rejects unknown staging files. User model import happens locally after install.
+Keep all upstream notices when redistributing; no endorsement is claimed.

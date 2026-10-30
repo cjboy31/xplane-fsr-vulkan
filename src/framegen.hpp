@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 #include "fsr24.hpp"
+#include "framegen_callback_state.hpp"
 #include <atomic>
 #include <ffx_framegeneration.h>
 #include <vk/ffx_api_framegeneration_vk.h>
@@ -171,13 +172,15 @@ class FrameGenerator {
     uint32_t width_{}, height_{};
     uint64_t prepared_{};
     bool reset_{true}, configured_{}, enabled_{};
+    FrameCallbackState callbackFrames_;
     static ffxReturnCode_t generate(ffxDispatchDescFrameGeneration *params, void *pointer) {
         auto &self = *static_cast<FrameGenerator *>(pointer);
-        if (params->frameID != self.prepared_) {
+        bool reset=true;
+        if (!self.callbackFrames_.read(params->frameID,reset)) {
             self.failure.store(FFX_API_RETURN_ERROR_PARAMETER);
             return FFX_API_RETURN_ERROR_PARAMETER;
         }
-        params->reset = params->reset || self.reset_;
+        params->reset = params->reset || reset;
         auto result = self.api_.dispatch(&self.context_, &params->header);
         if (result == FFX_API_RETURN_OK)
             self.generated.fetch_add(params->numGeneratedFrames);
@@ -282,6 +285,7 @@ class FrameGenerator {
         memcpy(p.cameraRight, camera.right, 12);
         memcpy(p.cameraForward, camera.forward, 12);
         check(api_.dispatch(&context_, &p.header), "Prepare frame generation V2");
+        callbackFrames_.prepared(frame,reset_);
         prepared_ = frame;
     }
     ~FrameGenerator() {

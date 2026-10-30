@@ -1,8 +1,13 @@
 #include <windows.h>
 101 ICON "../assets/app.ico"
 1 VERSIONINFO
+#ifdef XPFSR_NR_DEVELOPMENT
+FILEVERSION 0,7,0,0
+PRODUCTVERSION 0,7,0,0
+#else
 FILEVERSION 0,6,7,0
 PRODUCTVERSION 0,6,7,0
+#endif
 FILEFLAGSMASK 0x3fL
 FILEOS 0x40004L
 FILETYPE 0x1L
@@ -12,7 +17,9 @@ BEGIN
     BLOCK "040904b0"
     BEGIN
       VALUE "FileDescription", "FSR 3/4 + Frame Gen for X-Plane - Vulkan Preview\0"
-#ifdef XPFSR_FG_DEVELOPMENT
+#ifdef XPFSR_NR_DEVELOPMENT
+      VALUE "FileVersion", "0.7.0-experimental.1\0"
+#elif defined(XPFSR_FG_DEVELOPMENT)
       VALUE "FileVersion", "0.6.7-experimental.1\0"
 #else
       VALUE "FileVersion", "0.6.7-alpha\0"

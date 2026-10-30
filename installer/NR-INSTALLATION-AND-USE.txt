@@ -1,0 +1,108 @@
+FSR 3/4 + FRAME GEN FOR X-PLANE 12
+0.7.0-experimental.1 - Independent neural rendering preview
+
+WHAT THIS UPDATE DOES
+Optional NR processes a private copy of scene color before FSR reconstruction.
+It can change lighting, color and scene detail. It adds GPU work. It is an
+independent experimental adapter, not an official NVIDIA DLSS 5 integration.
+NR starts Off. FSR Native AA/upscaling still works with NR Off.
+
+INSTALL
+1. Close X-Plane, this launcher and all GPU checks.
+2. Extract the RAR, open the installation folder and run XPlane-FSR24-Setup.exe.
+3. Select your X-Plane folder wherever it is installed, including an external
+   SSD. Install the application in its default per-user folder or another empty
+   writable folder. Do not install it inside X-Plane's plugins folder.
+4. To update, choose the existing official application folder. Setup replaces
+   its packaged files and preserves saved choices and imported local models.
+5. Open the app from the Start menu. The offline guide can be skipped immediately
+   with Skip / Continue, Escape or Close, and replayed from What's new. Mute,
+   pause and automatic-video preferences are available in the player.
+
+FIRST NR SETUP - X-PLANE CLOSED
+This Windows Vulkan prototype requires compatible RDNA4 FP8 cooperative-matrix
+hardware and driver features. Tested on a Radeon AI PRO R9700 and X-Plane
+12.4.4-r1. Other configurations require their own check. Linux/Mac NR, VR,
+multiple scene views and multi-monitor reconstruction are not supported here.
+The current NR backend requires an application path containing ASCII characters.
+
+Open NR settings / Model. Import your own supported nvngx_dlssnr.dll, version
+310.9.16 or 310.8.0, obtained under its applicable terms. The importer reads it
+as data; it does not run NVIDIA code. Known model sizes and SHA-256 hashes are
+checked. Run NR check before the first flight. Neither the DLL nor its extracted
+model weights are supplied in this package. Do not copy another mod's Vulkan
+loader/proxy into this application folder.
+
+SIMULATOR SETTINGS
+Select FSR Native AA with Full input scale, or FSR Upscaling with a lower input
+scale such as Quality. Turn X-Plane FXAA Off. Start with MSAA Off. Native AA uses
+the full output resolution; upscaling reconstructs the chosen output resolution
+from fewer internal pixels. For a 4K Quality example, deliberately select 4K
+output with Quality input: 2560 x 1440 internal -> 3840 x 2160 output. A 1440p
+output setting alone does not produce 4K output. Use Apply graphics with X-Plane
+closed. Launch preserves the current output/window mode instead of forcing the
+saved preset again. The UI-size option compensates supported single-display
+output changes; fonts stay controlled by X-Plane. Back up your preferred settings.
+
+Keep frame generation Off for the first test. Choose NR Subtle, one pass, and
+Balanced 50% model resolution. Launch X-Plane from this app and load a flight.
+The camera plugin is installed by the app. Third-party launchers do not inherit
+this app's scoped Vulkan environment; an in-sim activation route is not provided
+by this release. Use Live simulator status and NR status to confirm processing.
+Preparing, recording, paused and failed states have different meanings. A
+recording count confirms submitted commands, not visual quality or scanout.
+
+LIVE NR CONTROLS
+Enable or bypass NR without restarting the flight. Strength, tone/lighting,
+structure, skin structure, color/detail transfer, highlight guard, history,
+style, passes, composition/scaler, masking and style grade apply live. Help
+buttons explain use and tradeoffs. Model/network and processing-resolution
+changes prepare in the background; FSR continues while NR is waiting. First
+compilation may take tens of seconds. Re-enabling a prepared model is quicker.
+Selections save automatically and return when reopening the app.
+
+External views only is the default. Full scene includes the cockpit as well as
+the exterior. Changing scope resets temporal history. The near-ground external
+camera safety bypass takes precedence. Raise the camera above 2.5 m to resume
+after ground-contact protection. Cockpit-screen restoration remains dependent
+on supported aircraft profiles; Full scene adds no universal instrument masks.
+
+Performance / Balanced / Quality use 33% / 50% / 67% model resolution, prefer the
+small model and use one pass. They retain artistic strengths. Lower model scale
+can reduce detail and GPU cost. Turning blend strength down alone does not reduce
+network work. Two or three passes add substantial work. The 25% and 100% budgets
+are advanced options. Compare a stationary scene and moving views before tuning.
+
+NR + FRAME GENERATION
+An explicit Allow NR + frame generation switch is required. Select the FG
+provider before launching; changing that provider still requires a new session.
+Cockpit-screen restoration/tint are disabled with FG. The SDK owns interpolation
+and paced presentation; NR runs before reconstruction. Live NR bypass/re-enable
+was exercised with FSR 4.0.2 FG on the R9700, but flicker, ghosting and uneven
+pacing remain possible. Motion estimates do not include exact engine/object/
+cloud motion. This is a test option, not an artifact-free or FPS guarantee.
+
+TROUBLESHOOTING AND REMOVAL
+If NR fails, bypass it and read NR status/Renderer log. Off then On requests a
+retry after a failed context. Restore conservative settings and run the GPU
+check with X-Plane closed. Each launch starts fresh session diagnostics and
+retains one bounded previous session. Do not post private simulator logs without
+reviewing their paths and add-on information.
+
+Use Updates / Channel to check Normal or Experimental. Choosing a channel alone
+does not replace the build; use the verified installer action. Normal keeps FG
+Off and does not enable NR. Older installers may leave unused NR components or
+older guide files in the folder. They are not loaded by those builds. User models,
+settings, diagnostics and backups are kept during updates; there is no recursive
+folder wipe. Previous GitHub releases remain available.
+
+To uninstall, close X-Plane and all checks, use Remove camera plugin for the
+simulator folder, then run the installed uninstaller. It removes this package's
+allow-listed files and settings. Local model/cache files, logs, plugin backups
+and unrelated files are preserved; remove your local models yourself if desired.
+No joystick, controller binding or camera-control configuration is changed.
+
+SOURCE / SUPPORT
+https://github.com/cjboy31/xplane-fsr-vulkan
+See licenses and REDISTRIBUTION.txt. No endorsement by AMD, NVIDIA or Laminar
+Research is claimed. The independent model runtime is pinned MIT DLSSNR-AMD.

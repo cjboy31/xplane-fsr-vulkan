@@ -99,12 +99,23 @@ For the separate Windows frame-generation development package, build from
 `experimental/frame-generation` using the same command plus
 `-FrameGenerationDevelopment`. This sets `XPFSR_FG_DEVELOPMENT` for both launcher
 and layer and embeds `0.6.4-experimental.1` in the app resource and updater.
-The default build embeds `0.6.4-alpha` and enforces FG Off. The installer rejects
+The default build embeds the Normal version in `src/update_feed.hpp` and enforces FG Off. The installer rejects
 mismatched package/resource versions; only an `experimental.N` package includes
 the verified AMD FG DLL and FrameGenCheck. Do not enable this flag for Normal
 packages. The independent native-motion branch is unchanged.
 
-`Test-LauncherUI.ps1 -Compiler <compiler>` exercises native scroll/repaint behavior,
-clipping, diagnostics, fixed footer, precision wheel deltas and repeated limit
-input at four DPI values in wide/narrow layouts. Its brief visible UI fixtures
-make no network requests and never launch the simulator.
+For independent NR development, use `experimental/amd-neural-rendering`, add
+both `-FrameGenerationDevelopment -NeuralRenderingDevelopment` and optionally
+`-OutputDirectory build/release-app` to `build.ps1`. Run `Build-NR.ps1` with
+the pinned MIT reference, compiler, glslang, Python and Vulkan headers and use
+the same `-AppDirectory build/release-app`. The initial build generates and
+records shaders; `-SkipShaders` subsequently verifies their hashes. Models
+are user-supplied local data and must never be packaged. See
+[the integration contract](docs/NEURAL-RENDERING.md).
+
+`Test-LauncherUI.ps1 -Compiler '<compiler>'` exercises the actual native main
+window and NR dialog, including scrolling, clipped children, diagnostics,
+fixed footer, wheel precision, overscroll no-ops, scope persistence and Escape.
+It creates short-lived UI fixtures without simulator launches or network
+requests. Run it when the desktop can briefly show the test windows. Run
+`Test-Launcher.ps1`, `Test-NR.ps1` and updater regressions as appropriate too.
