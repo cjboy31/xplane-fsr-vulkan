@@ -2,7 +2,7 @@
 
 ## 0.7.0-experimental.1
 
-Experimental NR release candidate; feature-guide publication review pending.
+Experimental NR preview with the owner-approved feature guide.
 
 - Add optional independent neural rendering before FSR on a private linear
   scene-color image, retaining original FSR input on bypass.

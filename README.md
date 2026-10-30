@@ -16,22 +16,22 @@ Laminar Research product, and is not a complete solution to ghosting or stutter.
 
 ## Downloads and current source
 
-**This branch: AMD neural rendering prototype.** Independent NR is being adapted
+**This branch: AMD neural rendering preview.** Independent NR is available
 on `experimental/amd-neural-rendering`, using the pinned MIT DLSSNR-AMD Vulkan
 runtime. It is an opt-in feature, off by default, for Windows RDNA4 FP8 hardware
 with External only or Full scene cockpit/exterior scope. It is not NVIDIA's official DLSS 5 integration. The 0.8.0
 reference is used for design research only; its restricted software, NVIDIA DLL
 and extracted weights are not redistributed. See [NR setup and validation](docs/NEURAL-RENDERING.md).
-The existing public downloads below do not contain this prototype.
+The 0.7.0 Experimental installer includes this preview; NR starts Off.
 
 - **Windows Normal:** [0.6.7-alpha installer and instructions](https://github.com/cjboy31/xplane-fsr-vulkan/releases/tag/v0.6.7-alpha). Recommended project channel; built-in frame generation remains disabled.
-- **Windows Experimental:** [0.6.7-experimental.1 FG development installer](https://github.com/cjboy31/xplane-fsr-vulkan/releases/tag/v0.6.7-experimental.1). Includes FG testing options with known artifact/flicker limitations. Switch builds through **Updates / Channel**.
-- **Feature video:** [Watch or download the captioned narrated guide](https://github.com/cjboy31/xplane-fsr-vulkan/releases/download/v0.6.7-alpha/XPlane-FSR3-4-0.6.7-alpha-Feature-Guide.mp4). The previously approved 0.6.4 channel/display guide is included unchanged in the 0.6.7 maintenance package, with captions and immediate Skip. [Versioned-video workflow](https://github.com/cjboy31/xplane-fsr-vulkan/blob/main/docs/FEATURE-VIDEOS.md).
+- **Windows Experimental:** [0.7.0-experimental.1 NR and FG preview installer](https://github.com/cjboy31/xplane-fsr-vulkan/releases/tag/v0.7.0-experimental.1). Adds live independent NR controls, cockpit/full-scene scope and processing budgets on compatible Windows RDNA4 FP8 hardware. Import your own supported model locally; no NVIDIA DLL or model weights are included. NR + FG requires explicit opt-in and retains visual/pacing limitations. Switch builds through **Updates / Channel**.
+- **Feature video:** [Watch or download the 77-second NR guide](https://github.com/cjboy31/xplane-fsr-vulkan/releases/download/v0.7.0-experimental.1/XPlane-FSR3-4-0.7.0-experimental.1-Feature-Guide.mp4). Explains live controls, scene scope, processing budgets and model setup, with captions and immediate Skip. [Versioned-video workflow](https://github.com/cjboy31/xplane-fsr-vulkan/blob/main/docs/FEATURE-VIDEOS.md).
 - **Linux:** [Native FSR 3.1 preview downloads](https://github.com/cjboy31/xplane-fsr-vulkan/releases/tag/native-preview-2026.10.29.1) — requires MSAA off and FSR supersampling enabled; real-flight validation is pending.
 - **Mac:** [Universal compatibility-probe download](https://github.com/cjboy31/xplane-fsr-vulkan/releases/tag/native-preview-2026.10.29.1) — diagnostics only; **Mac FSR/Metal rendering is not implemented**.
 - **Combined Linux/Mac RAR:** [Download the native preview package](https://github.com/cjboy31/xplane-fsr-vulkan/releases/download/native-preview-2026.10.29.1/XPlane-FSR-Native-0.6.2-platform-preview.1.rar). Includes installation instructions and validation notes.
 
-**Source matching these releases:** [Windows release source](https://github.com/cjboy31/xplane-fsr-vulkan/tree/codex/release-channels) · [FG development source](https://github.com/cjboy31/xplane-fsr-vulkan/tree/experimental/frame-generation) · [Linux/Mac preview source](https://github.com/cjboy31/xplane-fsr-vulkan/tree/experimental/native-platforms/platform) · [All releases](https://github.com/cjboy31/xplane-fsr-vulkan/releases).
+**Source matching these releases:** [Windows release source](https://github.com/cjboy31/xplane-fsr-vulkan/tree/main) · [NR/FG preview source](https://github.com/cjboy31/xplane-fsr-vulkan/tree/experimental/amd-neural-rendering) · [Earlier FG development source](https://github.com/cjboy31/xplane-fsr-vulkan/tree/experimental/frame-generation) · [Linux/Mac preview source](https://github.com/cjboy31/xplane-fsr-vulkan/tree/experimental/native-platforms/platform) · [All releases](https://github.com/cjboy31/xplane-fsr-vulkan/releases).
 
 Native preview downloads have separate limits: FSR 4, frame generation, VR and
 Native AA are unavailable there. Read the selected release's instructions.
