@@ -3,7 +3,7 @@
   "preview_id": "v1",
   "voice": "bm_george",
   "speed": 1.0,
-  "capture": {"background_only": true},
+  "capture": {"background_only": true, "text_only": true},
   "scenes": [
     {
       "kind": "guidance", "chapter": "FLIGHT BRIEF", "eyebrow": "0.7.3 / CHOOSE YOUR RENDERER",

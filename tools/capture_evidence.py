@@ -24,6 +24,9 @@ def public_provenance(private):
     if capture.get("background_only"):
         result["project"]["capture"] = {"background_only": True}
         result["capture_method"] = "Previously reviewed background still; no new comparison or FG demonstration."
+    if capture.get("text_only"):
+        result["project"]["capture"] = {"background_only": True, "text_only": True}
+        result["capture_method"] = "Original text and aviation graphics; no simulator comparison imagery used."
     result["publication_state"] = "Rendered; follow release workflow"
     return result
 
