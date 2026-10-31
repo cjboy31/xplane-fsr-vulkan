@@ -4,7 +4,7 @@ Application updates are also published at
 [GitHub Releases](https://github.com/cjboy31/xplane-fsr-vulkan/releases).
 Source changes alone do not deliver the Windows installer to users.
 
-Starting with 0.6.2, every Windows application release also includes a matching
+For archived versions 0.6.2 through 0.7.3, every Windows application release included a matching
 captioned feature video. Read [the media workflow](FEATURE-VIDEOS.md). Pass
 `-FeatureVideoDirectory` to `installer/Build-Installer.ps1`; packaging rejects
 missing media, mismatched version, length or SHA-256. Keep the editable scene
@@ -12,6 +12,10 @@ script in `media/source/`. Upload the MP4 separately alongside the installer
 assets using `Prepare-Release.ps1 -FeatureVideo <tested.mp4>`; it checks the
 installer-test evidence and adds SHA256SUMS.txt. Do not move an older tag or replace an older
 version's video to make a new release appear complete.
+
+Starting with 0.7.4, the owner retired startup videos. Ship the in-sim changelog
+and CHANGELOG.txt instead. No new feature video or video approval is required.
+The desktop executable is a plugin updater; image controls remain in X-Plane.
 
 1. Update version metadata and the changelog. Finish relevant source/graphics
    checks and inspect the Windows UI when it changes.
@@ -96,6 +100,6 @@ existing post with the same release URL before sending. Include the version,
 Normal/Experimental channel, a concise feature summary, any changed setup or
 hardware/model requirements, important limitations and the official GitHub
 release link. Keep the tone friendly and avoid unsupported quality/FPS claims.
-Verify the visible message and save its permalink. Keep the prior feature-video
-approval gate. If access is unavailable, prepare the text and report the pending
+Verify the visible message and save its permalink. New releases use the in-sim
+changelog instead of feature-video approval. If access is unavailable, prepare the text and report the pending
 announcement rather than claiming success.
