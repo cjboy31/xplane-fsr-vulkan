@@ -320,6 +320,9 @@ Section "Application"
       Abort "Close frame-generation checks before returning to Normal."
     ${EndIf}
   !endif
+  ; The directory page can change INSTDIR after .onInit. Read ownership from
+  ; the final locked destination before deciding whether to remove integration.
+  ReadINIStr $IntegrationWasEnabled "$INSTDIR\settings.ini" "InSim" "Enabled"
   ReadINIStr $PreviousGuideVersion "$INSTDIR\media\feature-video.ini" "Video" "Version"
   ReadINIStr $PreviousGuideSHA256 "$INSTDIR\media\feature-video.ini" "Video" "SHA256"
   !include "${GENERATED}\InstallFiles.nsh"
