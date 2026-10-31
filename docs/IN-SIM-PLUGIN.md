@@ -39,6 +39,24 @@ of Visual Engine compatibility or complete in-sim feature parity.
   running profile follows the actual simulator scale, and retains the saved
   future choices. A failed selected-host activation gets current-session bypass
   diagnostics; another session cannot erase the active session's log.
+- The panel can recover the exact selected simulator's saved profile from this
+  installation's registration when the renderer never supplied a startup link.
+  Older optional desktop launches can recover their own profile from the runtime
+  path. Recovery never scans arbitrary installs or claims an active renderer.
+  An unlinked panel shows dedicated connection guidance instead of overlapping
+  editable controls. A linked but inactive panel labels controls for next session
+  and starts fresh plugin-only diagnostics under the shared log-ownership lease.
+  Tests cover wrong-executable/disabled-install rejection, legacy recovery,
+  disconnected layout, inactive telemetry and protection of another session's log.
+
+  The owner reported a missing renderer after applying cloud settings and
+  relaunching through Explorer. The cloud preferences were applied, but that
+  session omitted the renderer DLL and had no startup settings environment.
+  Registration and manifest checks subsequently passed; its exact initial
+  omission remains unconfirmed. Refreshing the owned registration and launching
+  the corrected build through Windows loaded the renderer with cloud choices
+  retained. Verification of another owner-shortcut restart is still required;
+  profile/UI recovery alone is not an activation fix.
 - Neural rendering now has a model DLL selector backed by a separate native
   helper, bounded per-job progress and explicit success/cancel/failure messages.
   The supported user-supplied DLL is read by the pinned extractor, never loaded.

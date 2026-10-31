@@ -1,12 +1,28 @@
 // SPDX-License-Identifier: MIT
 #include "in_sim_panel.hpp"
 #include "panel_presence.hpp"
+#include "in_sim_binding.hpp"
 #include <iostream>
 #include <set>
 static void check(bool value,const char*why){if(!value)throw std::runtime_error(why);}
 int wmain(int argc,wchar_t**argv){try{
     check(argc==2,"Fresh fixture required");std::filesystem::path root=argv[1];check(!std::filesystem::exists(root),"Fixture exists");std::filesystem::create_directories(root);
     auto file=root/L"settings.ini";launcher::Preferences initial;initial.mode=2;launcher::save(file,initial);
+    insim::Panel disconnected;
+    for(auto size:{std::pair{640,480},std::pair{880,740}}){for(const auto &item:disconnected.view(size.first,size.second)){
+        check(!item.button||item.action.kind==insim::Kind::Close||item.action.kind==insim::Kind::Tab,"Unlinked panel displayed clickable rendering settings");
+        if(item.widget==insim::Widget::Label&&item.rect.h>20)check(item.rect.y>=insim::contentTop&&item.rect.y+item.rect.h<=size.second-insim::footerHeight,"Connection guidance overlaps the footer");}}
+    auto sim=root/L"selected-sim";std::filesystem::create_directories(sim);graphics::write(sim/L"X-Plane.exe","fixture");
+    auto installed=root/L"installed";std::filesystem::create_directories(installed/L"auto");auto installedFile=installed/L"settings.ini",manifest=installed/L"auto/XPFSR24Implicit.json";
+    auto installChoices=initial;installChoices.simulator=sim.wstring();launcher::save(installedFile,installChoices);launcher::writeSetting(L"InSim",L"Enabled",L"1",installedFile.c_str());graphics::write(manifest,"fixture");
+    auto recovered=insim::resolveSettings(sim/L"X-Plane.exe",{},{},manifest);check(recovered.file==std::filesystem::weakly_canonical(installedFile)&&recovered.recovered,"Missing startup environment lost the installed profile");
+    check(insim::resolveSettings(sim/L"other.exe",{},{},manifest).file.empty(),"Settings recovery accepted a different executable");
+    check(insim::resolveSettings(sim/L"X-Plane.exe",{},installed/L"runtime",{}).file==std::filesystem::weakly_canonical(installedFile),"Legacy desktop runtime did not recover its own settings");
+    launcher::writeSetting(L"InSim",L"Enabled",L"0",installedFile.c_str());check(insim::resolveSettings(sim/L"X-Plane.exe",{},{},manifest).file.empty(),"Disabled installation was recovered through registration");
+    std::filesystem::create_directories(installed/L"logs");graphics::write(installed/L"logs/renderer.log","old renderer sentinel");
+    insim::ConfigurationSession only;auto onlyToken=only.open(installed);auto fresh=graphics::read(installed/L"logs/renderer.log");check(graphics::read(installed/L"logs/renderer.log.previous")=="old renderer sentinel"&&fresh.find("plugin-only")!=std::string::npos&&fresh.find(onlyToken)!=std::string::npos,"Plugin-only session retained stale renderer logs");
+    insim::ConfigurationSession second;check(second.open(installed)!=onlyToken&&graphics::read(installed/L"logs/renderer.log")==fresh&&only.open(installed)==onlyToken,"A second configuration session or repeated poll erased active diagnostics");
+    disconnected.bind(installedFile,nullptr,false,false);disconnected.configurationOnly("Renderer absent; saved settings recovered");app::Telemetry absent{};absent.active=1;absent.recordings=100;disconnected.observe(absent,1000);++absent.recordings;disconnected.observe(absent,1100);check(disconnected.activity.find("NOT LOADED")!=std::string::npos&&!disconnected.rendererLinked(),"Recovered settings falsely confirmed rendering");
     std::wstring name=L"Local\\XPFSRPanelTest-"+std::to_wstring(GetCurrentProcessId());xpfsr::nr::ControlChannel writer,reader;
     check(writer.create(name.c_str(),initial.nr)&&reader.open(name.c_str()),"NR IPC attach");int publications=0;
     insim::Panel panel;panel.bind(file,&writer,true,false,[&](const auto&){++publications;});

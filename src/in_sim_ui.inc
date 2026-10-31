@@ -4,6 +4,7 @@
 #include "panel_presence.hpp"
 #include "nr_model_import.hpp"
 #include "session_logs.hpp"
+#include "in_sim_binding.hpp"
 #include <XPLMDisplay.h>
 #include <XPLMGraphics.h>
 #include <GL/gl.h>
@@ -17,6 +18,7 @@ static std::filesystem::path setupRoot;
 static std::wstring setupToken;
 static HANDLE setupGraphicsJob{};
 static HANDLE setupImportJob{};
+static insim::ConfigurationSession setupConfigurationSession;
 static std::wstring setupImportToken;
 static int setupDragField=-1;
 static int setupDragPreview{};
@@ -59,18 +61,26 @@ static void setupPollImport(){
     setupPanel.notice=setupPanel.modelImportStatus;
 }
 static void setupBind(){
-    auto settings=setupEnvironment(L"XPFSR24_SETTINGS");
-    if(settings.empty())return;
-    auto file=std::filesystem::weakly_canonical(settings);
-    if(file.filename()!=L"settings.ini"||!std::filesystem::is_regular_file(file))return;
-    auto p=launcher::load(file);wchar_t executable[32768]{};GetModuleFileNameW(nullptr,executable,32768);
-    std::error_code ec;if(!std::filesystem::equivalent(std::filesystem::path(p.simulator)/L"X-Plane.exe",executable,ec)||ec)return;
+    wchar_t manifest[32768]{};DWORD manifestBytes=sizeof(manifest);
+    auto registered=RegGetValueW(HKEY_CURRENT_USER,L"SOFTWARE\\XPFSR24\\InSim",L"Manifest",RRF_RT_REG_SZ,nullptr,manifest,&manifestBytes)==ERROR_SUCCESS?std::filesystem::path(manifest):std::filesystem::path{};
+    wchar_t executable[32768]{};GetModuleFileNameW(nullptr,executable,32768);
+    auto binding=insim::resolveSettings(executable,setupEnvironment(L"XPFSR24_SETTINGS"),setupEnvironment(L"XPFSR24_RUNTIME"),registered);
+    if(binding.file.empty())return;
+    auto file=binding.file;
     setupRoot=file.parent_path();setupToken=setupEnvironment(L"XPFSR24_SESSION");
     if(setupToken.empty())setupToken=setupEnvironment(L"XPFSR24_CONFIG_SESSION");
     const auto name=setupEnvironment(L"XPFSR24_NR_CONTROL");
     bool tokenValid=setupToken.size()==32&&std::all_of(setupToken.begin(),setupToken.end(),[](wchar_t c){return(c>=L'0'&&c<=L'9')||(c>=L'a'&&c<=L'f');});
     auto mode=setupEnvironment(L"XPFSR24_MODE");xpfsr::nr::Controls live;
-    bool canNR=tokenValid&&name==L"Local\\XPFSR24-NR-v4-"+setupToken&&setupNR.open(name.c_str())&&setupNR.read(live)&&(mode==L"upscale"||mode==L"native-aa");
+    const bool connected=tokenValid&&GetModuleHandleW(L"XPFSR24Layer.dll")&&(mode==L"upscale"||mode==L"native-aa");
+    if(!connected&&!tokenValid){
+        // Own the same per-installation log lease as automatic activation. A
+        // control-only session must get fresh diagnostics without erasing a
+        // different simulator session's active log.
+        auto token=setupConfigurationSession.open(setupRoot);
+        setupToken=std::wstring(token.begin(),token.end());SetEnvironmentVariableW(L"XPFSR24_CONFIG_SESSION",setupToken.c_str());
+    }
+    bool canNR=connected&&name==L"Local\\XPFSR24-NR-v4-"+setupToken&&setupNR.open(name.c_str())&&setupNR.read(live);
     auto fg=setupEnvironment(L"XPFSR24_FG");
     setupPanel.bind(file,canNR?&setupNR:nullptr,canNR,!fg.empty(),[](const launcher::Preferences&p){
         if(shared)InterlockedExchange(&shared->enabled,p.enabled?1:0);
@@ -80,6 +90,7 @@ static void setupBind(){
     });
     setupPanel.graphicsSupport(setupQueueGraphics);
     setupPanel.modelSupport(setupImportModel);
+    if(!connected){setupPanel.configurationOnly(setupEnvironment(L"DISABLE_XPFSR24").empty()?"Saved settings recovered. The Vulkan renderer was not loaded at startup. Restart X-Plane after enabling in-sim integration; renderer activation cannot be added to an existing graphics device.":"Native comparison was requested for this launch. Rendering is bypassed; your saved choices remain available for the next session.");return;}
     auto guard=setupEnvironment(L"XPFSR24_FG_GUARD");if(!guard.empty())setupPanel.notice=insim::utf8(guard);
     auto activationError=setupEnvironment(L"XPFSR24_ACTIVATION_ERROR");if(!activationError.empty())setupPanel.notice="Renderer bypassed: "+insim::utf8(activationError)+". Correct the saved profile here for next launch.";
     auto pending=setupEnvironment(L"XPFSR24_PENDING_GRAPHICS");if(!pending.empty()&&activationError.empty())setupPanel.notice=insim::utf8(pending);
@@ -91,7 +102,7 @@ static void setupPoll(){
         if(!setupPanel.configured())setupBind();
         setupPollImport();
         setupPanel.refresh();app::Telemetry status{};if(shared&&app::readStatus(shared,status))setupPanel.observe(status,now);
-        if(!setupRoot.empty()){
+        if(setupPanel.rendererLinked()&&!setupRoot.empty()){
             std::ifstream in(setupRoot/L"logs/renderer-nr-status.txt");char data[4097]{};in.read(data,4096);std::istringstream text(std::string(data,size_t(in.gcount())));
             DWORD pid{};ULONGLONG ticks{};uint64_t records{};std::string token,message;
             if(text>>pid>>ticks>>records){text.ignore(1024,'\n');std::getline(text,token);std::getline(text,message);
@@ -143,7 +154,6 @@ static void setupDraw(XPLMWindowID h,void*) noexcept{try{
             if(item.widget==insim::Widget::Choice)setupText(int(x)+r.w-25,int(y)-20,18,"v",true);
         }
     }
-    if(!setupPanel.configured())setupWrapped(left+24,top-insim::contentTop-58,width-48,"Setup required: select this simulator in the installation package and enable in-sim integration. The desktop app remains an optional secondary interface.",3);
     if(setupPanel.helpField>=0)setupWrapped(left+24,top-insim::contentTop-62,width-48,setupPanel.help(),std::max(1,(height-insim::contentTop-198)/17));
     else setupWrapped(left+24,bottom+69,width-48,setupPanel.dropdownOpen?"Choose an option. Scroll to reveal more choices; Back returns without changing the selection.":setupPanel.help(),3);
     if(setupPanel.helpField<0&&(setupPanel.dropdownOpen?setupPanel.maxDropdownScroll(height):setupPanel.maxScroll(height))>0){
@@ -181,4 +191,4 @@ static void setupShow() noexcept{try{
     }else XPLMSetWindowIsVisible(setupWindow,1);
     setupPresence.setVisible(true);setupLastPoll=0;setupPoll();XPLMBringWindowToFront(setupWindow);
 }catch(const std::exception&e){std::string text="XPFSR24: setup panel: ";text+=e.what();text+='\n';XPLMDebugString(text.c_str());}catch(...){}}
-static void setupStop(){setupHide();if(setupWindow)XPLMDestroyWindow(setupWindow);setupWindow=nullptr;setupNR.close();setupPresence.close();if(setupGraphicsJob)CloseHandle(setupGraphicsJob);setupGraphicsJob=nullptr;if(setupImportJob)CloseHandle(setupImportJob);setupImportJob=nullptr;}
+static void setupStop(){setupHide();if(setupWindow)XPLMDestroyWindow(setupWindow);setupWindow=nullptr;setupNR.close();setupPresence.close();if(setupGraphicsJob)CloseHandle(setupGraphicsJob);setupGraphicsJob=nullptr;if(setupImportJob)CloseHandle(setupImportJob);setupImportJob=nullptr;setupConfigurationSession.close();}

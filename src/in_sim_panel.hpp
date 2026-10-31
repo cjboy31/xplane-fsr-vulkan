@@ -38,7 +38,7 @@ class Panel {
     std::function<void(const launcher::Preferences&)> publish;
     std::function<void()> queueGraphics;
     std::function<void()> importModel;
-    bool liveNR{},sessionFG{};
+    bool liveNR{},sessionFG{},rendererConnected{true};
     std::vector<const graphics::Preset*> displayPresets;
     uint64_t previousRecords{},lastProgress{};bool sawStatus{};
 public:
@@ -53,6 +53,8 @@ public:
         displayPresets=graphics::availableResolutionPresets([](int w,int h){return graphics::supportsOutput(w,h);});
     }
     bool configured()const{return !file.empty();}
+    bool rendererLinked()const{return configured()&&rendererConnected;}
+    void configurationOnly(const std::string &reason){rendererConnected=false;liveNR=false;sessionFG=false;activity="RENDERER NOT LOADED - next-session settings available";nrStatus="Not running in this session";notice=reason;}
     void graphicsSupport(std::function<void()> callback){queueGraphics=std::move(callback);}
     void modelSupport(std::function<void()> callback){importModel=std::move(callback);}
     void refresh(){if(configured())choices=launcher::load(file);}
@@ -97,6 +99,8 @@ public:
         return message+"NR prepares changed model budgets in the background. Its current status is shown above; FSR continues.";
     }
     void observe(const app::Telemetry &s,uint64_t now){
+        if(!configured()){activity="SETUP NOT LINKED - renderer not confirmed";return;}
+        if(!rendererConnected){activity="RENDERER NOT LOADED - next-session settings available";return;}
         if(sawStatus&&s.recordings>previousRecords)lastProgress=now;previousRecords=s.recordings;sawStatus=true;telemetry=s;
         if(!choices.enabled)activity="PROCESSING PAUSED";
         else if(lastProgress&&now>=lastProgress&&now-lastProgress<3000)activity=s.active?"FSR ACTIVE - renderer confirmed":"RENDERER CONFIRMED - processing protected / waiting";
@@ -175,6 +179,7 @@ public:
     int maxDropdownScroll(int height)const{return std::max(0,int(choiceOptions(dropdown).size())*36-std::max(1,height-contentTop-footerHeight-68));}
     bool wheel(int amount,int height){auto &position=dropdownOpen?dropdownScroll:scroll;int next=std::clamp(position+amount,0,dropdownOpen?maxDropdownScroll(height):maxScroll(height));if(next==position)return false;position=next;return true;}
     std::string help()const{
+        if(!configured())return "Rendering controls are unavailable until this simulator is linked to a saved installation. No selections have been changed. Enable in-sim integration for this X-Plane folder, then restart using your usual launcher.";
         if(helpField>=0&&helpField<Count)return utf8(settings[helpField].help);
         if(helpField==100)return "MSAA samples geometry edges before temporal reconstruction. It increases GPU and memory cost. MSAA + FSR is experimental; start Off and compare the same scene. Select Apply after exit for graphics changes.";
         if(helpField==101)return "FXAA smooths the final native image, including text, and can soften detail. It must be Off with FSR Native AA/upscaling. Use it only with FSR mode Off.";
@@ -211,14 +216,17 @@ public:
             const int help=kind==Kind::NRField?field:kind==Kind::Graphics?100+field:kind==Kind::CloudPreset?204:kind==Kind::Mode?200:kind==Kind::FrameGen||kind==Kind::FGToggle||kind==Kind::FGProvider?201:202;
             button({width-66,y+4,36,30},"?",{Kind::Help,help});
         };
-        if(dropdownOpen){
+        if(!configured()){
+            text(24,top,width-48,"Simulator connection required");
+            text(24,top+36,width-48,"The renderer did not supply a valid settings link, and no matching installed profile was found. Enable in-sim integration for this simulator, then restart. The desktop app remains optional.");out.back().rect.h=60;
+        }else if(dropdownOpen){
             auto options=choiceOptions(dropdown);text(24,top,width-140,"Choose an option");button({width-112,top-4,88,30},"Back",{Kind::CloseChoice});dropdownScroll=std::clamp(dropdownScroll,0,maxDropdownScroll(height));
             for(size_t i=0;i<options.size();++i){int y=top+48+int(i)*36-dropdownScroll;if(y>=top+44&&y+32<=bottom)button({24,y,width-48,32},options[i],{Kind::ChooseOption,int(i)},int(i)==choiceCurrent(dropdown));}
         }else if(helpField>=0){
             text(24,top,width-140,helpField<Count?utf8(settings[helpField].label):"Setting guidance");button({width-112,top-4,88,30},"Back",{Kind::Help,-1});
         }else if(tab==0){
             row(origin,"Resolution preset - queue graphics before exiting",choices.presetId.empty()?"Custom":utf8(graphics::presetById(choices.presetId).label),Kind::Preset,0);
-            if(origin+56>=top){button({24,origin+56,width-48,38},"Enable FSR processing - live",{Kind::Processing,0,choices.enabled?-1:1},choices.enabled);out.back().widget=Widget::Toggle;}
+            if(origin+56>=top){button({24,origin+56,width-48,38},rendererConnected?"Enable FSR processing - live":"Enable FSR processing - next session",{Kind::Processing,0,choices.enabled?-1:1},choices.enabled);out.back().widget=Widget::Toggle;}
             row(origin+112,"FSR / AA - next session",fsrNames[std::clamp(choices.mode,0,4)],Kind::Mode,0);
             row(origin+168,"Enable frame generation - next session",choices.frameGeneration?"On":"Off",Kind::FGToggle,0);
             row(origin+224,"Frame generation provider",fgNames[std::clamp(choices.lastFrameGeneration,1,4)],Kind::FGProvider,0);
