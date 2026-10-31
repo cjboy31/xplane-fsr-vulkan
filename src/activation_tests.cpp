@@ -68,6 +68,17 @@ int wmain(int argc,wchar_t **argv){try{
     SetEnvironmentVariableW(L"VK_INSTANCE_LAYERS",L"OTHER;VK_LAYER_XPFSR24");check(app::explicitHost(),"Intentional explicit fixture stopped working");
     SetEnvironmentVariableW(L"XPFSR24_SETTINGS",(root/L"settings.ini").c_str());check(!app::explicitHost(),"Inherited simulator-only profile activated a different executable");
     SetEnvironmentVariableW(L"VK_INSTANCE_LAYERS",nullptr);SetEnvironmentVariableW(L"XPFSR24_SETTINGS",nullptr);
+    // Exercise the real FSR activation entry, before and after Native AA claims.
+    for(bool aaFirst:{false,true}){
+        for(auto name:{"XP_RENDERER_SESSION_PID","XP_RENDERER_SESSION_CHOICE","XP_RENDERER_OWNER","XP_RENDERER_REQUEST","DISABLE_XPFSR24","XPFSR24_AUTOMATIC","XPFSR24_RUNTIME"})xp_renderer::set(name,{});
+        xp_renderer::save(root/L"sim",xp_renderer::Choice::native_aa);
+        if(aaFirst)check(xp_renderer::claim(root/L"sim",xp_renderer::Choice::native_aa).allowed,"AA startup claim failed");
+        app::Activation competing;competing.initialize(root,root/L"sim/X-Plane.exe");
+        check(!competing.active&&app::environment(L"XPFSR24_AUTOMATIC").empty(),"FSR prepared a renderer in an AA session");
+        check(xp_renderer::claim(root/L"sim",xp_renderer::Choice::native_aa).allowed,"FSR-first negotiation blocked selected AA");
+    }
+    for(auto name:{"XP_RENDERER_SESSION_PID","XP_RENDERER_SESSION_CHOICE","XP_RENDERER_OWNER","XP_RENDERER_REQUEST","DISABLE_XPFSR24","XPFSR24_AUTOMATIC","XPFSR24_RUNTIME"})xp_renderer::set(name,{});
+    xp_renderer::save(root/L"sim",xp_renderer::Choice::fsr);
     // A selected simulator with invalid settings still gets fresh diagnostics.
     // Its previous session is retained, and another session cannot erase it.
     std::filesystem::create_directories(root/L"logs");graphics::write(root/L"logs/renderer.log","previous session sentinel");

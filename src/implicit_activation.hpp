@@ -4,6 +4,7 @@
 #include "runtime_integrity.hpp"
 #include "running_profile.hpp"
 #include "named_lock.hpp"
+#include "renderer_selection.hpp"
 #include <memory>
 namespace app {
 // Implicit discovery loads a DLL into many processes. Only the exact selected
@@ -46,9 +47,14 @@ public:
     ~Activation(){if(owner)CloseHandle(owner);}
     void initialize(const std::filesystem::path &root,const std::filesystem::path &exe) noexcept{
         try{
-            if(explicitHost()){active=true;return;}
+            if(explicitHost()){
+                const auto decision=xp_renderer::claim(exe.parent_path(),xp_renderer::Choice::fsr,true);
+                graphics::require(decision.allowed,decision.reason.c_str());active=true;return;
+            }
             if(!automaticHost(root,exe))return;
             matched=true;
+            const auto decision=xp_renderer::claim(exe.parent_path(),xp_renderer::Choice::fsr);
+            graphics::require(decision.allowed,decision.reason.c_str());
             setEnvironment(L"XPFSR24_AUTOMATIC",L"1");
             // The panel must remain reachable to correct a saved profile even
             // when renderer validation fails for this session.
