@@ -62,9 +62,44 @@ not assign blame to the simulator, FG or a particular plugin.
   depth generation, NR control and NR application transitions. This reports
   causes without weakening temporal safety checks.
 
-CPU/native UI regression and the 64-fenced-readback ownership/OOM fixture pass.
-These candidates still need the same-view NR On/Off and moving-flight tests.
-Do not advertise a completed stutter or NR quality fix from these fixtures.
+CPU/native UI regression, the 64-fenced-readback ownership/OOM fixture and both
+FG color/fallback fixtures pass. Hosted Windows regression also passed at
+2769451b601bd4dbacb83e3fddf61b91bb71bd32. Moving-flight and FG capture-admission
+validation remain open. Do not advertise a completed stutter or NR quality fix.
+
+## Live stationary comparison
+
+The private build was installed with saved settings and local models retained.
+The last flight was resumed: default Cirrus SR22, external parked view, 4K full
+input, FSR 4 Native AA. Loading intervals were excluded. Each sequential phase
+settled before a 20-second observation of the mod's existing camera/completion
+channel. No camera/controller settings or saved image choices were changed.
+
+| Processing | Source frames/s | Median period | 95th percentile | NR GPU reported |
+| --- | ---: | ---: | ---: | ---: |
+| FSR active, NR Off | 40.68 | 23.38 ms | 37.90 ms | Off |
+| FSR active, NR 67%, one pass | 30.29 | 32.84 ms | 38.64 ms | 9.75 ms |
+| FSR active, NR 50%, one pass | 34.90 | 28.81 ms | 33.45 ms | 5.41 ms |
+| Both effects bypassed | 51.22 | 19.29 ms | 21.85 ms | Off |
+
+Balanced improved the sampled rate by about 15% versus 67%. This is a change
+to an existing setting, not a newly accelerated network. Source frame counts
+and callback periods are not X-Plane's individual CPU/GPU columns or display
+scanout timings. The observer saw all frames in the NR phases, with no control
+edits, camera resets or >50 ms samples. There was small parked-camera motion
+(under 5 mm position change and under half a degree of direction change), and
+clouds/time continued. These sequential samples are not a controlled replay,
+moving-flight validation, universal benchmark or matched visual-quality proof.
+
+All temporary live controls were restored: NR Off, model size 50%, FSR On.
+The existing OBS-hook startup safeguard paused FG for this process. It was not
+bypassed, so these observations cannot validate the new FG capture admission.
+Full-input capture still showed substantial depth allocation/retirement work
+and zero unrelated-size skips. Dimension filtering alone therefore does not
+establish a Native AA stutter correction in this scene. Further work should
+measure actual depth-pass roles and GPU-safe capture lifetime before reducing
+copies or changing resource budgets. Do not remove safety/ownership checks to
+make counters or FPS look better.
 
 ## Provider names
 
