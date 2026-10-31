@@ -75,4 +75,29 @@ support. The SDK 4.4 Panel Graphics/ImGui APIs are for plugin UI and do not supp
 this bridge; see [Laminar's release](https://github.com/X-Plane/xpsdk/releases/tag/xpsdk_4.4.0-r1)
 and [Panel Graphics reference](https://xpsdk-api.docs.staging.x-plane.com/).
 
-NR development stays canceled; built-in FG remains off in regular releases.
+## Current Linux development pipeline
+
+The existing native-preview downloads remain the FSR 3.1.5 preview described
+above. They do not gain FSR 4, NR, Native AA or FG from this documentation update.
+The separate Windows Normal 0.7.2 release includes Windows NR/FG work; it is not
+a Linux or Mac rendering package.
+
+Linux FSR 4 AA/upscaling and NR work is now tracked in
+[issue #3](https://github.com/cjboy31/xplane-fsr-vulkan/issues/3) and
+[draft PR #5](https://github.com/cjboy31/xplane-fsr-vulkan/pull/5).
+Portable queue, device-identity and selection tests, plus Vulkan inventory and
+staging-transport compilation, passed the Linux preflight workflow. The hosted
+runner inventory is capability groundwork, not an actual supported GPU or
+X-Plane flight test. Frame generation is not required for the planned AA path.
+
+Remaining gates include a supported redistributable native Linux FSR 4 backend,
+the NR adapter/session/IPC port, user-supplied model validation, driver feature
+checks and real simulator testing. The supplied AMD SDK 2.4 Vulkan runtimes are
+Windows DLLs; Vulkan API support alone does not supply an ELF Linux runtime.
+Assess Debian RX 9060 XT and AI Max 395/Radeon 8060S systems separately. Exact
+distribution, kernel and Mesa versions are still needed for hardware validation.
+
+The separate [X-Plane Native AA project](https://github.com/cjboy31/xplane-native-aa)
+explores AA without any FSR dependency, targeting Windows/Linux Vulkan and native
+macOS Metal. It currently contains a portable development core and implementation
+plan, not a working AA renderer or an installable cross-platform plugin.
