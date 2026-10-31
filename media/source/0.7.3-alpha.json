@@ -1,0 +1,39 @@
+{
+  "version": "0.7.3-alpha",
+  "preview_id": "v1",
+  "voice": "bm_george",
+  "speed": 1.0,
+  "capture": {"background_only": true},
+  "scenes": [
+    {
+      "kind": "guidance", "chapter": "FLIGHT BRIEF", "eyebrow": "0.7.3 / CHOOSE YOUR RENDERER",
+      "title": "One session. One renderer.",
+      "lines": ["Keep Native AA and FSR installed together", "Choose which renderer processes your next flight"],
+      "narration": "Keep Native A A and F S R installed together. This update adds one shared renderer choice, so a session uses the selected renderer while the other stays inactive."
+    },
+    {
+      "kind": "guidance", "chapter": "IN-SIM CONTROL", "eyebrow": "01 / SELECT BEFORE YOUR NEXT FLIGHT",
+      "title": "Choose inside the simulator.",
+      "lines": ["FSR panel: Rendering > Renderer", "Native AA panel: Renderer tab", "Native AA, FSR, original simulator, or Automatic"],
+      "narration": "In the F S R panel, open Rendering and choose Renderer. In Native A A, open the Renderer tab. Select independent anti aliasing, F S R with neural rendering and frame generation, or the original simulator. Automatic prefers installed Native A A."
+    },
+    {
+      "kind": "guidance", "chapter": "SAVED CHOICES", "eyebrow": "02 / RESTART-SAFE SWITCHING",
+      "title": "Keep the settings you like.",
+      "lines": ["Your AA, FSR, NR and FG choices are retained", "The saved renderer applies after a normal restart", "Your current flight continues while you choose"],
+      "narration": "The renderer choice saves without resetting either mod's quality settings. Your current flight continues with its existing renderer. Close X Plane normally, then reopen with your usual shortcut or third party launcher to make the switch."
+    },
+    {
+      "kind": "guidance", "chapter": "CLEAR STATUS", "eyebrow": "03 / FOLLOW THE CURRENT SESSION",
+      "title": "See what is running.",
+      "lines": ["Current-session status stays separate from your next choice", "The inactive panel explains which renderer owns the session", "Fresh logs describe intentional bypass clearly"],
+      "narration": "Current session status stays separate from the selection for your next launch. The inactive panel explains which renderer owns the session, and fresh logs describe intentional bypass clearly. Update both mods to use the coordinated startup selection."
+    },
+    {
+      "kind": "guidance", "chapter": "READY TO FLY", "eyebrow": "04 / MATCH YOUR GRAPHICS SETTINGS",
+      "title": "Set up, restart, then fly.",
+      "lines": ["Native AA: Full input scale", "FSR: match input scale and the chosen provider", "Skip anytime; replay from What’s new"],
+      "narration": "For Native A A, use Full input scale. For F S R, match the input scale to your chosen profile. A launch from the optional F S R desktop app overrides the saved renderer for that launch only. Skip this guide anytime, or replay it from Whats New."
+    }
+  ]
+}

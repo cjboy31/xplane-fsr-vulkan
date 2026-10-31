@@ -3,7 +3,7 @@ param([Parameter(Mandatory)][string]$AppDirectory)
 $ErrorActionPreference='Stop'
 $app=(Resolve-Path -LiteralPath $AppDirectory).Path
 $version=(Get-Item -LiteralPath (Join-Path $app 'XPlaneFSR24.exe')).VersionInfo.FileVersion
-if($version -notmatch '^0\.7\.1-(alpha|experimental\.1)$'){throw 'Expected a complete 0.7.1 channel build'}
+if($version -notmatch '^(?<Core>\d+\.\d+\.\d+)-(alpha|experimental\.\d+)$' -or [version]$Matches.Core -lt [version]'0.7.1'){throw 'Expected a complete full-feature channel build (0.7.1 or later)'}
 foreach($file in @('FrameGenCheck.exe','runtime/amd_fidelityfx_framegeneration_vk.dll','nr/NR-BUILD.json','nr/XPFSRNeuralRendering.dll','nr/ImportNRModel.exe','nr/NRCheck.exe')){
  if(-not(Test-Path -LiteralPath (Join-Path $app $file))){throw ('Full-feature release component missing: '+$file)}
 }
