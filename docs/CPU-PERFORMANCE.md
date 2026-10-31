@@ -82,5 +82,30 @@ pressure and selective NR-scratch trimming, overflow and borrowed/shared
 ownership. A GPU fixture executes production frame/depth creation, descriptor
 rebinding and retirement code through 64 fenced image-clear/readback cycles,
 checking contents and allocation reuse. It is not an FSR/NR quality fixture.
-The final capture-eligibility refinement still needs a live comparison. Do not
-claim its FPS benefit or a solved simulator CPU bottleneck from fixture success.
+## Final private live sample
+
+The capture-eligibility build measured 45.26 frames/s (22.10 ms) bypassed and
+40.01 frames/s (25.00 ms) with FSR only in the stationary paired check. All 802
+camera frames in the FSR sample had advancing FSR recordings. Camera direction,
+scene scope and output size stayed unchanged, and temporary controls were
+restored. NR and FG remained Off. These are sampled full-frame periods from
+camera frame counts and wall time, not direct CPU/GPU-column measurements.
+
+| Build | Live bypass | FSR 4 only | FSR-only mean frame period |
+| --- | --- | --- | --- |
+| Before correction | 47.10 frames/s | 22.61 frames/s | 44.22 ms |
+| Completed-resource reuse | 47.84 frames/s | 34.09 frames/s | 29.33 ms |
+| Scene-sized depth eligibility | 45.26 frames/s | 40.01 frames/s | 25.00 ms |
+
+In representative ten-second FSR-only windows, the final build created 335–424
+depth images versus roughly 1,400–1,600 before the extent refinement, and
+reported 2,364–2,406 skipped unrelated-size depth passes. Depth setup accounted
+for about 376–472 ms of CPU wall work per window; retirement accounted for
+about 224–236 ms. Driver-reported heap usage was approximately 11–12 GiB in
+those samples, with substantial budget headroom. These observations are not a
+VRAM ceiling or a claim for NR/FG-enabled scenes.
+
+The scene was reloaded between builds, so this is a local development comparison
+with a paired bypass control, not a universal FPS guarantee or a fully
+uninstalled native baseline. GPU allocation/readback tests and these stationary
+measurements do not certify moving-camera, all-aircraft or NR/FG visual quality.
