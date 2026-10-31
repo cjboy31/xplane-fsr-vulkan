@@ -273,7 +273,7 @@ static VkResult presentFrame(Device &d, VkQueue queue, const VkPresentInfoKHR *i
                     int(static_cast<const VkBaseInStructure *>(info->pNext)->sType));
                 return VK_ERROR_FEATURE_NOT_PRESENT;
             }
-            bool active = d.enabled && !d.groundSafety.active && d.fgLiveEnabled && !d.fgFailed &&
+            bool active = d.enabled && !d.groundSafety.active && !d.panelOpen && d.fgLiveEnabled && !d.fgFailed &&
                           d.frameGenerator && d.fgSequence.ready();
             if (d.frameGenerator) {
                 SdkScope sdk;
@@ -283,7 +283,8 @@ static VkResult presentFrame(Device &d, VkQueue queue, const VkPresentInfoKHR *i
             d.status.fgActive = active;
             if (!active)
                 strncpy(d.status.fgReason,
-                        d.groundSafety.active
+                        d.panelOpen ? "FG paused while in-sim setup is visible; selection retained"
+                        : d.groundSafety.active
                             ? "FG paused by ground camera safety; selection retained"
                         : d.enabled ? "FG bypass: submitted scene and prepared source must match"
                                     : "FG disabled with reconstruction toggle",

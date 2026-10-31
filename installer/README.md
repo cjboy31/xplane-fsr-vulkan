@@ -30,3 +30,12 @@ The installer tests cover ordinary install/update/uninstall, outer/payload hashe
 saved-choice preservation, unowned-target and running-launcher refusal, automatic
 update settings preservation, and waiting for the parent process. See
 ../docs/RELEASING.md for publishing the assets required by the update feed.
+
+Starting with 0.7.2, the allow-list includes IntegrationSetup.exe and the implicit
+layer manifest. Full setup offers in-sim activation for the selected simulator.
+Automatic updates refresh only an existing opt-in, preserving legacy desktop-only
+and opted-out installations. Uninstall removes owned registration and recognized
+plugin files before removing app payload; disconnected drives and unrelated
+plugins remain safe. A helper failure aborts with instructions for full repair.
+Test mode continues to skip all real simulator/registry integration operations;
+Test-Activation.ps1 tests plugin ownership and isolated registry behavior separately.

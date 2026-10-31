@@ -20,30 +20,19 @@ class NeuralRenderer {
     };
     struct Job {xpfsr::nr::Host host;uint32_t w,h;VkFormat format;Controls controls;Key key;};
     xpfsr::nr::ControlChannel channel;Controls controls;LONG revision=-1;
-    std::shared_ptr<Session> active,pending;std::vector<std::shared_ptr<Session>> retired;
-    std::shared_ptr<Backend> backend;std::optional<Job> job;
-    Key requested{};bool requestedOnce{},quitting{},featureSupport{},frameFailed{},interrupted=true,resetHistory=true;
-    std::thread worker;std::mutex jobs,messageLock;std::condition_variable wake;
-    std::atomic<bool> building{};std::string message="NR requested; waiting for an eligible scene";
+    std::shared_ptr<Backend> backend;
+    bool featureSupport{},frameFailed{},processingAllowed=true,interrupted=true,resetHistory=true;
+    std::mutex messageLock;
+    std::string message="NR requested; waiting for an eligible scene";
+    std::string processingPauseReason="FSR processing disabled";
+    xpfsr::nr::ProfileSessions<Job,Session> sessions{
+        [this](const Job&job){return prepare(job);},[this](std::string text){note(std::move(text));}};
     uint64_t lastRecord{},lastCamera{},records{},lastReport{};
     static Key makeKey(uint32_t w,uint32_t h,VkFormat f,const Controls&c){return {w,h,uint32_t(f),uint32_t(c[xpfsr::nr::Scale]),uint32_t(c[xpfsr::nr::Model]),uint32_t(c[xpfsr::nr::Order]),uint32_t(c[xpfsr::nr::Passes])};}
     void note(std::string text){std::lock_guard<std::mutex> lock(messageLock);message=std::move(text);}
-    void buildLoop(){
+    std::shared_ptr<Session> prepare(const Job&work){
         SdkScope scope;
         SetThreadPriority(GetCurrentThread(),THREAD_PRIORITY_BELOW_NORMAL);
-        for(;;){
-            std::optional<Job> work;std::vector<std::shared_ptr<Session>> garbage;
-            {
-                std::unique_lock<std::mutex> lock(jobs);
-                wake.wait_for(lock,std::chrono::milliseconds(200),[&]{return quitting||job.has_value();});
-                for(auto it=retired.begin();it!=retired.end();){
-                    if(it->use_count()==1){garbage.push_back(std::move(*it));it=retired.erase(it);}else ++it;
-                }
-                if(quitting)break;
-                work=std::move(job);job.reset();
-            }
-            garbage.clear();if(!work)continue;building=true;
-            try{
                 wchar_t root[32768]{};GetEnvironmentVariableW(L"XPFSR24_NR_ROOT",root,32768);
                 std::filesystem::path path=root;
                 if(!root[0]||std::filesystem::exists(path/L"vulkan-1.dll"))throw std::runtime_error("Invalid NR folder or conflicting loader proxy");
@@ -57,15 +46,11 @@ class NeuralRenderer {
                     if(!b->create||!b->record||!b->destroy)throw std::runtime_error("NR backend ABI exports missing");
                     backend=std::move(b);
                 }
-                xpfsr::nr::Config config{};config.root=root;config.width=work->w;config.height=work->h;config.format=work->format;config.controls=work->controls;
-                auto result=std::make_shared<Session>();result->backend=backend;result->key=work->key;
-                char why[512]{};result->context=backend->create(&work->host,&config,why,sizeof(why));
+                xpfsr::nr::Config config{};config.root=root;config.width=work.w;config.height=work.h;config.format=work.format;config.controls=work.controls;
+                auto result=std::make_shared<Session>();result->backend=backend;result->key=work.key;
+                char why[512]{};result->context=backend->create(&work.host,&config,why,sizeof(why));
                 if(!result->context)throw std::runtime_error(why[0]?why:"NR initialization failed");
-                {std::lock_guard<std::mutex> lock(jobs);if(pending)retired.push_back(std::move(pending));pending=std::move(result);}
-                note("NR prepared; waiting for the next eligible frame");
-            }catch(const std::exception&e){note(std::string("NR bypassed: ")+e.what()+"; toggle Off/On to retry");}
-            building=false;
-        }
+                return result;
     }
 public:
     void features(bool supported){
@@ -77,21 +62,22 @@ public:
         if(channel.read(next,&nextRevision)&&nextRevision!=revision){
             if(next!=controls){resetHistory=true;interrupted=true;
                 if(!controls[xpfsr::nr::Enabled]&&next[xpfsr::nr::Enabled]){
-                    requestedOnce=false;
                     if(frameFailed){
-                        std::lock_guard<std::mutex> lock(jobs);
-                        if(active)retired.push_back(std::move(active));
-                        if(pending)retired.push_back(std::move(pending));
                         frameFailed=false;
                     }
                 }
                 controls=next;
             }revision=nextRevision;
         }
-        if(!controls[xpfsr::nr::Enabled]||!controls[xpfsr::nr::Intensity])note("NR Off: original FSR input retained");
+        sessions.enable(processingAllowed&&featureSupport&&!frameFailed&&controls[xpfsr::nr::Enabled]&&controls[xpfsr::nr::Intensity]);
+        if(!controls[xpfsr::nr::Enabled]||!controls[xpfsr::nr::Intensity])note(sessions.released()?"NR Off: model GPU resources released; original FSR input retained":"NR Off: original FSR input retained; releasing model resources after pending GPU owners finish");
+        else if(!processingAllowed)note("NR paused: "+processingPauseReason+(sessions.released()?"; model GPU resources released":"; releasing model resources after pending GPU owners finish"));
         else if(!featureSupport)note("NR unavailable: required Vulkan features were not enabled");
     }
-    bool enabled(){poll();return controls[xpfsr::nr::Enabled]&&controls[xpfsr::nr::Intensity];}
+    bool enabled(){poll();return processingAllowed&&featureSupport&&!frameFailed&&controls[xpfsr::nr::Enabled]&&controls[xpfsr::nr::Intensity];}
+    bool retiring()const{return sessions.retiring();}
+    void processingEnabled(bool enabled,const char*why="FSR processing disabled"){if(processingAllowed!=enabled)interrupted=resetHistory=true;processingPauseReason=why;processingAllowed=enabled;poll();}
+    uint64_t memoryEstimate(uint32_t rw,uint32_t rh,uint32_t ow,uint32_t oh)const{return xpfsr::nr::estimatedProfileBytes(controls[xpfsr::nr::Order]?ow:rw,controls[xpfsr::nr::Order]?oh:rh,controls[xpfsr::nr::Scale],controls[xpfsr::nr::Passes]);}
     bool allowFG()const{return controls[xpfsr::nr::AllowFG]!=0;}
     bool fullScene()const{return controls[xpfsr::nr::Scope]!=0;}
     bool afterUpscaling()const{return controls[xpfsr::nr::Order]!=0;}
@@ -101,27 +87,19 @@ public:
         // stage choice, context selection and the dispatch; never mix revisions.
         if(!controls[xpfsr::nr::Enabled]||!controls[xpfsr::nr::Intensity]||!featureSupport||frameFailed)return false;
         const auto key=makeKey(w,h,f,controls);
-        std::lock_guard<std::mutex> lock(jobs);
-        if(pending){
-            if(pending->key==key){if(active)retired.push_back(std::move(active));active=std::move(pending);interrupted=resetHistory=true;}
-            else retired.push_back(std::move(pending));
-        }
-        if(active&&active->key==key)return true;
-        if(!requestedOnce||requested!=key){
-            requested=key;requestedOnce=true;job=Job{host,w,h,f,controls,key};
-            note("NR preparing selected profile in background; FSR continues");
-            if(!worker.joinable())worker=std::thread([this]{buildLoop();});wake.notify_one();
-        }
-        return false;
+        bool changed{};auto active=sessions.select(Job{host,w,h,f,controls,key},changed);
+        if(changed)interrupted=resetHistory=true;
+        return bool(active);
     }
     bool apply(VkCommandBuffer cb,VkImage color,uint64_t camera,bool reset,std::shared_ptr<void>&owner){
+        auto active=sessions.current();
         if(!active||frameFailed)return false;
         owner=active; // Kept until the host legally rerecords/frees this command buffer.
         SdkScope scope;xpfsr::nr::Frame frame{};frame.commands=cb;frame.color=color;frame.controls=controls;
         frame.usage=VK_IMAGE_USAGE_SAMPLED_BIT|VK_IMAGE_USAGE_STORAGE_BIT|VK_IMAGE_USAGE_TRANSFER_SRC_BIT|VK_IMAGE_USAGE_TRANSFER_DST_BIT;
         frame.reset=reset||interrupted||!lastCamera||camera!=lastCamera+1;
         char why[512]{};int result=active->backend->record(active->context,&frame,why,sizeof(why));
-        if(result<0){frameFailed=true;note(std::string("NR stopped; original FSR input retained: ")+why);return false;}
+        if(result<0){frameFailed=true;sessions.enable(false);note(std::string("NR stopped; original FSR input retained: ")+why);return false;}
         note(why);if(result>0){lastRecord=GetTickCount64();lastCamera=camera;++records;interrupted=false;}
         return result>0;
     }
@@ -132,13 +110,13 @@ public:
         wchar_t path[32768]{},token[128]{};if(!GetEnvironmentVariableW(L"XPFSR24_NR_STATUS",path,32768))return;
         GetEnvironmentVariableW(L"XPFSR24_SESSION",token,128);
         std::string value;{std::lock_guard<std::mutex> lock(messageLock);value=message;}
-        if(building&&controls[xpfsr::nr::Enabled])value="NR preparing selected profile in background; FSR continues";
+        if(sessions.building()&&processingAllowed&&controls[xpfsr::nr::Enabled])value="NR preparing selected profile in background; FSR continues";
         else if(!interrupted&&lastRecord&&now-lastRecord>2000)value="NR waiting: no recent neural recording";
         std::filesystem::path target=path,temp=std::wstring(path)+L".tmp";
         {std::ofstream out(temp);out<<GetCurrentProcessId()<<' '<<now<<' '<<records<<'\n';for(auto c:std::wstring(token))out<<char(c);out<<'\n'<<value<<'\n'<<revision<<'\n';if(!out)return;}
         MoveFileExW(temp.c_str(),target.c_str(),MOVEFILE_REPLACE_EXISTING|MOVEFILE_WRITE_THROUGH);
     }
-    void join(){ {std::lock_guard<std::mutex> lock(jobs);quitting=true;job.reset();}wake.notify_one();if(worker.joinable())worker.join(); }
-    void stop(){join();active.reset();pending.reset();retired.clear();backend.reset();channel.close();}
+    void join(){sessions.join();}
+    void stop(){join();sessions.clear();backend.reset();channel.close();}
     ~NeuralRenderer(){stop();}
 };

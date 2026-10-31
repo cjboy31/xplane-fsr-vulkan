@@ -3,12 +3,13 @@
 #include <array>
 #include <cstdint>
 #include <windows.h>
+#include "named_lock.hpp"
 namespace xpfsr::nr {
 enum Field { Enabled, Intensity, Tone, Structure, Skin, Colour, Detail, Highlight,
              History, Style, Scale, Passes, Transfer, Scaler, Model, Mask, Grade, AllowFG, Scope, Order, Count };
 struct Setting { const wchar_t *key, *label, *help; int minimum, maximum, initial; };
 inline constexpr Setting settings[Count] = {
- {L"NROn",L"Enable neural rendering",L"Live On/Off. First use prepares the model in the background. External-only scope protects the cockpit; Full scene includes it. Ground-contact safety views remain protected.",0,1,0},
+ {L"NROn",L"Enable neural rendering",L"Live On/Off. Off stops edits and releases model GPU resources after pending GPU owners finish. On prepares the selected model in the background and checks texture-memory headroom. A blocked profile leaves FSR running; lower the work budget or toggle Off/On to retry. External-only scope protects the cockpit; Full scene includes it. Ground-contact safety views remain protected.",0,1,0},
  {L"NRIntensity",L"Overall strength (%)",L"Blends the NR edit into the original scene. Start at 25%; stronger settings change the picture more. This does not reduce network cost.",0,100,25},
  {L"NRTone",L"Tone / lighting (%)",L"Broad model lighting changes. Start at 0 to retain the simulator's lighting. Higher values may alter exposure and contrast.",0,200,0},
  {L"NRStructure",L"Structure (%)",L"Fine model detail and local contrast. 100% follows the model default; excessive structure can emphasize shimmer.",0,200,100},
@@ -19,7 +20,7 @@ inline constexpr Setting settings[Count] = {
  {L"NRHistory",L"Temporal history (%)",L"Balances stability and responsiveness in GPU-estimated motion. Start at 50%; lower if moving clouds leave trails. Changes reset history.",0,100,50},
  {L"NRStyle",L"Style",L"Standard, Natural or Cinematic model conditioning. These are appearance choices, not AA modes.",0,2,0},
  {L"NRModelScale",L"Model resolution (%)",L"25/33/50/67/100% of the selected NR stage: scene input for Before, output resolution for After. Lower values reduce network cost and can lose detail. Changes rebuild in the background, without restarting the sim.",25,100,50},
- {L"NRPasses",L"Model passes",L"One pass is recommended for flight. Only the selected pass budget is allocated. Changes prepare in the background without a sim restart. Two or three repeat the network and add substantial GPU/memory cost; they can compound tone changes.",1,3,1},
+ {L"NRPasses",L"Model passes",L"One pass is recommended for flight. Extra passes reprocess the model result; they do not increase the source resolution or AA samples. The final Detail transfer strength is divided by the actual pass count to reduce cumulative texture softening: 50% Detail with three passes merges at about 17%. Three network evaluations still run and cost GPU time/memory. Start with one pass; lower Detail transfer if textures soften, and compare Model resolution in the same view. Changes prepare in the background without restarting.",1,3,1},
  {L"NRTransfer",L"Composition",L"Matched residual, edge-aware lighting/color, or classic enlargement. Matched is the default at reduced model resolution.",0,2,0},
  {L"NRScaler",L"Classic scaler",L"Bilinear, Catmull-Rom, Lanczos3 or FSR 1 EASU. Used only by NR Classic composition. FSR 3/4 is a separate reconstruction stage, before or after NR as selected.",0,3,1},
  {L"NRModel",L"Network",L"Auto prefers the small model. Small uses fewer model layers; Original uses the larger local model. Missing models bypass with a reason. Switching prepares in the background.",0,2,0},
@@ -69,14 +70,14 @@ inline bool readControls(SharedControls*p,Controls&result,LONG*revision=nullptr)
  return false;
 }
 class ControlChannel {
- HANDLE handle{};SharedControls*view{};
+ HANDLE handle{};SharedControls*view{};std::wstring writerName;
  public:
  ControlChannel()=default;ControlChannel(const ControlChannel&)=delete;ControlChannel&operator=(const ControlChannel&)=delete;
  ~ControlChannel(){close();}
- void close(){if(view)UnmapViewOfFile(view);if(handle)CloseHandle(handle);view=nullptr;handle=nullptr;}
- bool create(const wchar_t*name,const Controls&c){close();handle=CreateFileMappingW(INVALID_HANDLE_VALUE,nullptr,PAGE_READWRITE,0,sizeof(SharedControls),name);if(!handle)return false;view=static_cast<SharedControls*>(MapViewOfFile(handle,FILE_MAP_ALL_ACCESS,0,0,sizeof(SharedControls)));if(!view){close();return false;}writeControls(view,c);return true;}
- bool open(const wchar_t*name){close();handle=OpenFileMappingW(FILE_MAP_ALL_ACCESS,FALSE,name);if(!handle)return false;view=static_cast<SharedControls*>(MapViewOfFile(handle,FILE_MAP_ALL_ACCESS,0,0,sizeof(SharedControls)));if(!view){close();return false;}return true;}
+ void close(){if(view)UnmapViewOfFile(view);if(handle)CloseHandle(handle);view=nullptr;handle=nullptr;writerName.clear();}
+ bool create(const wchar_t*name,const Controls&c){close();handle=CreateFileMappingW(INVALID_HANDLE_VALUE,nullptr,PAGE_READWRITE,0,sizeof(SharedControls),name);if(!handle)return false;view=static_cast<SharedControls*>(MapViewOfFile(handle,FILE_MAP_ALL_ACCESS,0,0,sizeof(SharedControls)));if(!view){close();return false;}writerName=std::wstring(name)+L"-writers";write(c);return true;}
+ bool open(const wchar_t*name){close();handle=OpenFileMappingW(FILE_MAP_ALL_ACCESS,FALSE,name);if(!handle)return false;view=static_cast<SharedControls*>(MapViewOfFile(handle,FILE_MAP_ALL_ACCESS,0,0,sizeof(SharedControls)));if(!view){close();return false;}writerName=std::wstring(name)+L"-writers";return true;}
  bool read(Controls&c,LONG*rev=nullptr){if(view&&rev&&*rev>=0&&InterlockedCompareExchange(&view->sequence,0,0)==*rev)return false;return readControls(view,c,rev);}
- void write(const Controls&c){writeControls(view,c);}
+ void write(const Controls&c){if(view){app::NamedLock guard(writerName);writeControls(view,c);}}
 };
 }

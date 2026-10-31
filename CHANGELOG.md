@@ -1,5 +1,41 @@
 # Changes
 
+## 0.7.2-alpha
+
+- Add the Windows in-sim controls preview under Plugins > FSR 3/4 + Frame Gen.
+  Setup can install the panel and enable renderer activation for the exact
+  selected X-Plane installation, including an external drive. Launch normally;
+  the desktop interface remains available for updates, guide playback and full
+  diagnostics. Third-party launcher combinations require their own testing.
+- Share saved choices between both interfaces. Add live toggles, NR sliders,
+  model import, selected-budget highlighting, help and action feedback. Queue
+  presets, MSAA/FXAA, output and cloud-quality changes for normal simulator exit.
+  Provider/device changes still require a new session. FG pauses while the panel
+  is visible; automatic activation bypasses FG if OBS's capture hook is loaded.
+- Fix normal-startup registration/profile recovery and inactive status. Include
+  a registration repair shortcut, fresh-session diagnostics and separated panel
+  notices. Follow actual simulator input scale without overwriting saved intent
+  or forcing output resolution/UI size again at launch.
+- Reduce CPU/driver allocation churn with bounded completed-resource reuse,
+  depth descriptor rebinding and filtering of unrelated-size depth captures.
+  Keep fence/recording ownership, native fallback and the existing asynchronous
+  FG lifetime path. See docs/CPU-PERFORMANCE.md for measured scope and limits.
+- Retire obsolete NR contexts/scratch and completed command resources. Add
+  memory-headroom checks, bounded idle caches and automatic NR pause/retry under
+  pressure. These are safeguards, not a cap on X-Plane's total VRAM usage.
+- Preserve settings and user-supplied models during updates. Retire the previous
+  version guide only when its recorded hash matches; same-version repair retains
+  the current guide and edited files are left alone. Refresh an existing
+  in-sim opt-in; retain opt-outs. Uninstall removes only owned registration and
+  recognized plugin files, retaining unrelated simulator files and local models.
+- Validate the CPU/native-UI suite, production-code Vulkan reuse/OOM fixtures,
+  ordinary startup and a stationary FSR-only comparison on the owner's R9700.
+  Moving-view NR/FG quality and NR multi-pass ground blur are not certified;
+  use one pass as the starting point. This release adds no multi-GPU offload,
+  Mac Metal renderer or Linux feature parity.
+- Reuse the previously approved 0.7.1 video unchanged. Current setup is described
+  in the included instructions; no new film or before/after comparison is claimed.
+
 ## 0.7.1-alpha
 
 - Fit the live log viewer and its minimum size to the owner's monitor work area;

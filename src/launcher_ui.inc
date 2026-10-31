@@ -180,6 +180,7 @@ static void collectChoices() {
     // Preserve the earlier choice for experimental builds; public effective state is always Off.
     if (app::frameGenerationAvailable)
         preferences.frameGeneration = int(SendMessageW(fgBox, CB_GETCURSEL, 0, 0));
+    if(preferences.frameGeneration>0)preferences.lastFrameGeneration=preferences.frameGeneration;
     preferences.enabled = SendMessageW(toggle, BM_GETCHECK, 0, 0) == BST_CHECKED;
     preferences.ghostReduction = SendMessageW(ghostBox, BM_GETCHECK, 0, 0) == BST_CHECKED;
     preferences.cockpitRestore = SendMessageW(cockpitBox, BM_GETCHECK, 0, 0) == BST_CHECKED;
@@ -192,9 +193,11 @@ static void saveChoices() {
     if (motionSetupNote)
         SetWindowTextW(motionSetupNote, designSetupHint());
     try {
-        launcher::save(appDirectory / L"settings.ini", preferences);
         preferences.nr[xpfsr::nr::Enabled]=preferences.neuralRendering!=0;
-        nrChannel.write(preferences.nr);
+        const auto file=appDirectory/L"settings.ini";
+        if(!submittedChoicesReady){lastSubmittedChoices=launcher::load(file);submittedChoicesReady=true;}
+        launcher::transactChoices(file,lastSubmittedChoices,preferences,[&](const auto &merged){nrChannel.write(merged.nr);});
+        lastSubmittedChoices=preferences;
         SetWindowTextW(savedLabel, L"Choices saved automatically");
         theme::tone(savedLabel, theme::green);
     } catch (...) {
@@ -268,6 +271,25 @@ static void runtimeBanner(launcher::RuntimeState state, const app::Telemetry &st
 #include "launcher_design.inc"
 #include "intro_video.inc"
 #include "renderer_log_ui.inc"
+static void syncSharedChoices(){
+    if(!controlsReady||!submittedChoicesReady)return;
+    // Finish any open native selection before updating its displayed content.
+    for(auto h:{presetBox,modeBox,fgBox,neuralBox,msaaBox,scaleBox,outputBox})if(SendMessageW(h,CB_GETDROPPEDSTATE,0,0))return;
+    collectChoices();auto latest=launcher::load(appDirectory/L"settings.ini");
+    auto visible=launcher::mergeChoices(latest,lastSubmittedChoices,preferences);
+    if(launcher::serialized(visible)==launcher::serialized(preferences))return;
+    preferences=visible;lastSubmittedChoices=latest;
+    struct Pause{Pause(){controlsReady=false;}~Pause(){controlsReady=true;}}pause;
+    SetWindowTextW(pathBox,preferences.simulator.c_str());SetWindowTextW(argsBox,preferences.arguments.c_str());
+    SendMessageW(modeBox,CB_SETCURSEL,preferences.mode,0);
+    SendMessageW(fgBox,CB_SETCURSEL,app::effectiveFrameGeneration(preferences.frameGeneration),0);
+    SendMessageW(neuralBox,CB_SETCURSEL,app::effectiveNeuralRendering(preferences.neuralRendering),0);
+    for(auto pair:{std::pair{toggle,preferences.enabled},{ghostBox,preferences.ghostReduction},{cockpitBox,preferences.cockpitRestore},{tintBox,preferences.alignmentTint},{keepUIBox,preferences.keepSimUISize}})
+        SendMessageW(pair.first,BM_SETCHECK,pair.second?BST_CHECKED:BST_UNCHECKED,0);
+    SendMessageW(presetBox,CB_RESETCONTENT,0,0);populatePresets();
+    showGraphicsOptions(preferences.presetId.empty()?preferences.manual:graphics::presetById(preferences.presetId).settings);
+    if(IsWindow(nrWindow))nrSyncFields();
+}
 static LRESULT CALLBACK procedure(HWND hwnd, UINT message, WPARAM w, LPARAM l) {
     switch (message) {
     case WM_CREATE:

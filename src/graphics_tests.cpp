@@ -24,10 +24,10 @@ int wmain(int argc, wchar_t **argv) {
         fs::create_directories(root / L"Resources");
         write(root / L"Resources/settings.txt",
               "SETTING_1 renopt_MSAA 0 hdr/msaa_hw 0\nSETTING_1 renopt_FXAA 0 hdr/use_post_aa "
-              "0\nSETTING_1 renopt_FSR_04 2 fsr/enable 1 fsr/quality 2\n");
+              "0\nSETTING_1 renopt_FSR_04 2 fsr/enable 1 fsr/quality 2\nSETTING_MENU low-medium-high-maximum\nSETTING_1 renopt_clouds_02 3 cloud/resolution_scale 0.50 cloud/resolution_max 1920\n");
         const std::string original =
             "I\r\n10 Version\r\nrenopt_MSAA 2\r\nrenopt_FXAA 1\r\nrenopt_FSR_04 0\r\nother_setting "
-            "preserve this exactly\r\n";
+            "preserve this exactly\r\nrenopt_clouds_02 1\r\n";
         const std::string windows =
             "I\n10 Version\nnum_monitors 1\nmonitor/0/m_monitor 0\nmonitor/0/m_x_res_full "
             "2560\nmonitor/0/m_y_res_full 1440\nmonitor/0/m_is_fullscreen "
@@ -54,6 +54,15 @@ int wmain(int argc, wchar_t **argv) {
                 "Restore preserves unrelated setting edits");
         require(get(read(main), "renopt_MSAA") == "2" && read(screen) == windows,
                 "Graphics restore");
+        auto cloudOptions=current(root);cloudOptions.cloudQuality=3;
+        const auto cloudBefore=read(main),cloudMappings=read(root/L"Resources/settings.txt");
+        auto cloudBackup=apply(root,base/L"backups",cloudOptions,false);
+        require(get(read(main),"renopt_clouds_02")=="3"&&read(screen)==windows&&read(root/L"Resources/settings.txt")==cloudMappings,"Cloud quality changed output or the engine rendering table");
+        restore(root,cloudBackup);require(read(main)==cloudBefore,"Cloud quality restore did not preserve exact preferences");
+        auto cloudBad=cloudOptions;cloudBad.cloudQuality=4;rejects([&]{apply(root,base/L"backups",cloudBad,false);});
+        write(root/L"Resources/settings.txt","SETTING_1 renopt_MSAA 0 hdr/msaa_hw 0\nSETTING_1 renopt_FXAA 0 hdr/use_post_aa 0\nSETTING_1 renopt_FSR_04 2 fsr/enable 1 fsr/quality 2\n");
+        rejects([&]{apply(root,base/L"backups",cloudOptions,false);});require(read(main)==cloudBefore&&read(screen)==windows,"Unsupported cloud mapping partially changed preferences");
+        write(root/L"Resources/settings.txt",cloudMappings);
         auto duplicate = original + "renopt_MSAA 1\r\n";
         rejects([&] { get(duplicate, "renopt_MSAA"); });
         rejects([&] { get(original, "unknown_key"); });

@@ -1,0 +1,99 @@
+{
+  "version": "0.7.2-alpha",
+  "voice": "bm_george",
+  "speed": 1.0,
+  "scenes": [
+    {
+      "kind": "welcome",
+      "chapter": "FLIGHT BRIEF",
+      "eyebrow": "0.7.1 / FULL FEATURE RELEASE",
+      "title": "Choose your rendering flow.",
+      "lines": [
+        "Recommended: Neural rendering \u2192 FSR upscaling",
+        "Scene input first. Reconstructed output next."
+      ],
+      "narration": "Choose how neural rendering fits into your flight. Before upscaling is the recommended default. Neural rendering edits the scene input first, then F S R reconstructs the output.",
+      "start": 0.0,
+      "duration": 13.133333333333333
+    },
+    {
+      "kind": "settings",
+      "chapter": "LIVE CONTROL",
+      "eyebrow": "01 / NR SETTINGS",
+      "title": "Compare either order live.",
+      "lines": [
+        "Processing order: Before or After upscaling",
+        "Saved automatically \u00b7 No simulator restart",
+        "After uses output resolution and may cost more GPU time"
+      ],
+      "narration": "Open N R settings and choose Processing order. Switch between Before and After upscaling without restarting the simulator. Your choice is saved. After processes the larger output image and may need substantially more G P U time.",
+      "start": 13.133333333333333,
+      "duration": 17.966666666666665
+    },
+    {
+      "kind": "budget",
+      "chapter": "A STEADIER START",
+      "eyebrow": "02 / OPTIONAL WORK, WHEN READY",
+      "title": "Give the scene time to settle.",
+      "lines": [
+        "NR and FG wait for the initial scene to settle",
+        "Lower-priority NR preparation \u00b7 Selected pass budget only",
+        "FG keeps real frames visible when matching input is unavailable"
+      ],
+      "narration": "Optional neural rendering and frame generation wait for the initial scene to settle. Model preparation uses lower C P U priority and allocates the selected pass budget. If matching generation input is unavailable, the real frame stays visible while generation recovers. This does not increase base frame rate or remove all artifacts.",
+      "start": 31.099999999999998,
+      "duration": 23.8
+    },
+    {
+      "kind": "guidance",
+      "chapter": "FRAME GENERATION",
+      "eyebrow": "03 / COLOR AND PRESENTATION",
+      "title": "Consistent color in motion.",
+      "lines": [
+        "Display color stays consistent between real and generated SDR frames",
+        "Optional synchronized compatibility pacing for FSR 3 and 4",
+        "Compatibility may cost performance \u00b7 FG remains experimental"
+      ],
+      "narration": "Frame generation now preserves consistent display color between real and generated S D R frames. Optional synchronized compatibility modes offer a second presentation path for F S R three and four. These modes may cost performance. Frame generation remains experimental.",
+      "start": 54.9,
+      "duration": 20.9
+    },
+    {
+      "kind": "guidance",
+      "chapter": "CLEAR DIAGNOSTICS",
+      "eyebrow": "04 / KNOW WHAT IS RUNNING",
+      "title": "Follow the current session.",
+      "lines": [
+        "Live NR status shows processing order and resolution",
+        "Renderer log refreshes automatically",
+        "Clear states for active, protected and waiting processing"
+      ],
+      "narration": "Live neural rendering status shows the active order and resolution. Open Renderer log to follow the current session automatically. Clear activity and waiting states help you understand when processing is running or protected.",
+      "start": 75.8,
+      "duration": 16.566666666666666
+    },
+    {
+      "kind": "setup",
+      "chapter": "READY FOR TESTING",
+      "eyebrow": "05 / START CONSERVATIVELY",
+      "title": "Get every current feature.",
+      "lines": [
+        "Update to Normal for all current features",
+        "Start with Subtle strength, one pass and FG Off",
+        "Skip anytime \u00b7 Replay from What\u2019s new"
+      ],
+      "narration": "Update to the Normal release for all current features. Neural rendering needs compatible R D N A four hardware and your own supported local model. Start with Subtle strength, one pass and frame generation off. Skip this guide anytime, or replay it from Whats New.",
+      "start": 92.36666666666666,
+      "duration": 18.566666666666666
+    }
+  ],
+  "capture": {
+    "background_only": true
+  },
+  "approved_guide_reuse": {
+    "source_version": "0.7.1-alpha",
+    "sha256": "fd78d57b4884129edbeed03c2fce8f155ee72d728f49118fb37c5aa756e2f0cd",
+    "content_unchanged": true,
+    "reason": "Previously owner-approved video reused unchanged; current performance, memory and in-sim preview setup described in written instructions."
+  }
+}

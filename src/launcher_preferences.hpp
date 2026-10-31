@@ -2,12 +2,14 @@
 #pragma once
 #include "graphics_presets.hpp"
 #include "nr_controls.hpp"
+#include "settings_lock.hpp"
 #include <cstring>
 namespace launcher {
 struct Preferences {
     std::wstring simulator{L"D:\\X-Plane 12"}, arguments;
     std::string presetId;
     int mode{}, frameGeneration{}, neuralRendering{};
+    int lastFrameGeneration{2};
     xpfsr::nr::Controls nr;
     bool keepSimUISize{true};
     bool enabled{true}, ghostReduction{true}, cockpitRestore{true}, alignmentTint{};
@@ -22,6 +24,7 @@ inline graphics::Options graphicsForLaunch(const Preferences &p) {
                       "Launch preserves the simulator's current display and UI size.");
     auto o = p.presetId.empty() ? p.manual : graphics::presetById(p.presetId).settings;
     o.outputWidth = o.outputHeight = 0;
+    o.cloudQuality=-1; // Only an explicit Apply changes the simulator's cloud-quality slider.
     return o;
 }
 // Custom output/AA edits never select a reconstruction or FG provider for the user.
@@ -74,6 +77,7 @@ inline std::wstring decode(const std::wstring &s, const std::wstring &fallback) 
     return result;
 }
 inline Preferences load(const graphics::fs::path &file) {
+    app::NamedLock snapshot(settingsLockName(file));
     Preferences p;
     auto legacy = readSetting(file, L"Application", L"Simulator", p.simulator.c_str());
     p.simulator = readSetting(file, L"Launcher", L"Simulator", legacy.c_str());
@@ -84,6 +88,8 @@ inline Preferences load(const graphics::fs::path &file) {
         readSetting(file, L"Launcher", L"ArgumentsHex", encode(p.arguments).c_str()), p.arguments);
     p.mode = integer(file, L"Mode", 0, 4);
     p.frameGeneration = integer(file, L"FrameGeneration", 0, 4);
+    p.lastFrameGeneration=integer(file,L"LastFrameGeneration",p.frameGeneration?p.frameGeneration:2,4);
+    if(!p.lastFrameGeneration)p.lastFrameGeneration=2;
     // Older Normal releases replace their Launcher section on save. Keep NR
     // independently, migrating the unreleased prototype's keys on first save.
     const bool separateNR=readSetting(file,L"NeuralRendering",L"Schema")==L"1";
@@ -108,6 +114,7 @@ inline Preferences load(const graphics::fs::path &file) {
     p.manual.msaa = integer(file, L"MSAA", 0, 3);
     p.manual.fxaa = integer(file, L"FXAA", 0, 1);
     p.manual.scale = integer(file, L"Scale", 0, 4);
+    p.manual.cloudQuality = integer(file,L"CloudQuality",0,4)-1;
     p.manual.outputWidth = integer(file, L"OutputWidth", 0, 16384);
     p.manual.outputHeight = integer(file, L"OutputHeight", 0, 16384);
     bool outputValid = false;
@@ -134,6 +141,7 @@ inline std::wstring serialized(const Preferences &p) {
     add(L"Preset", std::wstring(p.presetId.begin(), p.presetId.end()));
     add(L"Mode", std::to_wstring(p.mode));
     add(L"FrameGeneration", std::to_wstring(p.frameGeneration));
+    add(L"LastFrameGeneration",std::to_wstring(p.lastFrameGeneration));
     add(L"NeuralRendering",std::to_wstring(p.neuralRendering));
     add(L"KeepSimUISize",std::to_wstring(p.keepSimUISize));
     for(int i=0;i<xpfsr::nr::Count;++i)add(xpfsr::nr::settings[i].key,std::to_wstring(i==xpfsr::nr::Enabled?int(p.neuralRendering!=0):p.nr.value[i]));
@@ -144,6 +152,7 @@ inline std::wstring serialized(const Preferences &p) {
     add(L"MSAA", std::to_wstring(p.manual.msaa));
     add(L"FXAA", std::to_wstring(p.manual.fxaa));
     add(L"Scale", std::to_wstring(p.manual.scale));
+    add(L"CloudQuality",std::to_wstring(p.manual.cloudQuality+1));
     add(L"OutputWidth", std::to_wstring(p.manual.outputWidth));
     add(L"OutputHeight", std::to_wstring(p.manual.outputHeight));
     add(L"ManualApplied", std::to_wstring(p.manualApplied));

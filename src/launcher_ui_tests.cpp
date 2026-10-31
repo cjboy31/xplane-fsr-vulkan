@@ -96,6 +96,18 @@ int wmain(int argc,wchar_t**argv) {
             }
         }
         // Main controls were reparented; runtime enabling must still find them.
+        saveChoices();
+        auto baseline=launcher::load(appDirectory/L"settings.ini"),panelEdit=baseline;
+        panelEdit.mode=4;panelEdit.cockpitRestore=false;panelEdit.ghostReduction=!baseline.ghostReduction;
+        panelEdit.nr[xpfsr::nr::Tone]=63;
+        launcher::transactChoices(appDirectory/L"settings.ini",baseline,panelEdit);
+        SetWindowTextW(argsBox,L"--unsaved-local-argument");
+        syncSharedChoices();
+        ensure(SendMessageW(modeBox,CB_GETCURSEL,0,0)==4&&!preferences.cockpitRestore&&preferences.nr[xpfsr::nr::Tone]==63,"Desktop did not refresh the panel's saved profile");
+        ensure(text(argsBox)==L"--unsaved-local-argument","Shared refresh discarded a local text edit");
+        saveChoices();auto combined=launcher::load(appDirectory/L"settings.ini");
+        ensure(combined.mode==4&&combined.nr[xpfsr::nr::Tone]==63&&combined.arguments==L"--unsaved-local-argument","Later desktop save reverted panel edits");
+        std::cout<<"PASS: shared in-sim profile refresh preserves unsubmitted desktop edits and later saves\n";
         ensure(SendMessageW(fgBox,CB_GETCOUNT,0,0)==(app::frameGenerationAvailable?5:1),"Compatibility FG choices or Normal suspension gating are incorrect");
         if(app::frameGenerationAvailable){
             SendMessageW(fgBox,CB_SETCURSEL,3,0);saveChoices();

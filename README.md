@@ -20,7 +20,18 @@ product, and is not a complete solution to ghosting or stutter.
 
 ## Downloads and current source
 
-**Windows 0.7.1: update to Normal for all current features.** Both channels
+**Windows 0.7.2-alpha: in-sim controls preview and performance/memory fixes.**
+Use the [Normal release](https://github.com/cjboy31/xplane-fsr-vulkan/releases/tag/v0.7.2-alpha).
+In full setup, select your simulator and enable in-sim integration. Then launch
+normally and open **Plugins > FSR 3/4 + Frame Gen**. The desktop application is
+an **optional secondary interface**, retained for updates, guide playback and
+full diagnostics. Both interfaces share saved choices. Existing automatic
+updates refresh an enabled integration; desktop-only users run full setup once
+to opt in. See [current instructions](docs/INSTALLATION-0.7.2.txt),
+[panel limits](docs/IN-SIM-PLUGIN.md) and [measured CPU findings](docs/CPU-PERFORMANCE.md).
+Third-party launcher combinations and full in-sim feature parity remain under test.
+
+**Normal includes all current rendering features.** Both channels
 include FSR 3/4, independent neural rendering, frame generation and optional
 synchronized FG compatibility modes. Normal is recommended; Experimental is
 for future development updates. NR and FG start Off. NR requires compatible
@@ -39,7 +50,7 @@ broader hardware, display and long-flight quality remain unverified.
 The [async FG investigation](docs/ASYNC-FRAME-GENERATION.md) includes controlled
 results and developer test commands; it does not enable async in the launcher.
 
-- **Windows Normal (recommended):** [0.7.1-alpha installer and instructions](https://github.com/cjboy31/xplane-fsr-vulkan/releases/tag/v0.7.1-alpha). All current NR, FG and compatibility features. NR + FG requires explicit opt-in and compatible hardware/model. Start with FG Off and one NR pass.
+- **Windows Normal (recommended):** [0.7.2-alpha installer and instructions](https://github.com/cjboy31/xplane-fsr-vulkan/releases/tag/v0.7.2-alpha). All current NR, FG and compatibility features. NR + FG requires explicit opt-in and compatible hardware/model. Start with FG Off and one NR pass.
 - **Windows Experimental:** [0.7.1-experimental.1 installer](https://github.com/cjboy31/xplane-fsr-vulkan/releases/tag/v0.7.1-experimental.1). Same current feature set; future development track. Switch builds through **Updates / Channel**.
 - **Feature video:** [Watch or download the 0.7.1 guide](https://github.com/cjboy31/xplane-fsr-vulkan/releases/download/v0.7.1-alpha/XPlane-FSR3-4-0.7.1-alpha-Feature-Guide.mp4). Explains live NR order/controls, FG choices, startup behavior and logs, with captions and immediate Skip. [Versioned-video workflow](docs/FEATURE-VIDEOS.md).
 - **Linux:** [Native FSR 3.1 preview downloads](https://github.com/cjboy31/xplane-fsr-vulkan/releases/tag/native-preview-2026.10.29.1) — requires MSAA off and FSR supersampling enabled; real-flight validation is pending.
@@ -79,7 +90,8 @@ Native AA are unavailable there. Read the selected release's instructions.
 - Automatic startup checks for GitHub Releases, preview-channel selection and
   verified one-click installation from **Updates...**, preserving saved choices.
   Install 0.5.4 or later once to enable this feature.
-- Explicit Vulkan layer enabled only for X-Plane started by the launcher.
+- Selected-installation automatic Vulkan activation for ordinary startup, with
+  an optional explicit desktop launch path and a dedicated disable switch.
 - FSR 3.1.6 compatibility and 4.1.2 ML-preview AA/upscaling providers.
 - FSR frame generation with SDK-controlled presentation in both Windows channels.
 - Fourteen presets on the main screen: seven resolution/AA choices each for

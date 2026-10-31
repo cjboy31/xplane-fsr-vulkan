@@ -7,6 +7,8 @@
 #include "nr_log.hpp"
 #include "nr_build_cfg.hpp"
 #include "nr_models.hpp"
+#include "nr_pass_policy.hpp"
+#include "nr_memory_budget.hpp"
 #include "update_http.hpp"
 #include <filesystem>
 #include <algorithm>
@@ -44,6 +46,13 @@ extern "C" __declspec(dllexport) void *XPFSR_NR_Create(const xpfsr::nr::Host *ho
                 "NR adapter ABI mismatch");
         require(config->root && config->width && config->height && config->controls.valid(),
                 "Invalid NR configuration");
+        const auto memory=xpfsr::nr::queryGpuMemoryBudget(host->instance,host->physical,host->physicalDispatch);
+        const auto estimate=xpfsr::nr::estimatedProfileBytes(config->width,config->height,config->controls[xpfsr::nr::Scale],config->controls[xpfsr::nr::Passes]);
+        if(memory.available&&!xpfsr::nr::profileFits(memory.budget,memory.usage,estimate))throw std::runtime_error(xpfsr::nr::memoryAdmissionReason(memory,estimate));
+        if(host->log){std::ostringstream text;text<<"NR memory admission: estimated profile "<<estimate/xpfsr::nr::MiB<<" MiB; ";
+            if(memory.available)text<<"heap usage "<<memory.usage/xpfsr::nr::MiB<<" MiB / budget "<<memory.budget/xpfsr::nr::MiB<<" MiB; texture reserve "<<xpfsr::nr::textureReserveBytes(memory.budget)/xpfsr::nr::MiB<<" MiB";
+            else text<<"driver memory budget unavailable; admission is unverified";
+            host->log(text.str().c_str());}
         const auto root = std::filesystem::canonical(config->root);
         const auto text = root.wstring();
         require(std::all_of(text.begin(), text.end(), [](wchar_t c) { return c < 128; }),
@@ -125,9 +134,10 @@ extern "C" __declspec(dllexport) int XPFSR_NR_Record(void *context, const xpfsr:
         if(!v[Enabled]||!v[Intensity]){error(reason,bytes,"NR Off: original FSR input retained");return 0;}
         c->controls.intensity=v[Intensity]/100.f;c->controls.local_tone=v[Tone]/100.f;
         c->controls.local_structure=v[Structure]/100.f;c->controls.skin_structure=v[Skin]/100.f;
-        c->controls.colour_strength=v[Colour]/100.f;c->controls.detail_strength=v[Detail]/100.f;
+        const int passes=effectivePasses(v,c->config.controls[Passes]);
+        c->controls.colour_strength=v[Colour]/100.f;c->controls.detail_strength=multipassDetailStrength(v,c->config.controls[Passes]);
         c->controls.max_ratio=v[Highlight]/100.f;c->controls.style=v[Style];
-        c->controls.passes=v[Passes];c->controls.transfer=v[Transfer];c->controls.classic_scaler=v[Scaler];
+        c->controls.passes=passes;c->controls.transfer=v[Transfer];c->controls.classic_scaler=v[Scaler];
         c->controls.automatic_mask=v[Mask]!=0;
         c->runtime->set_history_strength(v[History]/100.f);c->runtime->set_style_grade(v[Grade]!=0);
         nr::ColourFrame color{};
@@ -140,8 +150,8 @@ extern "C" __declspec(dllexport) int XPFSR_NR_Record(void *context, const xpfsr:
         auto result = c->runtime->record_temporal(frame->commands, color, c->controls,
                                                   nr::TemporalFrame{frame->reset != 0, 0});
         const bool applied = result.frame.applied && result.frame.network_dispatches > 0;
-        if(applied&&reason&&bytes)std::snprintf(reason,bytes,"NR recorded: %s; %s upscaling at %ux%u; %d%% model, %d pass(es); GPU %.2f ms (network %.2f ms); estimated motion",
-            v[Scope]?"full scene":"external only",v[Order]?"after":"before",c->config.width,c->config.height,c->config.controls[Scale],v[Passes],c->runtime->average_gpu_ms(),c->runtime->average_network_ms());
+        if(applied&&reason&&bytes)std::snprintf(reason,bytes,"NR recorded: %s; %s upscaling at %ux%u; %d%% model, %d pass(es)%s; GPU %.2f ms (network %.2f ms); estimated motion",
+            v[Scope]?"full scene":"external only",v[Order]?"after":"before",c->config.width,c->config.height,c->config.controls[Scale],passes,passes>1?" (protected detail budget)":"",c->runtime->average_gpu_ms(),c->runtime->average_network_ms());
         else error(reason,bytes,"NR bypassed: no neural dispatch recorded");
         return applied ? 1 : 0;
     } catch (const std::exception &e) {

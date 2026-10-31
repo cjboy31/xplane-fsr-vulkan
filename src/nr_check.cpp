@@ -39,9 +39,13 @@ int wmain(int argc, wchar_t **argv) {
     void *context{};
     xpfsr::nr::Destroy destroy{};
     try {
-        need(argc >= 3, "NRCheck.exe NR_ROOT OUTPUT_DIRECTORY [--features-only | --rgba16f-720p | --benchmark-1440p] [model_percent]");
+        need(argc >= 3, "NRCheck.exe NR_ROOT OUTPUT_DIRECTORY [--features-only | --rgba16f-720p | --benchmark-1440p | --pass-study] [model_percent] [study_passes]");
         const bool benchmark=argc>3&&std::wstring(argv[3])==L"--benchmark-1440p";
-        const bool fp16 = benchmark||(argc > 3 && std::wstring(argv[3]) == L"--rgba16f-720p");
+        const bool study32=argc>3&&std::wstring(argv[3])==L"--pass-study-rgba32f";
+        const bool passStudy=study32||(argc>3&&std::wstring(argv[3])==L"--pass-study");
+        const int studyPasses=passStudy&&argc>5?std::stoi(argv[5]):1;
+        need(studyPasses>=1&&studyPasses<=3,"Pass study requires one, two or three actual passes");
+        const bool fp16 = (passStudy&&!study32)||benchmark||(argc > 3 && std::wstring(argv[3]) == L"--rgba16f-720p");
         const bool copyInput=argc>5&&std::wstring(argv[5])==L"--copy-input";
         bool singlePass=false;for(int i=3;i<argc;++i)singlePass|=std::wstring(argv[i])==L"--capacity-one";
         const auto root = std::filesystem::canonical(argv[1]);
@@ -179,7 +183,7 @@ int wmain(int argc, wchar_t **argv) {
         host.queue = queue;
         host.queueFamily = family;
         host.log = [](const char *line) { std::cout << line << '\n'; };
-        const uint32_t W = benchmark?2560:fp16 ? 1280 : 256, H = benchmark?1440:fp16 ? 720 : 144;
+        const uint32_t W = passStudy?512:benchmark?2560:fp16 ? 1280 : 256, H = passStudy?288:benchmark?1440:fp16 ? 720 : 144;
         auto path = root.wstring();
         xpfsr::nr::Config config{};
         config.root = path.c_str();
@@ -188,6 +192,8 @@ int wmain(int argc, wchar_t **argv) {
         config.format = fp16 ? VK_FORMAT_R16G16B16A16_SFLOAT : VK_FORMAT_R32G32B32A32_SFLOAT;
         config.strength = 1;
         config.controls[xpfsr::nr::Passes]=benchmark||singlePass?1:3; // stress fixture capacity
+        if(passStudy)need(config.controls[xpfsr::nr::Passes]>=studyPasses,"Study pass count exceeds the allocated context capacity");
+        if(passStudy){config.controls[xpfsr::nr::Intensity]=100;config.controls[xpfsr::nr::Style]=2;}
         if(argc>4)config.controls[xpfsr::nr::Scale]=std::stoi(argv[4]);
         need(config.controls.valid(),"Unsupported NR model percent");
         char why[512]{};
@@ -205,14 +211,16 @@ int wmain(int argc, wchar_t **argv) {
         double difference = 0;
         uint64_t finite = 0;
         uint32_t recorded = 0;
-        const int frames = benchmark?40:fp16 ? 16 : 8;
+        const int frames = passStudy?32:benchmark?40:fp16 ? 16 : 8;
         std::vector<float>gpuTimes;
         for (int frame = 0; frame < frames; ++frame) {
             // Moving detail, dark tones, bright HDR light and an explicit mid-run reset.
             for (uint32_t y = 0; y < H; ++y)
                 for (uint32_t x = 0; x < W; ++x) {
                     size_t i = (y * W + x) * 4;
-                    float v =
+                    uint32_t seed=(x*1664525u)^(y*1013904223u);seed^=seed>>13;seed*=2246822519u;
+                    float v = passStudy ? .07f+float(y)/H*.25f+float(seed&255)/255*.10f+
+                        (((x/2+y/2)%2)? .04f:0.f)+(((x/12+y/9)%2)? .09f:0.f) :
                         .008f + float(x) / W * .8f + (((x + frame * 3) / 9 + y / 7) % 2) * .12f;
                     original[i] = v;
                     original[i + 1] = v * .8f;
@@ -240,12 +248,13 @@ int wmain(int argc, wchar_t **argv) {
                 f.commands = cb;
                 f.color = image.handle;
                 if(!copyInput)f.usage=VK_IMAGE_USAGE_SAMPLED_BIT|VK_IMAGE_USAGE_STORAGE_BIT|VK_IMAGE_USAGE_TRANSFER_SRC_BIT|VK_IMAGE_USAGE_TRANSFER_DST_BIT;
-                f.reset = frame == 0 || frame == 4 || (!benchmark&&frame==7);
+                f.reset = passStudy?frame==0:frame == 0 || frame == 4 || (!benchmark&&frame==7);
                 f.controls=config.controls;
-                f.controls[xpfsr::nr::Passes]=1;
-                f.controls[xpfsr::nr::Enabled]=benchmark||frame!=2;
-                f.reset|=!benchmark&&frame==3;
-                if(!benchmark&&frame>=4&&frame<7){f.controls[xpfsr::nr::Intensity]=50;f.controls[xpfsr::nr::Tone]=25;f.controls[xpfsr::nr::Structure]=110;f.controls[xpfsr::nr::Skin]=50;f.controls[xpfsr::nr::History]=40;f.controls[xpfsr::nr::Style]=1;f.controls[xpfsr::nr::Passes]=singlePass?1:2;}
+                f.controls[xpfsr::nr::Passes]=passStudy?studyPasses:1;
+                f.controls[xpfsr::nr::Enabled]=passStudy||benchmark||frame!=2;
+                f.reset|=!passStudy&&!benchmark&&frame==3;
+                if(!passStudy&&!benchmark&&frame>=4&&frame<7){f.controls[xpfsr::nr::Intensity]=50;f.controls[xpfsr::nr::Tone]=25;f.controls[xpfsr::nr::Structure]=110;f.controls[xpfsr::nr::Skin]=50;f.controls[xpfsr::nr::History]=40;f.controls[xpfsr::nr::Style]=1;f.controls[xpfsr::nr::Passes]=singlePass?1:2;}
+                if(!passStudy&&!benchmark&&!singlePass&&frame==7)f.controls[xpfsr::nr::Passes]=3;
                 int result = record(context, &f, why, sizeof(why));
                 need(result == (f.controls[xpfsr::nr::Enabled]?1:0), why);
                 recorded+=result;
@@ -266,11 +275,13 @@ int wmain(int argc, wchar_t **argv) {
                      "NR output is non-finite or outside HDR fixture bounds");
                 ++finite;
                 difference += std::abs(double(readback[i]) - original[i]);
-                if(!benchmark&&frame==2)need(readback[i]==original[i],"Live NR Off changed the original input");
+                if(!passStudy&&!benchmark&&frame==2)need(readback[i]==original[i],"Live NR Off changed the original input");
             }
         }
         need(difference > 0.001, "No measurable model output change");
         std::ofstream(output/L"NR-LAST.rgba32f",std::ios::binary).write(reinterpret_cast<const char*>(readback.data()),std::streamsize(readback.size()*sizeof(float)));
+        if(passStudy){std::ofstream(output/L"NR-INPUT.rgba32f",std::ios::binary).write(reinterpret_cast<const char*>(original.data()),std::streamsize(original.size()*sizeof(float)));
+            std::ofstream study(output/L"NR-PASS-STUDY.json");study<<"{\"width\":"<<W<<",\"height\":"<<H<<",\"actualPasses\":"<<studyPasses<<",\"capacity\":"<<config.controls[xpfsr::nr::Passes]<<",\"modelPercent\":"<<config.controls[xpfsr::nr::Scale]<<",\"frames\":"<<frames<<",\"syntheticOnly\":true}";}
         std::ofstream report(output / L"NR-CHECK.txt");
         report << "PASS: real NR model on GPU; " << recorded << " fenced frames; " << finite
                << " finite samples; absolute difference=" << difference << '\n'

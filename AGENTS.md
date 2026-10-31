@@ -68,8 +68,28 @@ with third-party launchers. Study documented behavior; implement original code
 and artwork without copying restricted LuminaXP internals. Distinguish plugin
 presence from confirmed renderer activity. See docs/IN-SIM-PLUGIN.md.
 
+The owner's latest direction makes the in-sim panel the primary interface for
+presets, graphics, NR/FG, models, diagnostics, guides and updates. Keep the
+desktop application available on GitHub as a clearly labeled optional secondary
+interface. Both interfaces must share saved choices. Installation/early
+activation may use background support components but must not require a desktop
+dashboard or a special simulator launcher. Preserve existing choices during
+migration. Check feature parity and activation/update/uninstall behavior before
+advertising the in-sim workflow as complete.
+
 After the in-sim panel, investigate multi-GPU options using Lossless Scaling's
 documented behavior as a reference. Evaluate explicit render/processing GPU
 selection, transfer/synchronization costs, device support and safe fallback.
 Implement original code and verify actual two-GPU behavior before claiming
 compatibility or performance benefits. Do not substitute this for the panel work.
+
+Latest owner priority: after the current NR memory/blur corrections are tested,
+begin multi-GPU settings/prototypes alongside the remaining in-sim parity work.
+Also maintain a concrete optimization/feature roadmap based on measured findings.
+Mac installers must distinguish the existing diagnostic probe from a future
+working Metal rendering backend; do not package an unsupported rendering claim.
+
+Also after in-sim integration, investigate the owner's CPU frame time being much
+higher than GPU time. Compare the same scene with the mod bypassed, FSR only,
+NR and FG; distinguish simulator CPU work from synchronization/wait time and
+source/display frame timing before proposing an optimization.

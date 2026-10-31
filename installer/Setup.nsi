@@ -32,6 +32,11 @@ Var AutoUpdate
 Var InstallLock
 Var ParentProcess
 Var ImportSettings
+Var IntegrationCheck
+Var IntegrationWanted
+Var IntegrationWasEnabled
+Var PreviousGuideVersion
+Var PreviousGuideSHA256
 
 !define MUI_ABORTWARNING
 !define MUI_WELCOMEPAGE_TITLE "FSR 3/4 + Frame Gen for X-Plane 12"
@@ -49,14 +54,14 @@ Page custom SimulatorPage SimulatorLeave
 !insertmacro MUI_PAGE_DIRECTORY
 !insertmacro MUI_PAGE_INSTFILES
 !define MUI_FINISHPAGE_TITLE "Installation complete"
-!define MUI_FINISHPAGE_TEXT "Open the launcher from the Start menu. Run the GPU checks, then choose an AA/upscaling mode. Frame generation starts Off.$\r$\n$\r$\nThe installed guide explains settings, limitations and removal."
+!define MUI_FINISHPAGE_TEXT "If you enabled in-sim integration, start X-Plane normally and open Plugins > FSR 3/4 + Frame Gen. The desktop interface remains available for diagnostics, updates and the approved video guide.$\r$\n$\r$\nRead the included instructions for first setup. NR and frame generation start Off."
 !define MUI_FINISHPAGE_RUN "$INSTDIR\XPlaneFSR24.exe"
-!define MUI_FINISHPAGE_RUN_TEXT "Open FSR launcher"
+!define MUI_FINISHPAGE_RUN_TEXT "Open optional desktop interface"
 !define MUI_FINISHPAGE_RUN_NOTCHECKED
 !define MUI_FINISHPAGE_SHOWREADME "$INSTDIR\INSTALLATION-AND-USE.txt"
 !define MUI_FINISHPAGE_SHOWREADME_TEXT "Read installation and use instructions"
 !insertmacro MUI_PAGE_FINISH
-!define MUI_UNCONFIRMPAGE_TEXT_TOP "Close X-Plane. Before uninstalling, use Remove camera plugin in the launcher for your simulator folder. The uninstaller does not remove files from the simulator. User logs, check output and backups are preserved."
+!define MUI_UNCONFIRMPAGE_TEXT_TOP "Close X-Plane and the desktop interface. Setup removes its own in-sim registration and recognized plugin. Other plugins, simulator preferences, local NR models, logs and backups are retained."
 !insertmacro MUI_UNPAGE_CONFIRM
 !insertmacro MUI_UNPAGE_INSTFILES
 !insertmacro MUI_UNPAGE_FINISH
@@ -75,6 +80,11 @@ Function .onInit
   StrCpy $DesktopWanted 0
   StrCpy $XPlaneDir ""
   StrCpy $ImportSettings ""
+  StrCpy $IntegrationWanted 1
+  ReadINIStr $IntegrationWasEnabled "$INSTDIR\settings.ini" "InSim" "Enabled"
+  ${If} $IntegrationWasEnabled == "0"
+    StrCpy $IntegrationWanted 0
+  ${EndIf}
   ${GetParameters} $Parameters
   ClearErrors
   ${GetOptions} $Parameters "/TEST=" $0
@@ -102,6 +112,12 @@ Function .onInit
       Quit
     ${EndIf}
     StrCpy $XPlaneDir ""
+    ; Automatic updates refresh an existing opt-in, never enable an opted-out
+    ; or legacy desktop-only installation without the full setup selection.
+    StrCpy $IntegrationWanted 0
+    ${If} $IntegrationWasEnabled == "1"
+      StrCpy $IntegrationWanted 1
+    ${EndIf}
     ClearErrors
     ${GetOptions} $Parameters "/PARENT=" $ParentProcess
     ${IfNot} ${Errors}
@@ -166,7 +182,7 @@ Function SimulatorPage
   !insertmacro MUI_HEADER_TEXT "Choose X-Plane" "Select your simulator folder, or leave it blank to choose later."
   nsDialogs::Create 1018
   Pop $Dialog
-  ${NSD_CreateLabel} 0 0 100% 30u "Choose the folder containing X-Plane.exe, or leave blank to keep imported/saved launcher choices. The camera plugin is copied on first selected-mode launch; setup does not change the simulator."
+  ${NSD_CreateLabel} 0 0 100% 30u "Choose the folder containing X-Plane.exe, including an external drive. Enable in-sim integration to launch normally with your usual shortcut or third-party launcher. Simulator graphics are changed only when you request them."
   Pop $0
   ${NSD_CreateDirRequest} 0 40u 78% 13u "$XPlaneDir"
   Pop $FolderEdit
@@ -178,7 +194,12 @@ Function SimulatorPage
   ${If} $DesktopWanted == 1
     ${NSD_Check} $DesktopCheck
   ${EndIf}
-  ${NSD_CreateLabel} 0 103u 100% 44u "Tested: X-Plane 12.4.4-r1, Radeon AI PRO R9700.$\r$\nLater betas and other hardware may be unsupported.$\r$\nCompatibility AA is the suggested starting mode; FG is optional."
+  ${NSD_CreateCheckbox} 0 92u 100% 14u "Enable in-sim controls and automatic renderer activation"
+  Pop $IntegrationCheck
+  ${If} $IntegrationWanted == 1
+    ${NSD_Check} $IntegrationCheck
+  ${EndIf}
+  ${NSD_CreateLabel} 0 116u 100% 35u "Windows Vulkan preview; tested on X-Plane 12.4.4-r1 and Radeon AI PRO R9700. Start with NR and FG Off. Actual third-party launcher combinations still require testing."
   Pop $0
   nsDialogs::Show
 FunctionEnd
@@ -194,6 +215,7 @@ FunctionEnd
 Function SimulatorLeave
   ${NSD_GetText} $FolderEdit $XPlaneDir
   ${NSD_GetState} $DesktopCheck $DesktopWanted
+  ${NSD_GetState} $IntegrationCheck $IntegrationWanted
   Call ValidateSimulator
 FunctionEnd
 
@@ -280,6 +302,8 @@ Section "Application"
   !insertmacro CheckUnlocked "nr\XPFSRNeuralRendering.dll"
   !insertmacro CheckUnlocked "nr\ImportNRModel.exe"
   !insertmacro CheckUnlocked "nr\NRCheck.exe"
+  !insertmacro CheckUnlocked "IntegrationSetup.exe"
+  !insertmacro CheckUnlocked "plugin\64\win.xpl"
   SetOverwrite on
   !ifndef FG_AVAILABLE
     ; Normal removes only the two FG components from a recognized owned install.
@@ -296,7 +320,17 @@ Section "Application"
       Abort "Close frame-generation checks before returning to Normal."
     ${EndIf}
   !endif
+  ReadINIStr $PreviousGuideVersion "$INSTDIR\media\feature-video.ini" "Video" "Version"
+  ReadINIStr $PreviousGuideSHA256 "$INSTDIR\media\feature-video.ini" "Video" "SHA256"
   !include "${GENERATED}\InstallFiles.nsh"
+  ${If} $PreviousGuideVersion != ""
+  ${AndIf} $PreviousGuideSHA256 != ""
+    ExecWait '$\"$INSTDIR\IntegrationSetup.exe$\" --retire-guide $\"$PreviousGuideVersion$\" $\"$PreviousGuideSHA256$\"' $0
+    ${If} $0 != 0
+      SetErrorLevel 9
+      Abort "Previous guide cleanup could not finish. Rerun setup into this same folder. Saved settings and models were retained."
+    ${EndIf}
+  ${EndIf}
   ; The verified target now contains our payload. Keep it recognizable if a
   ; later preferences write fails so setup can safely repair the installation.
   WriteINIStr "$INSTDIR\XPFSR24-Installation.ini" "Installation" "Product" "XPFSR24-community-alpha"
@@ -317,6 +351,25 @@ Section "Application"
   ${EndIf}
   WriteUninstaller "$INSTDIR\Uninstall.exe"
   ${If} $TestMode != 1
+    ${If} $IntegrationWanted == 1
+      ${If} $XPlaneDir != ""
+        ExecWait '$\"$INSTDIR\IntegrationSetup.exe$\" --enable $\"$XPlaneDir$\"' $0
+      ${ElseIf} $IntegrationWasEnabled == "1"
+        ExecWait '$\"$INSTDIR\IntegrationSetup.exe$\" --enable' $0
+      ${Else}
+        StrCpy $0 0
+      ${EndIf}
+    ${ElseIf} $IntegrationWasEnabled == "1"
+      ExecWait '$\"$INSTDIR\IntegrationSetup.exe$\" --uninstall-integration' $0
+    ${Else}
+      StrCpy $0 0
+    ${EndIf}
+    ${If} $0 != 0
+      SetErrorLevel 9
+      Abort "In-sim setup could not finish. Close X-Plane, check logs/integration-setup.txt and rerun setup into this same folder. Existing choices and models are retained."
+    ${EndIf}
+  ${EndIf}
+  ${If} $TestMode != 1
     ; Remove only shortcut names created by previous owned installs.
     Delete "$SMPROGRAMS\FSR for X-Plane 12 (Experimental)\FSR Launcher.lnk"
     Delete "$SMPROGRAMS\FSR for X-Plane 12 (Experimental)\Instructions.lnk"
@@ -328,6 +381,7 @@ Section "Application"
     CreateDirectory "$SMPROGRAMS\FSR 3-4 + Frame Gen for X-Plane"
     CreateShortcut "$SMPROGRAMS\FSR 3-4 + Frame Gen for X-Plane\FSR 3-4 + Frame Gen.lnk" "$INSTDIR\XPlaneFSR24.exe"
     CreateShortcut "$SMPROGRAMS\FSR 3-4 + Frame Gen for X-Plane\Instructions.lnk" "$INSTDIR\INSTALLATION-AND-USE.txt"
+    CreateShortcut "$SMPROGRAMS\FSR 3-4 + Frame Gen for X-Plane\Repair in-sim activation.lnk" "$INSTDIR\IntegrationSetup.exe"
     CreateShortcut "$SMPROGRAMS\FSR 3-4 + Frame Gen for X-Plane\Uninstall.lnk" "$INSTDIR\Uninstall.exe"
     ${If} $DesktopWanted == 1
       CreateShortcut "$DESKTOP\FSR 3-4 + Frame Gen for X-Plane.lnk" "$INSTDIR\XPlaneFSR24.exe"
@@ -366,8 +420,17 @@ Section "Uninstall"
   ReadINIStr $TestMode "$INSTDIR\XPFSR24-Installation.ini" "Installation" "TestMode"
   ReadINIStr $DesktopWanted "$INSTDIR\XPFSR24-Installation.ini" "Installation" "DesktopShortcut"
   ${If} $TestMode != 1
+    IfFileExists "$INSTDIR\IntegrationSetup.exe" 0 integrationRemoved
+    ExecWait '$\"$INSTDIR\IntegrationSetup.exe$\" --uninstall-integration' $0
+    ${If} $0 != 0
+      MessageBox MB_OK|MB_ICONSTOP "Close X-Plane before uninstalling. In-sim cleanup failed; no application files were removed. Check logs/integration-setup.txt."
+      SetErrorLevel 9
+      Quit
+    ${EndIf}
+    integrationRemoved:
     Delete "$SMPROGRAMS\FSR 3-4 + Frame Gen for X-Plane\FSR 3-4 + Frame Gen.lnk"
     Delete "$SMPROGRAMS\FSR 3-4 + Frame Gen for X-Plane\Instructions.lnk"
+    Delete "$SMPROGRAMS\FSR 3-4 + Frame Gen for X-Plane\Repair in-sim activation.lnk"
     Delete "$SMPROGRAMS\FSR 3-4 + Frame Gen for X-Plane\Uninstall.lnk"
     RMDir "$SMPROGRAMS\FSR 3-4 + Frame Gen for X-Plane"
     ${If} $DesktopWanted == 1

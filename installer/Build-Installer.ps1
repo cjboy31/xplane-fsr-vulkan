@@ -35,6 +35,7 @@ function Add-Payload([string]$Source,[string]$Relative,[string]$License) {
   $entries.Add([pscustomobject]@{path=$Relative.Replace('\','/');sha256=(Get-FileHash -LiteralPath $dest).Hash.ToLowerInvariant();bytes=(Get-Item -LiteralPath $dest).Length;licenseGroup=$License})
 }
 $originalFiles = @('XPlaneFSR24.exe','NativeAACheck.exe','CockpitRestoreCheck.exe','layer\XPFSR24Layer.dll','layer\XPFSR24Layer.json','plugin\64\win.xpl') + $AdditionalOriginalFiles
+if([version](($PackageVersion -split '-')[0]) -ge [version]'0.7.2'){$originalFiles += @('IntegrationSetup.exe','auto\XPFSR24Implicit.json')}
 $fgDevelopment = $PackageVersion -match '^\d+\.\d+\.\d+-experimental\.\d+$'
 $fgAvailable = $fgDevelopment -or [version](($PackageVersion -split '-')[0]) -ge [version]'0.7.1'
 if($fgAvailable){$originalFiles += 'FrameGenCheck.exe'}

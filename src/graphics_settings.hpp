@@ -19,6 +19,7 @@ struct Options {
     int msaa{}, fxaa{}, scale{};
     int outputWidth{}, outputHeight{};
     bool keepUISize{true};
+    int cloudQuality{-1}; // -1 preserves the simulator's current cloud-quality setting.
 };
 struct Change {
     std::string file, key, before, after;
@@ -130,7 +131,7 @@ inline Options current(const fs::path &root) {
 inline bool allowed(const Change &c) {
     if(c.file=="Miscellaneous.prf")return c.key=="pixel_multiplier";
     if (c.file == "X-Plane.prf")
-        return c.key == "renopt_MSAA" || c.key == "renopt_FXAA" || c.key == "renopt_FSR_04";
+        return c.key == "renopt_MSAA" || c.key == "renopt_FXAA" || c.key == "renopt_FSR_04" || c.key == "renopt_clouds_02";
     if (c.file == "X-Plane Window Positions.prf")
         return c.key == "monitor/0/m_x_res_full" || c.key == "monitor/0/m_y_res_full" ||
                c.key == "monitor/0/m_is_fullscreen";
@@ -165,7 +166,7 @@ inline fs::path apply(const fs::path &root, const fs::path &backupRoot, const Op
     ensureSimulatorClosed();
     validateMappings(root);
     require(o.msaa >= 0 && o.msaa <= 3 && o.fxaa >= 0 && o.fxaa <= 1 && o.scale >= 0 &&
-                o.scale <= 4,
+                o.scale <= 4 && o.cloudQuality >= -1 && o.cloudQuality <= 3,
             "Invalid graphics option");
     require((!o.outputWidth && !o.outputHeight) ||
                 (o.outputWidth == 1920 && o.outputHeight == 1080) ||
@@ -184,6 +185,13 @@ inline fs::path apply(const fs::path &root, const fs::path &backupRoot, const Op
     change("X-Plane.prf", "renopt_MSAA", std::to_string(o.msaa));
     change("X-Plane.prf", "renopt_FXAA", std::to_string(o.fxaa));
     change("X-Plane.prf", "renopt_FSR_04", std::to_string(o.scale));
+    if(o.cloudQuality>=0){
+        const auto mappings=read(root/L"Resources/settings.txt");
+        require(mappings.find("SETTING_MENU low-medium-high-maximum")!=std::string::npos&&
+                mappings.find("SETTING_1 renopt_clouds_02 3 cloud/resolution_scale ")!=std::string::npos,
+                "X-Plane cloud-quality mapping changed; leave Cloud quality at Keep current");
+        change("X-Plane.prf","renopt_clouds_02",std::to_string(o.cloudQuality));
+    }
     if (o.outputWidth) {
         auto windows = read(prefs(root) / L"X-Plane Window Positions.prf");
         require(get(windows, "num_monitors") == "1",

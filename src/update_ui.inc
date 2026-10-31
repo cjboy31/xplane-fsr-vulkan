@@ -269,10 +269,10 @@ static LRESULT CALLBACK updateProcedure(HWND hwnd, UINT message, WPARAM w, LPARA
             case 150: {
                 const wchar_t *key = L"AutomaticChecks";
                 bool value = SendMessageW(autoCheckBox, BM_GETCHECK, 0, 0) == BST_CHECKED;
-                ensure(WritePrivateProfileStringW(L"Updates", key, value ? L"1" : L"0",
+                ensure(launcher::writeSetting(L"Updates", key, value ? L"1" : L"0",
                                                   (appDirectory / L"settings.ini").c_str()),
                        "Could not save the update preference");
-                WritePrivateProfileStringW(nullptr, nullptr, nullptr,
+                launcher::writeSetting(nullptr, nullptr, nullptr,
                                            (appDirectory / L"settings.ini").c_str());
                 ensure(launcher::readSetting(appDirectory / L"settings.ini", L"Updates", key) ==
                            (value ? L"1" : L"0"),

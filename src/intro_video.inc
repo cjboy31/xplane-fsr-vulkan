@@ -198,9 +198,9 @@ static LRESULT CALLBACK procedure(HWND h, UINT message, WPARAM w, LPARAM l) {
             bool silent = !engine->GetMuted();
             engine->SetMuted(silent);
             SetWindowTextW(mute, silent ? L"Unmute" : L"Mute");
-            WritePrivateProfileStringW(L"FeatureVideo", L"Muted", silent ? L"1" : L"0", settings().c_str());
+            launcher::writeSetting(L"FeatureVideo", L"Muted", silent ? L"1" : L"0", settings().c_str());
         } else if (LOWORD(w) == 705)
-            WritePrivateProfileStringW(L"FeatureVideo", L"Automatic",
+            launcher::writeSetting(L"FeatureVideo", L"Automatic",
                 SendMessageW(remember, BM_GETCHECK, 0, 0) == BST_CHECKED ? L"1" : L"0", settings().c_str());
         return 0;
     case WM_CTLCOLORBTN: case WM_CTLCOLORSTATIC: return theme::colors(message, w, l);
@@ -254,7 +254,7 @@ static void show(HWND parent, bool automaticRequest) {
     // Presentation counts once, including Skip/Close. A failed/missing integrity
     // check above never marks a video as presented. A same-version reinstall
     // retains this section because launcher saves only its own INI section.
-    WritePrivateProfileStringW(L"FeatureVideo", L"LastPresented", version().c_str(), settings().c_str());
+    launcher::writeSetting(L"FeatureVideo", L"LastPresented", version().c_str(), settings().c_str());
     EnableWindow(parent, FALSE);
     ShowWindow(h, SW_SHOW); UpdateWindow(h);
 }

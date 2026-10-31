@@ -2,6 +2,9 @@
 #include "graphics_settings.hpp"
 #include "shared.hpp"
 #include "launcher_preferences.hpp"
+#include "settings_transaction.hpp"
+#include "session_profile.hpp"
+#include "runtime_integrity.hpp"
 #include "runtime_status.hpp"
 #include "renderer_status_file.hpp"
 #include "session_logs.hpp"
@@ -35,10 +38,14 @@ static HWND presetBox{}, presetNote{}, savedLabel{}, injectionBanner{}, motionSe
 static HWND designControl(int id);
 static const wchar_t *designSetupHint();
 static launcher::Preferences preferences;
+static launcher::Preferences lastSubmittedChoices;
+static bool submittedChoicesReady{};
 static launcher::RuntimeMonitor runtimeMonitor;
 static launcher::RuntimeState bannerState{};
 static bool controlsReady{}, launchedNative{}, activeNotificationSent{};
 static void saveChoices();
+static void collectChoices();
+static void syncSharedChoices();
 static bool nrModelReady();
 static std::wstring nrLiveStatus();
 static void nrFinishJob();
@@ -66,10 +73,10 @@ static void saveWindowSize(HWND h) {
     GetClientRect(h, &r);
     auto file = appDirectory / L"settings.ini";
     int scroll = (GetWindowLongPtrW(h, GWL_STYLE) & WS_VSCROLL) ? theme::scrollbarWidth() : 0;
-    WritePrivateProfileStringW(L"Window", L"ClientWidth",
+    launcher::writeSetting(L"Window", L"ClientWidth",
                                std::to_wstring(MulDiv(r.right + scroll, 96, theme::dpi)).c_str(),
                                file.c_str());
-    WritePrivateProfileStringW(L"Window", L"ClientHeight",
+    launcher::writeSetting(L"Window", L"ClientHeight",
                                std::to_wstring(MulDiv(r.bottom, 96, theme::dpi)).c_str(),
                                file.c_str());
 }
@@ -94,32 +101,7 @@ static void ensure(bool value, const char *reason) {
 }
 static bool running() { return child && WaitForSingleObject(child, 0) == WAIT_TIMEOUT; }
 static std::string hash(const fs::path &file) {
-    std::ifstream stream(file, std::ios::binary);
-    ensure(bool(stream), "A required file is missing");
-    BCRYPT_ALG_HANDLE algorithm{};
-    BCRYPT_HASH_HANDLE object{};
-    ensure(BCryptOpenAlgorithmProvider(&algorithm, BCRYPT_SHA256_ALGORITHM, nullptr, 0) >= 0,
-           "SHA256 provider failed");
-    DWORD objectBytes{}, used{};
-    BCryptGetProperty(algorithm, BCRYPT_OBJECT_LENGTH, reinterpret_cast<PUCHAR>(&objectBytes),
-                      sizeof(objectBytes), &used, 0);
-    std::vector<UCHAR> storage(objectBytes);
-    BCryptCreateHash(algorithm, &object, storage.data(), objectBytes, nullptr, 0, 0);
-    char buffer[65536];
-    while (stream) {
-        stream.read(buffer, sizeof(buffer));
-        auto count = stream.gcount();
-        if (count)
-            BCryptHashData(object, reinterpret_cast<PUCHAR>(buffer), ULONG(count), 0);
-    }
-    UCHAR digest[32]{};
-    BCryptFinishHash(object, digest, 32, 0);
-    BCryptDestroyHash(object);
-    BCryptCloseAlgorithmProvider(algorithm, 0);
-    std::ostringstream result;
-    for (auto v : digest)
-        result << std::hex << std::setw(2) << std::setfill('0') << unsigned(v);
-    return result.str();
+    return app::fileHash(file);
 }
 static void preflight(const fs::path &root, bool native = false) {
     ensure(fs::exists(root / L"X-Plane.exe"), "Choose the folder containing X-Plane.exe");
@@ -226,10 +208,10 @@ struct EnvironmentScope {
         for (auto *name :
              {L"XPFSR24_COCKPIT_RESTORE", L"XPFSR24_GHOST_REDUCTION", L"VK_LAYER_PATH",
               L"VK_INSTANCE_LAYERS", L"VK_LOADER_LAYERS_ENABLE", L"VK_LOADER_DEBUG",
-              L"DISABLE_VULKAN_OBS_CAPTURE", L"XPFSR24_FG_CONTROL", L"XPFSR24_MODE",
+              L"DISABLE_VULKAN_OBS_CAPTURE", L"DISABLE_XPFSR24", L"XPFSR24_AUTOMATIC", L"XPFSR24_FG_GUARD", L"XPFSR24_FG_CONTROL", L"XPFSR24_MODE",
               L"XPFSR24_NR",L"XPFSR24_NR_ROOT",L"XPFSR24_NR_STATUS",L"XPFSR24_NR_CONTROL",L"XPFSR24_NR_ALLOW_FG",
               L"XPFSR24_SESSION", L"XPFSR24_PROVIDER", L"XPFSR24_FG", L"XPFSR24_FG_PRESENTER",L"XPFSR24_FG_SYNCHRONIZED", L"XPFSR24_RUNTIME",
-              L"XPFSR24_LOG", L"XPFSR24_STATUS", L"XPFSR24_CONTROL"}) {
+              L"XPFSR24_LOG", L"XPFSR24_STATUS", L"XPFSR24_CONTROL",L"XPFSR24_SETTINGS"}) {
             wchar_t value[32768]{};
             GetEnvironmentVariableW(name, value, 32768);
             values.emplace_back(name, value);
@@ -267,66 +249,19 @@ static void launch(const fs::path &root, const std::wstring &arguments, bool nat
     }
     fs::create_directories(appDirectory / L"logs");
     EnvironmentScope environment;
-    auto cockpitRestore = SendMessageW(cockpitBox, BM_GETCHECK, 0, 0) == BST_CHECKED;
-    auto alignmentTint = SendMessageW(tintBox, BM_GETCHECK, 0, 0) == BST_CHECKED;
-    ensure(native || !cockpitRestore || SendMessageW(fgBox, CB_GETCURSEL, 0, 0) == 0,
-           "Turn frame generation Off for FSR Ghosting Fix cockpit screens, or turn that fix Off");
-    SetEnvironmentVariableW(L"XPFSR24_COCKPIT_RESTORE",
-                            !native && cockpitRestore ? (alignmentTint ? L"2" : L"1") : nullptr);
-    SetEnvironmentVariableW(L"XPFSR24_GHOST_REDUCTION",
-                            SendMessageW(ghostBox, BM_GETCHECK, 0, 0) == BST_CHECKED ? L"1" : L"0");
-    auto mode = SendMessageW(modeBox, CB_GETCURSEL, 0, 0);
-    auto fg = app::effectiveFrameGeneration(int(SendMessageW(fgBox, CB_GETCURSEL, 0, 0)));
-    int nr=app::effectiveNeuralRendering(int(SendMessageW(neuralBox,CB_GETCURSEL,0,0)));
-    ensure(native||!nr||mode>0,"Choose FSR Native AA/upscaling for NR");
-    ensure(native||!nr||!fg||preferences.nr[xpfsr::nr::AllowFG],"Enable experimental NR + FG testing, or turn FG Off");
-    if(!native&&nr)ensure(nrModelReady(),"Import your supported model with NR setup first");
-    SetEnvironmentVariableW(L"XPFSR24_NR",!native&&nr?std::to_wstring(nr).c_str():nullptr);
-    SetEnvironmentVariableW(L"XPFSR24_NR_ROOT",(appDirectory/L"nr").c_str());
-    SetEnvironmentVariableW(L"XPFSR24_NR_STATUS",(appDirectory/L"logs/renderer-nr-status.txt").c_str());
-    SetEnvironmentVariableW(L"XPFSR24_NR_ALLOW_FG",!native&&preferences.nr[xpfsr::nr::AllowFG]?L"1":nullptr);
-    ensure(native || !fg || mode > 0,
-           "Select Native AA or upscaling before enabling frame generation");
-    if (!native && fg)
-        SetEnvironmentVariableW(L"DISABLE_VULKAN_OBS_CAPTURE", L"1");
-    launchedFG = native ? 0 : int(fg);
-    lastFGSelection = int(fg);
-    SetEnvironmentVariableW(L"XPFSR24_FG_CONTROL",
-                            (appDirectory / L"logs/renderer-fg-control.txt").c_str());
-    SetEnvironmentVariableW(L"XPFSR24_FG",native?nullptr:app::frameGenerationProvider(fg));
-    const bool synchronizedFG=!native&&app::synchronizedFrameGeneration(fg);
-    SetEnvironmentVariableW(L"XPFSR24_FG_PRESENTER",synchronizedFG?L"3.1.7":nullptr);
-    SetEnvironmentVariableW(L"XPFSR24_FG_SYNCHRONIZED",synchronizedFG?L"1":nullptr);
-    SetEnvironmentVariableW(L"XPFSR24_MODE", (mode == 1 || mode == 3)   ? L"native-aa"
-                                             : (mode == 2 || mode == 4) ? L"upscale"
-                                                                        : L"observe");
-    SetEnvironmentVariableW(L"XPFSR24_PROVIDER", mode >= 3 ? L"4.1.2" : L"3.1.6");
-    std::ostringstream sessionChoices;
-    sessionChoices << "requested_mode=" << mode << " provider=" << (mode >= 3 ? "4.1.2" : "3.1.6")
-                   << " frame_generation=" << fg << " neural_rendering=" << nr << " native_comparison=" << native;
-    auto sessionId = session::prepare(appDirectory / L"logs", sessionChoices.str());
-    activeSessionToken=sessionId;
-    nrChannel.close();
-    if(!native&&app::neuralRenderingAvailable){
-        auto nrName=L"Local\\XPFSR24-NR-v4-"+wide(sessionId.c_str());
-        preferences.nr[xpfsr::nr::Enabled]=nr!=0;
-        ensure(nrChannel.create(nrName.c_str(),preferences.nr),"Cannot create live NR control channel");
-        SetEnvironmentVariableW(L"XPFSR24_NR_CONTROL",nrName.c_str());
-    }else SetEnvironmentVariableW(L"XPFSR24_NR_CONTROL",nullptr);
-    SetEnvironmentVariableW(L"XPFSR24_SESSION", wide(sessionId.c_str()).c_str());
-    SetEnvironmentVariableW(L"VK_LAYER_PATH", native ? nullptr : (appDirectory / L"layer").c_str());
-    SetEnvironmentVariableW(L"VK_INSTANCE_LAYERS", native ? nullptr : L"VK_LAYER_XPFSR24");
-    SetEnvironmentVariableW(L"VK_LOADER_LAYERS_ENABLE", native ? nullptr : L"VK_LAYER_XPFSR24");
-    SetEnvironmentVariableW(L"XPFSR24_RUNTIME", (appDirectory / L"runtime").c_str());
-    SetEnvironmentVariableW(L"XPFSR24_LOG", (appDirectory / L"logs/renderer.log").c_str());
-    SetEnvironmentVariableW(L"XPFSR24_STATUS",
-                            (appDirectory / L"logs/renderer-status.txt").c_str());
-    SetEnvironmentVariableW(L"XPFSR24_CONTROL",
-                            (appDirectory / L"logs/renderer-control.txt").c_str());
-    std::ofstream(appDirectory / L"logs/renderer-fg-control.txt") << (fg ? '1' : '0');
-    std::ofstream(appDirectory / L"logs/renderer-control.txt")
-        << (SendMessageW(toggle, BM_GETCHECK, 0, 0) == BST_CHECKED ? '1' : '0');
-    SetEnvironmentVariableW(L"VK_LOADER_DEBUG", nullptr);
+    collectChoices();
+    auto mode=preferences.mode;
+    auto fg=app::effectiveFrameGeneration(preferences.frameGeneration);
+    launchedFG=native?0:fg;
+    lastFGSelection=fg;
+    activeSessionToken=app::prepareSessionProfile(appDirectory,preferences,nrChannel,native);
+    SetEnvironmentVariableW(L"XPFSR24_FG_GUARD",nullptr);
+    SetEnvironmentVariableW(L"XPFSR24_AUTOMATIC",nullptr);
+    SetEnvironmentVariableW(L"DISABLE_XPFSR24",native?L"1":nullptr);
+    SetEnvironmentVariableW(L"VK_LAYER_PATH",native?nullptr:(appDirectory/L"layer").c_str());
+    SetEnvironmentVariableW(L"VK_INSTANCE_LAYERS",native?nullptr:L"VK_LAYER_XPFSR24");
+    SetEnvironmentVariableW(L"VK_LOADER_LAYERS_ENABLE",native?nullptr:L"VK_LAYER_XPFSR24");
+    SetEnvironmentVariableW(L"VK_LOADER_DEBUG",nullptr);
     auto executable = root / L"X-Plane.exe";
     std::wstring command = quote(executable.wstring()) + L" " + arguments;
     STARTUPINFOW startup{sizeof(startup)};
@@ -463,6 +398,7 @@ static void checkCockpit() {
         L"Running isolated Vulkan cockpit compositor check; no simulator files are changed.");
 }
 static void refresh() {
+    try{syncSharedChoices();}catch(const std::exception&e){SetWindowTextW(savedLabel,L"Could not refresh shared choices; retry");OutputDebugStringA(e.what());}
     nrFinishJob();
     if (aaChild && WaitForSingleObject(aaChild, 0) != WAIT_TIMEOUT) {
         DWORD result{};
