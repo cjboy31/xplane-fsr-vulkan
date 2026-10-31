@@ -51,8 +51,11 @@ if($LASTEXITCODE -ne 0){throw 'Layer build failed'}
 if($LASTEXITCODE -ne 0){throw 'Plugin build failed'}
 & $Compiler '-std=c++17' '-O2' '-static' '-municode' '-Wl,--no-insert-timestamp' '-DWIN32_LEAN_AND_MEAN' '-DNOMINMAX' (Join-Path $source 'integration_setup.cpp') '-lbcrypt' '-ladvapi32' '-lcomdlg32' '-luser32' '-o' (Join-Path $bin 'IntegrationSetup.exe')
 if($LASTEXITCODE -ne 0){throw 'Integration setup build failed'}
+$aaUpdaterCompiler=Join-Path $env:WINDIR 'Microsoft.NET/Framework64/v4.0.30319/csc.exe'
+& $aaUpdaterCompiler /nologo /target:winexe /platform:x64 /optimize+ /warnaserror+ /r:System.Windows.Forms.dll /r:System.Drawing.dll /r:System.Web.Extensions.dll /r:System.IO.Compression.dll /r:System.IO.Compression.FileSystem.dll (('/win32icon:')+(Join-Path $root 'assets/app.ico')) (('/out:')+(Join-Path $bin 'NativeAAUpdater.exe')) (Join-Path $root 'tools/NativeAAUpdater.cs')
+if($LASTEXITCODE -ne 0){throw 'Native AA updater build failed'}
 if(Test-Path (Join-Path $source 'launcher.cpp')){
- & $Compiler '-std=c++17' '-O2' '-static' '-municode' '-mwindows' '-Wl,--no-insert-timestamp' '-DWIN32_LEAN_AND_MEAN' '-DNOMINMAX' @channelFlags (Join-Path $source 'launcher.cpp') (Join-Path $build 'app-icon.o') '-lcomctl32' '-lshell32' '-lole32' '-lbcrypt' '-lwinhttp' '-lcomdlg32' '-lgdiplus' '-ldwmapi' '-luxtheme' '-loleacc' '-luuid' '-lmfuuid' '-loleaut32' '-o' (Join-Path $bin 'XPlaneFSR24.exe')
+ & $Compiler '-std=c++17' '-O2' '-static' '-municode' '-mwindows' '-Wl,--no-insert-timestamp' '-DWIN32_LEAN_AND_MEAN' '-DNOMINMAX' @channelFlags (Join-Path $source 'plugin_updater.cpp') (Join-Path $build 'app-icon.o') '-lcomctl32' '-lshell32' '-lole32' '-lbcrypt' '-lwinhttp' '-lcomdlg32' '-lgdiplus' '-ldwmapi' '-luxtheme' '-loleacc' '-luuid' '-lmfuuid' '-loleaut32' '-o' (Join-Path $bin 'XPlaneFSR24.exe')
  if($LASTEXITCODE -ne 0){throw 'Launcher build failed'}
 }
 & $Compiler '-std=c++17' '-O2' '-static' '-municode' '-Wl,--no-insert-timestamp' '-DWIN32_LEAN_AND_MEAN' '-DNOMINMAX' @includes (Join-Path $source 'aa_test.cpp') '-o' (Join-Path $bin 'NativeAACheck.exe')
@@ -86,7 +89,10 @@ foreach($name in @('amd_fidelityfx_loader_vk.dll','amd_fidelityfx_upscaler_vk.dl
  if($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notmatch 'Advanced Micro Devices'){throw "Invalid AMD signature: $file"}
  Copy-Item -LiteralPath $file -Destination (Join-Path $bin ('runtime\'+$name))
 }
-Write-Output 'Native layer, camera plugin and runtime package built.'
+New-Item -ItemType Directory -Force -Path (Join-Path $bin 'extras/shadows') | Out-Null
+Copy-Item -LiteralPath (Join-Path $root 'extras/shadows/make XP shadows great again - enhanced edition.lua'),(Join-Path $root 'extras/shadows/README.txt') -Destination (Join-Path $bin 'extras/shadows') -Force
+Copy-Item -LiteralPath (Join-Path $root 'CHANGELOG.md') -Destination (Join-Path $bin 'CHANGELOG.txt') -Force
+Write-Output 'Native renderer, in-sim plugin and update-only app built.'
 Copy-Item -LiteralPath (Join-Path $root 'licenses') -Destination $bin -Recurse -Force
 Copy-Item -LiteralPath (Join-Path $root 'LICENSE') -Destination (Join-Path $bin 'LICENSE.txt') -Force
 Copy-Item -LiteralPath (Join-Path $root 'docs\INSTALLATION.md') -Destination (Join-Path $bin 'INSTALLATION-AND-USE.txt') -Force

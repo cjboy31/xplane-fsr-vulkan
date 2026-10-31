@@ -93,3 +93,8 @@ Also after in-sim integration, investigate the owner's CPU frame time being much
 higher than GPU time. Compare the same scene with the mod bypassed, FSR only,
 NR and FG; distinguish simulator CPU work from synchronization/wait time and
 source/display frame timing before proposing an optimization.
+
+
+## Owner update: 2026-10-31
+
+The owner replaced the feature-video workflow: new versions use a viewable in-sim changelog, with no startup video or video approval step. The desktop dashboard is retired; build it only as a plugin updater. Rendering options belong in the in-sim panel. Preserve saved choices. Use plain, short setting labels and help at an eighth-grade reading level. Main-page descriptions must cover delivered features only; keep developer details in developer docs. Remove aircraft-specific screen branding while retaining honest screen-layout limits. Optional shadow Lua is separate, opt-in, and must probe writable controls and restore owned values. Shimmer reduction is the next rendering priority.

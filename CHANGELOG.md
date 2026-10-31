@@ -1,5 +1,14 @@
 # Changes
 
+## 0.7.4-alpha
+
+- Rendering controls stay inside X-Plane. The desktop app is now a plugin updater for FSR and independent Native AA.
+- Read Changelog in the in-sim panel instead of watching a startup video.
+- Clearer setting names and shorter ? help explain what each choice does.
+- Cockpit display controls use the name Cockpit screen protection. Supported-layout and frame-generation limits still apply.
+- Update checks keep live in-sim choices, verify downloads, and refuse installation while X-Plane is open. Native AA updates also reject downgrades and unsafe archive paths.
+
+
 ## 0.7.3-alpha
 
 - Add a shared renderer choice for installations using both FSR and independent

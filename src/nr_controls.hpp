@@ -9,26 +9,26 @@ enum Field { Enabled, Intensity, Tone, Structure, Skin, Colour, Detail, Highligh
              History, Style, Scale, Passes, Transfer, Scaler, Model, Mask, Grade, AllowFG, Scope, Order, Count };
 struct Setting { const wchar_t *key, *label, *help; int minimum, maximum, initial; };
 inline constexpr Setting settings[Count] = {
- {L"NROn",L"Enable neural rendering",L"Live On/Off. Off stops edits and releases model GPU resources after pending GPU owners finish. On prepares the selected model in the background and checks texture-memory headroom. A blocked profile leaves FSR running; lower the work budget or toggle Off/On to retry. External-only scope protects the cockpit; Full scene includes it. Ground-contact safety views remain protected.",0,1,0},
- {L"NRIntensity",L"Overall strength (%)",L"Blends the NR edit into the original scene. Start at 25%; stronger settings change the picture more. This does not reduce network cost.",0,100,25},
- {L"NRTone",L"Tone / lighting (%)",L"Broad model lighting changes. Start at 0 to retain the simulator's lighting. Higher values may alter exposure and contrast.",0,200,0},
- {L"NRStructure",L"Structure (%)",L"Fine model detail and local contrast. 100% follows the model default; excessive structure can emphasize shimmer.",0,200,100},
- {L"NRSkin",L"Skin structure (%)",L"-100 means Auto, following Structure. Other values tune model skin detail; X-Plane character coverage is not guaranteed.",-100,200,-100},
- {L"NRColour",L"Color transfer (%)",L"Transfers model color into the scene. Start at 25%. Values above 100% can exaggerate saturation.",0,400,25},
- {L"NRDetail",L"Detail transfer (%)",L"How much model detail is composed onto the full input image. Start at 50%; lower it if fine scenery looks unstable.",0,200,50},
- {L"NRHighlight",L"Highlight guard (%)",L"Limits the model's luminance ratio. 150% is conservative; high values allow larger changes around bright lights.",100,800,150},
- {L"NRHistory",L"Temporal history (%)",L"Balances stability and responsiveness in GPU-estimated motion. Start at 50%; lower if moving clouds leave trails. Changes reset history.",0,100,50},
- {L"NRStyle",L"Style",L"Standard, Natural or Cinematic model conditioning. These are appearance choices, not AA modes.",0,2,0},
- {L"NRModelScale",L"Model resolution (%)",L"25/33/50/67/100% of the selected NR stage: scene input for Before, output resolution for After. Lower values reduce network cost and can lose detail. Changes rebuild in the background, without restarting the sim.",25,100,50},
- {L"NRPasses",L"Model passes",L"One pass is recommended for flight. Extra passes reprocess the model result; they do not increase the source resolution or AA samples. The final Detail transfer strength is divided by the actual pass count to reduce cumulative texture softening: 50% Detail with three passes merges at about 17%. Three network evaluations still run and cost GPU time/memory. Start with one pass; lower Detail transfer if textures soften, and compare Model resolution in the same view. Changes prepare in the background without restarting.",1,3,1},
- {L"NRTransfer",L"Composition",L"Matched residual, edge-aware lighting/color, or classic enlargement. Matched is the default at reduced model resolution.",0,2,0},
- {L"NRScaler",L"Classic scaler",L"Bilinear, Catmull-Rom, Lanczos3 or FSR 1 EASU. Used only by NR Classic composition. FSR 3/4 is a separate reconstruction stage, before or after NR as selected.",0,3,1},
- {L"NRModel",L"Network",L"Auto prefers the small model. Small uses fewer model layers; Original uses the larger local model. Missing models bypass with a reason. Switching prepares in the background.",0,2,0},
- {L"NRMask",L"Automatic model mask",L"Uses the model's automatic edit mask. It does not identify every cockpit display or replace the cockpit protection.",0,1,1},
- {L"NRGrade",L"Natural / Cinematic style grade",L"Apply the reference style grade after the network. Standard style is unaffected.",0,1,1},
- {L"NRAllowFG",L"Allow NR + frame generation (experimental)",L"Opt-in combination testing only. NR adds GPU cost and FG artifacts remain possible. Choose the FG provider before launch; NR controls remain live afterward.",0,1,0},
- {L"NRScope",L"Scene scope",L"External only pauses NR in the cockpit. Full scene includes cockpit and exterior. This is live and resets history. NR can change display text: retain cockpit-screen restore where supported; start at Subtle. That restore currently supports the default Cirrus SR22, not all aircraft.",0,1,0},
- {L"NROrder",L"Processing order",L"Before upscaling (recommended) runs NR at scene-input resolution, then feeds the edited image into FSR 3/4. After upscaling processes the reconstructed image at output resolution and may cost substantially more GPU time. Compare the same scene; neither order guarantees better quality. Changes apply live once the matching model is ready; histories reset and FSR continues during preparation. Cockpit-screen restore and frame generation run afterward in both modes. Native AA keeps the same resolution, but the order still changes.",0,1,0}
+ {L"NROn",L"Enable neural rendering",L"Turn neural rendering on or off. It changes the look of lighting and detail. It needs a supported graphics card and an imported model. If it cannot run, FSR keeps working.",0,1,0},
+ {L"NRIntensity",L"Effect strength (%)",L"Mix the new look with the original picture. Start at 25%. Higher values make a bigger change, but do not make the model run faster.",0,100,25},
+ {L"NRTone",L"Lighting change (%)",L"Change how much the model affects lighting and contrast. Start at 0% to keep the original lighting. Raise it slowly if you want a stronger look.",0,200,0},
+ {L"NRStructure",L"Fine detail (%)",L"Control the model's small details and contrast. Start at 100%. Too much can make thin lines sparkle or flicker.",0,200,100},
+ {L"NRSkin",L"Character detail (%)",L"Adjust detail on people where the model recognizes them. Auto follows Fine detail. This may have little effect in most flight views.",-100,200,-100},
+ {L"NRColour",L"Color strength (%)",L"Mix the model's colors into the scene. Start at 25%. High values can make colors look too strong.",0,400,25},
+ {L"NRDetail",L"Texture detail mix (%)",L"Mix the model's detail with the original textures. Start at 50%. Lower it if ground textures look soft or unstable.",0,200,50},
+ {L"NRHighlight",L"Bright-light protection (%)",L"Limit large changes around bright lights. Start at 150%. Higher values let the model change bright areas more.",100,800,150},
+ {L"NRHistory",L"Motion smoothing (%)",L"Balance steady detail against quick movement. Start at 50%. Lower it if moving clouds or scenery leave trails.",0,100,50},
+ {L"NRStyle",L"Visual style",L"Choose Standard, Natural or Cinematic. These change the look of the picture. They do not change the AA method.",0,2,0},
+ {L"NRModelScale",L"Model image size (%)",L"Choose how large a picture the model processes. Lower values can improve speed but lose fine detail. Start at 50%. Changes prepare in the background while you fly.",25,100,50},
+ {L"NRPasses",L"Processing passes",L"Choose how many times the model processes the picture. Use one pass for flight. Extra passes take more graphics time and can blur ground textures. More passes do not mean better AA.",1,3,1},
+ {L"NRTransfer",L"Detail blending method",L"Choose how the model's result is mixed into the scene. Matched detail is the usual starting point. Edge-aware puts more focus on lighting and color. Classic resizes the whole result.",0,2,0},
+ {L"NRScaler",L"Classic resize filter",L"Choose how Classic mode enlarges the model picture. This only affects the Classic blending method. Try Catmull-Rom first; switch if edges look too soft or bright.",0,3,1},
+ {L"NRModel",L"Model size",L"Auto prefers the smaller model. Small usually costs less graphics time. Original uses the larger model. Import the matching model first. A missing model leaves NR off and keeps FSR running.",0,2,0},
+ {L"NRMask",L"Automatic edit mask",L"Let the model choose where its changes are applied. This does not protect every cockpit display. Compare On and Off in the same view.",0,1,1},
+ {L"NRGrade",L"Style color finish",L"Add the color finish for Natural or Cinematic style. Standard is unchanged. Turn this off if you prefer the original colors.",0,1,1},
+ {L"NRAllowFG",L"Allow NR with frame generation",L"Allow both effects together. This uses more graphics time and may show visual errors. Start with frame generation off, then compare. The frame-generation choice needs a restart.",0,1,0},
+ {L"NRScope",L"Where to use NR",L"Outside only pauses NR in the cockpit. Whole scene includes the cockpit. This changes live. Low strength is a good starting point because NR can change small display text.",0,1,0},
+ {L"NROrder",L"When to apply NR",L"Before upscaling is recommended: NR works on the smaller picture first, which usually costs less graphics time. After upscaling processes the larger picture. Changes apply live once preparation finishes.",0,1,0}
 };
 struct Controls {
  std::array<int32_t,Count> value{};

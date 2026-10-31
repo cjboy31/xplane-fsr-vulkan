@@ -13,7 +13,7 @@ int wmain(int argc,wchar_t **argv){
         const std::wstring action=argc==1?L"--repair-registration":argv[1];app::LayerRegistration registration;
         if(action==L"--retire-guide"){
             graphics::require(argc==4,"Previous guide version and SHA-256 required");
-            app::retirePreviousGuide(root,argv[2],argv[3]);return 0;
+            app::retirePreviousGuide(root,argv[2],argv[3],updates::version(updates::currentVersion).key()>=updates::version("0.7.4-alpha").key());return 0;
         }
         if(action==L"--repair-registration"){
             graphics::require(argc<=2,"Registration repair does not accept another installation path");

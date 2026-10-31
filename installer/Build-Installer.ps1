@@ -36,6 +36,7 @@ function Add-Payload([string]$Source,[string]$Relative,[string]$License) {
 }
 $originalFiles = @('XPlaneFSR24.exe','NativeAACheck.exe','CockpitRestoreCheck.exe','layer\XPFSR24Layer.dll','layer\XPFSR24Layer.json','plugin\64\win.xpl') + $AdditionalOriginalFiles
 if([version](($PackageVersion -split '-')[0]) -ge [version]'0.7.2'){$originalFiles += @('IntegrationSetup.exe','auto\XPFSR24Implicit.json')}
+if([version](($PackageVersion -split '-')[0]) -ge [version]'0.7.4'){$originalFiles += @('CHANGELOG.txt','NativeAAUpdater.exe','extras/shadows/make XP shadows great again - enhanced edition.lua','extras/shadows/README.txt')}
 $fgDevelopment = $PackageVersion -match '^\d+\.\d+\.\d+-experimental\.\d+$'
 $fgAvailable = $fgDevelopment -or [version](($PackageVersion -split '-')[0]) -ge [version]'0.7.1'
 if($fgAvailable){$originalFiles += 'FrameGenCheck.exe'}
@@ -59,7 +60,7 @@ if($NeuralRenderingDevelopment){
  Add-Payload $nrManifest 'nr\NR-BUILD.json' 'Original MIT build provenance; no models'
  foreach($name in @('DLSSNR-AMD-MIT.txt','DLSSNR-AMD-UPSTREAM-NOTICES.md','FidelityFX-FSR1-MIT.txt')){Add-Payload (Join-Path $app ('licenses/'+$name)) ('licenses/'+$name) 'Upstream MIT and component notices, preserved intact'}
 }
-if([version](($PackageVersion -split '-')[0]) -ge [version]'0.6.2') {
+if([version](($PackageVersion -split '-')[0]) -ge [version]'0.6.2' -and [version](($PackageVersion -split '-')[0]) -lt [version]'0.7.4') {
   if(-not $FeatureVideoDirectory){throw 'A matching feature video is required for every Windows release starting with 0.6.2'}
   $videoFile = Join-Path $FeatureVideoDirectory ($PackageVersion+'.mp4')
   $videoManifest = Join-Path $FeatureVideoDirectory 'feature-video.ini'

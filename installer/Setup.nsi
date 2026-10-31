@@ -41,11 +41,11 @@ Var PreviousGuideSHA256
 !define MUI_ABORTWARNING
 !define MUI_WELCOMEPAGE_TITLE "FSR 3/4 + Frame Gen for X-Plane 12"
 !ifdef NR_DEVELOPMENT
-!define MUI_WELCOMEPAGE_TEXT "Install FSR AA/upscaling with optional independent neural rendering, frame generation and compatibility pacing. NR and FG are Off by default. Import your own supported NR model locally; NVIDIA DLLs and model weights are not included.$\r$\n$\r$\nNR On/Off, appearance, order and scene scope adjust live. Model budgets prepare in the background. NR + FG requires explicit opt-in. This project remains a preview.$\r$\n$\r$\nClose X-Plane and the launcher before continuing."
+!define MUI_WELCOMEPAGE_TEXT "Install FSR AA/upscaling with optional independent neural rendering, frame generation and compatibility pacing. NR and FG are Off by default. Import your own supported NR model locally; NVIDIA DLLs and model weights are not included.$\r$\n$\r$\nNR On/Off, appearance, order and scene scope adjust live. Model budgets prepare in the background. NR + FG requires explicit opt-in. This project remains a preview.$\r$\n$\r$\nClose X-Plane and the updater before continuing."
 !else ifdef FG_DEVELOPMENT
-!define MUI_WELCOMEPAGE_TEXT "Install the Experimental Native AA, upscaling and frame-generation development launcher. FG testing options are included; flicker, artifacts and uneven pacing remain possible.$\r$\n$\r$\nClose X-Plane and the FSR launcher before continuing.$\r$\n$\r$\nSetup installs for your Windows account. The camera plugin is installed by the launcher on first use."
+!define MUI_WELCOMEPAGE_TEXT "Install the Experimental in-sim FSR controls and plugin updater. FG testing options are included; flicker, artifacts and uneven pacing remain possible.$\r$\n$\r$\nClose X-Plane and the updater before continuing.$\r$\n$\r$\nSetup installs for your Windows account. Select your simulator and enable in-sim integration during setup."
 !else
-!define MUI_WELCOMEPAGE_TEXT "Install the Normal Native AA and upscaling launcher. Built-in frame generation remains disabled in this channel.$\r$\n$\r$\nClose X-Plane and the FSR launcher before continuing. This is an alpha preview.$\r$\n$\r$\nSetup installs for your Windows account. The camera plugin is installed by the launcher on first use."
+!define MUI_WELCOMEPAGE_TEXT "Install the in-sim FSR controls and the separate plugin updater.$\r$\n$\r$\nClose X-Plane and the updater before continuing. This is an alpha preview.$\r$\n$\r$\nSetup installs for your Windows account. Select your simulator and enable in-sim integration during setup."
 !endif
 !insertmacro MUI_PAGE_WELCOME
 Page custom SimulatorPage SimulatorLeave
@@ -54,14 +54,14 @@ Page custom SimulatorPage SimulatorLeave
 !insertmacro MUI_PAGE_DIRECTORY
 !insertmacro MUI_PAGE_INSTFILES
 !define MUI_FINISHPAGE_TITLE "Installation complete"
-!define MUI_FINISHPAGE_TEXT "If you enabled in-sim integration, start X-Plane normally and open Plugins > FSR 3/4 + Frame Gen. The desktop interface remains available for diagnostics, updates and the approved video guide.$\r$\n$\r$\nRead the included instructions for first setup. NR and frame generation start Off."
+!define MUI_FINISHPAGE_TEXT "If you enabled in-sim integration, start X-Plane normally and open Plugins > FSR 3/4 + Frame Gen. Open Changelog inside the panel to read changes. The separate desktop program is only a plugin updater.$\r$\n$\r$\nRead the included instructions for first setup. NR and frame generation start Off."
 !define MUI_FINISHPAGE_RUN "$INSTDIR\XPlaneFSR24.exe"
-!define MUI_FINISHPAGE_RUN_TEXT "Open optional desktop interface"
+!define MUI_FINISHPAGE_RUN_TEXT "Open plugin updater"
 !define MUI_FINISHPAGE_RUN_NOTCHECKED
 !define MUI_FINISHPAGE_SHOWREADME "$INSTDIR\INSTALLATION-AND-USE.txt"
 !define MUI_FINISHPAGE_SHOWREADME_TEXT "Read installation and use instructions"
 !insertmacro MUI_PAGE_FINISH
-!define MUI_UNCONFIRMPAGE_TEXT_TOP "Close X-Plane and the desktop interface. Setup removes its own in-sim registration and recognized plugin. Other plugins, simulator preferences, local NR models, logs and backups are retained."
+!define MUI_UNCONFIRMPAGE_TEXT_TOP "Close X-Plane and the updater. Setup removes its own in-sim registration and recognized plugin. Other plugins, simulator preferences, local NR models, logs and backups are retained."
 !insertmacro MUI_UNPAGE_CONFIRM
 !insertmacro MUI_UNPAGE_INSTFILES
 !insertmacro MUI_UNPAGE_FINISH
@@ -284,7 +284,7 @@ Section "Application"
       System::Call 'kernel32::CreateFileW(w "$INSTDIR\${Relative}", i 0x40000000, i 0, p 0, i 3, i 0x80, p 0) p.r0'
       ${If} $0 == -1
         ${If} $TestMode != 1
-          MessageBox MB_OK|MB_ICONEXCLAMATION "Close X-Plane and all FSR GPU checks before updating. No application files were installed."
+          MessageBox MB_OK|MB_ICONEXCLAMATION "Close X-Plane and all plugin update or GPU-check windows before updating. No application files were installed."
         ${EndIf}
         System::Call 'kernel32::CloseHandle(p $InstallLock)'
         SetErrorLevel 7
@@ -294,6 +294,7 @@ Section "Application"
     ${EndIf}
   !macroend
   !insertmacro CheckUnlocked "XPlaneFSR24.exe"
+  !insertmacro CheckUnlocked "NativeAAUpdater.exe"
   !insertmacro CheckUnlocked "layer\XPFSR24Layer.dll"
   !insertmacro CheckUnlocked "NativeAACheck.exe"
   !insertmacro CheckUnlocked "FrameGenCheck.exe"
@@ -382,12 +383,14 @@ Section "Application"
       Delete "$DESKTOP\FSR for X-Plane 12 (Experimental).lnk"
     ${EndIf}
     CreateDirectory "$SMPROGRAMS\FSR 3-4 + Frame Gen for X-Plane"
-    CreateShortcut "$SMPROGRAMS\FSR 3-4 + Frame Gen for X-Plane\FSR 3-4 + Frame Gen.lnk" "$INSTDIR\XPlaneFSR24.exe"
+    Delete "$SMPROGRAMS\FSR 3-4 + Frame Gen for X-Plane\FSR 3-4 + Frame Gen.lnk"
+    CreateShortcut "$SMPROGRAMS\FSR 3-4 + Frame Gen for X-Plane\Plugin Updater.lnk" "$INSTDIR\XPlaneFSR24.exe"
     CreateShortcut "$SMPROGRAMS\FSR 3-4 + Frame Gen for X-Plane\Instructions.lnk" "$INSTDIR\INSTALLATION-AND-USE.txt"
     CreateShortcut "$SMPROGRAMS\FSR 3-4 + Frame Gen for X-Plane\Repair in-sim activation.lnk" "$INSTDIR\IntegrationSetup.exe"
     CreateShortcut "$SMPROGRAMS\FSR 3-4 + Frame Gen for X-Plane\Uninstall.lnk" "$INSTDIR\Uninstall.exe"
     ${If} $DesktopWanted == 1
-      CreateShortcut "$DESKTOP\FSR 3-4 + Frame Gen for X-Plane.lnk" "$INSTDIR\XPlaneFSR24.exe"
+      Delete "$DESKTOP\FSR 3-4 + Frame Gen for X-Plane.lnk"
+      CreateShortcut "$DESKTOP\X-Plane Plugin Updater.lnk" "$INSTDIR\XPlaneFSR24.exe"
     ${EndIf}
     WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\XPFSR24CommunityAlpha" "DisplayName" "FSR 3/4 + Frame Gen for X-Plane 12 (Experimental)"
     WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\XPFSR24CommunityAlpha" "DisplayVersion" "${PACKAGE_VERSION}"
@@ -432,12 +435,14 @@ Section "Uninstall"
     ${EndIf}
     integrationRemoved:
     Delete "$SMPROGRAMS\FSR 3-4 + Frame Gen for X-Plane\FSR 3-4 + Frame Gen.lnk"
+    Delete "$SMPROGRAMS\FSR 3-4 + Frame Gen for X-Plane\Plugin Updater.lnk"
     Delete "$SMPROGRAMS\FSR 3-4 + Frame Gen for X-Plane\Instructions.lnk"
     Delete "$SMPROGRAMS\FSR 3-4 + Frame Gen for X-Plane\Repair in-sim activation.lnk"
     Delete "$SMPROGRAMS\FSR 3-4 + Frame Gen for X-Plane\Uninstall.lnk"
     RMDir "$SMPROGRAMS\FSR 3-4 + Frame Gen for X-Plane"
     ${If} $DesktopWanted == 1
       Delete "$DESKTOP\FSR 3-4 + Frame Gen for X-Plane.lnk"
+      Delete "$DESKTOP\X-Plane Plugin Updater.lnk"
     ${EndIf}
     DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\XPFSR24CommunityAlpha"
   ${EndIf}
