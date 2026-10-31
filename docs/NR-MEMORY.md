@@ -93,3 +93,8 @@ under pressure. It cannot guarantee that the simulator, scenery, other plugins,
 driver or other applications never exhaust memory. Report measured heap usage,
 private cache size, active processing and texture quality together; a selected
 NR option alone does not prove NR was applied.
+
+The initial aggressive cache retirement exposed a CPU allocation-churn
+regression. The private correction reuses compatible, legally completed images
+inside additional bounded idle caches and reports their bytes separately.
+See [CPU cost, ownership rules and validation limits](CPU-PERFORMANCE.md).
