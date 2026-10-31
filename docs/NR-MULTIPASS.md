@@ -3,6 +3,13 @@
 Development investigation, 2026-10-30. The owner reported ground textures becoming
 blurry at three passes. One pass remains the recommended flight setting.
 
+**Live follow-up:** the owner still saw blur at both one and three passes, then
+with NR and the mod's FSR processing bypassed. The composition correction below
+is therefore not a confirmed fix for the reported simulator blur. That session
+used approximately 31 GiB of dedicated GPU memory and X-Plane logged heavy memory
+pressure. Texture downscaling is a separate leading hypothesis; see
+[NR resource lifetime and texture memory](NR-MEMORY.md).
+
 The pinned upstream runtime feeds each pass's edited model image to the next
 pass. Its final transfer runs once against the untouched scene input. This is
 repeated neural processing, rather than three AA samples or higher source

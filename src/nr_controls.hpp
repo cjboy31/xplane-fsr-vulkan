@@ -9,7 +9,7 @@ enum Field { Enabled, Intensity, Tone, Structure, Skin, Colour, Detail, Highligh
              History, Style, Scale, Passes, Transfer, Scaler, Model, Mask, Grade, AllowFG, Scope, Order, Count };
 struct Setting { const wchar_t *key, *label, *help; int minimum, maximum, initial; };
 inline constexpr Setting settings[Count] = {
- {L"NROn",L"Enable neural rendering",L"Live On/Off. First use prepares the model in the background. External-only scope protects the cockpit; Full scene includes it. Ground-contact safety views remain protected.",0,1,0},
+ {L"NROn",L"Enable neural rendering",L"Live On/Off. Off stops edits and releases model GPU resources after pending GPU owners finish. On prepares the selected model in the background and checks texture-memory headroom. A blocked profile leaves FSR running; lower the work budget or toggle Off/On to retry. External-only scope protects the cockpit; Full scene includes it. Ground-contact safety views remain protected.",0,1,0},
  {L"NRIntensity",L"Overall strength (%)",L"Blends the NR edit into the original scene. Start at 25%; stronger settings change the picture more. This does not reduce network cost.",0,100,25},
  {L"NRTone",L"Tone / lighting (%)",L"Broad model lighting changes. Start at 0 to retain the simulator's lighting. Higher values may alter exposure and contrast.",0,200,0},
  {L"NRStructure",L"Structure (%)",L"Fine model detail and local contrast. 100% follows the model default; excessive structure can emphasize shimmer.",0,200,100},

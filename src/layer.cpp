@@ -8,6 +8,8 @@
 #include "framegen.hpp"
 #include "framegen_policy.hpp"
 #include "nr_api.hpp"
+#include "nr_sessions.hpp"
+#include "nr_memory_budget.hpp"
 #include "nr_features.hpp"
 #include <thread>
 #include <condition_variable>
@@ -188,7 +190,8 @@ struct Command {
     std::map<VkImage, std::shared_ptr<DepthCapture>> capturedDepths;
     uint64_t fgFrame{}, sceneFrame{};
     bool oneTime{}, rendering{}, secondary{}, processed{}, failed{}, submitted{}, dynamicOffsets{};
-    uint64_t epoch{};
+    uint64_t epoch{},recording{};
+    VkQueue submittedQueue{};
     struct Push {
         VkPipelineLayout layout{};
         VkShaderStageFlags stages{};
@@ -294,7 +297,11 @@ struct Device {
         return active;
     }
     bool enabled = true, separateDepthStencil{};
-    uint64_t lastStatusWrite{}, lastControlRead{}, nativeCalls{};
+    uint64_t lastStatusWrite{}, lastControlRead{}, nativeCalls{}, lastMemoryReport{}, recordingSerial{},lastReclaimCheck{};
+    VkFence reclaimFence{};
+    VkQueue reclaimQueue{};
+    bool reclaimPending{},reclaimFailed{};
+    std::vector<std::pair<VkCommandBuffer,uint64_t>> reclaimCommands;
     template <class T> T fn(const char *name) {
         return xpfsr::cachedDeviceFunction<T>(dispatchIdentity, name, [&] {
             dispatchLookups.fetch_add(1, std::memory_order_relaxed);
@@ -314,6 +321,7 @@ struct Device {
                 MapViewOfFile(mapping, FILE_MAP_ALL_ACCESS, 0, 0, sizeof(app::Shared)));
     }
     void publish(const char *reason) {
+        neural.processingEnabled(enabled);
         if (!enabled) neural.pause("NR paused with processing disabled");
         else if (camera.internal&&!neural.fullScene()) neural.pause("NR paused: external-only scope");
         else if (groundSafety.active) neural.pause("NR paused by ground camera safety");
@@ -409,6 +417,7 @@ struct OwnedImage {
     xpfsr::Image value{};
     VkDeviceMemory memory{};
     VkImageView view{};
+    VkDeviceSize bytes{};
     void create(Device &d, uint32_t w, uint32_t h, VkFormat format) {
         device = &d;
         auto &c = value.description;
@@ -431,6 +440,7 @@ struct OwnedImage {
         a.memoryTypeIndex = d.memoryType(r.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
         check(d.fn<PFN_vkAllocateMemory>("vkAllocateMemory")(d.handle, &a, nullptr, &memory),
               "Allocate private image");
+        bytes=r.size;
         check(d.fn<PFN_vkBindImageMemory>("vkBindImageMemory")(d.handle, value.handle, memory, 0),
               "Bind private image");
         VkImageViewCreateInfo v{VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
@@ -441,7 +451,7 @@ struct OwnedImage {
         check(d.fn<PFN_vkCreateImageView>("vkCreateImageView")(d.handle, &v, nullptr, &view),
               "Create private view");
     }
-    ~OwnedImage() {
+    void release() {
         if (!device)
             return;
         auto &d = *device;
@@ -451,7 +461,9 @@ struct OwnedImage {
             d.fn<PFN_vkDestroyImage>("vkDestroyImage")(d.handle, value.handle, nullptr);
         if (memory)
             d.fn<PFN_vkFreeMemory>("vkFreeMemory")(d.handle, memory, nullptr);
+        device=nullptr;value={};memory=VK_NULL_HANDLE;view=VK_NULL_HANDLE;bytes=0;
     }
+    ~OwnedImage(){release();}
 };
 struct DepthCapture {
     Device *device{};
@@ -537,6 +549,60 @@ struct FrameResources {
             d.fn<PFN_vkFreeMemory>("vkFreeMemory")(d.handle, uniformMemory, nullptr);
     }
 };
+void reportMemory(Device&d){
+    const auto now=GetTickCount64();if(now-d.lastMemoryReport<10000)return;d.lastMemoryReport=now;
+    uint64_t bytes{},nrBytes{};size_t frames{},owners{};
+    for(const auto&entry:d.commands)if(const auto*f=entry.second.resources.get()){
+        ++frames;owners+=bool(f->neuralOwner);
+        nrBytes+=f->neuralColor.bytes+f->neuralOutput.bytes;
+        bytes+=f->color.bytes+f->depth.bytes+f->motion.bytes+f->reactive.bytes+f->output.bytes;
+    }
+    const auto memory=xpfsr::nr::queryGpuMemoryBudget(d.instance->handle,d.physical,d.instance->next);
+    log("GPU memory: driver-budget-available=%u heap-usage=%llu MiB heap-budget=%llu MiB; cached-frame-resources=%zu private-frame-images=%llu MiB NR-scratch=%llu MiB NR-command-owners=%zu; excludes SDK arenas, depth captures and simulator textures",
+        memory.available,(unsigned long long)(memory.usage/xpfsr::nr::MiB),(unsigned long long)(memory.budget/xpfsr::nr::MiB),frames,
+        (unsigned long long)(bytes/xpfsr::nr::MiB),(unsigned long long)(nrBytes/xpfsr::nr::MiB),owners);
+}
+// On a profile change/Off, a one-time command buffer may have finished but
+// remain cached forever. A queue fence covers only the captured recordings on
+// that queue. Rerecording changes the serial, so an old fence cannot release a
+// newer recording. Reusable/unsubmitted command buffers are never invalidated.
+void reclaimCompletedFrames(Device&d,VkQueue queue){
+    const auto now=GetTickCount64();if(d.reclaimFailed||now-d.lastReclaimCheck<250)return;d.lastReclaimCheck=now;
+    const bool nrEnabled=d.enabled&&d.neural.enabled();
+    const bool releaseFrames=!d.enabled&&d.fgRequested.empty();
+    auto coldCutoff=[&](VkQueue q){std::vector<uint64_t> recordings;
+        if(d.fgRequested.empty())for(const auto&e:d.commands)if(e.second.resources&&e.second.oneTime&&e.second.submitted&&e.second.submittedQueue==q)recordings.push_back(e.second.recording);
+        return xpfsr::nr::coldFrameCutoff(std::move(recordings));};
+    if(d.reclaimPending){
+        const auto status=d.fn<PFN_vkGetFenceStatus>("vkGetFenceStatus")(d.handle,d.reclaimFence);
+        if(status==VK_NOT_READY)return;
+        if(status!=VK_SUCCESS){d.reclaimFailed=true;log("Resource retirement fence failed: %d; retain GPU owners",int(status));return;}
+        size_t released{};uint64_t bytes{};
+        const auto cold=coldCutoff(d.reclaimQueue);
+        for(const auto&entry:d.reclaimCommands){auto it=d.commands.find(entry.first);if(it==d.commands.end())continue;auto&command=it->second;
+            if(!xpfsr::nr::completedOneTimeRecording(true,command.oneTime,command.submitted,entry.second,command.recording)||!command.resources)continue;
+            auto&f=*command.resources;released+=bool(f.neuralOwner);f.neuralOwner.reset();
+            if(releaseFrames||(cold&&command.recording<cold)){bytes+=f.color.bytes+f.depth.bytes+f.motion.bytes+f.reactive.bytes+f.output.bytes+f.neuralColor.bytes+f.neuralOutput.bytes;command.resources.reset();}
+            else if(!nrEnabled){bytes+=f.neuralColor.bytes+f.neuralOutput.bytes;f.neuralColor.release();f.neuralOutput.release();}
+        }
+        d.reclaimCommands.clear();d.reclaimPending=false;
+        log("Resource retirement completed: released %zu NR command owners and %llu MiB of cached images; no CPU GPU-wait",released,(unsigned long long)(bytes/xpfsr::nr::MiB));
+    }
+    const auto cold=coldCutoff(queue);
+    if(nrEnabled&&!d.neural.retiring()&&!releaseFrames&&!cold)return;
+    for(const auto&entry:d.commands){const auto&command=entry.second;const auto*f=command.resources.get();
+        if(!f||!command.oneTime||!command.submitted||command.submittedQueue!=queue)continue;
+        if(releaseFrames||(cold&&command.recording<cold)||((!nrEnabled||d.neural.retiring())&&f->neuralOwner)||(!nrEnabled&&(f->neuralColor.memory||f->neuralOutput.memory)))d.reclaimCommands.push_back({entry.first,command.recording});
+    }
+    if(d.reclaimCommands.empty())return;
+    if(!d.reclaimFence){VkFenceCreateInfo create{VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
+        if(d.fn<PFN_vkCreateFence>("vkCreateFence")(d.handle,&create,nullptr,&d.reclaimFence)!=VK_SUCCESS){d.reclaimFailed=true;d.reclaimCommands.clear();return;}}
+    else if(d.fn<PFN_vkResetFences>("vkResetFences")(d.handle,1,&d.reclaimFence)!=VK_SUCCESS){d.reclaimFailed=true;d.reclaimCommands.clear();return;}
+    VkSubmitInfo empty{VK_STRUCTURE_TYPE_SUBMIT_INFO};
+    const auto result=d.fn<PFN_vkQueueSubmit>("vkQueueSubmit")(queue,1,&empty,d.reclaimFence);
+    if(result==VK_SUCCESS){d.reclaimPending=true;d.reclaimQueue=queue;}
+    else{d.reclaimFailed=true;d.reclaimCommands.clear();log("Resource retirement submission failed: %d; retain GPU owners",int(result));}
+}
 struct DepthProbe {
     Device *device{};
     VkImage source{};
@@ -645,6 +711,7 @@ void submittedProbes(Device &d, VkQueue queue, const std::vector<VkCommandBuffer
         pending.insert(pending.end(), command.executedChildren.begin(),
                        command.executedChildren.end());
         command.submitted = true;
+        command.submittedQueue=queue;
         for (auto *job : command.probes)
             if (job->phase == 0) {
                 VkSubmitInfo empty{VK_STRUCTURE_TYPE_SUBMIT_INFO};
@@ -1234,6 +1301,7 @@ bool replace(Device &d, VkCommandBuffer cb, Command &command) {
             d.camera.reset = 1;
     }
     d.readControl();
+    reportMemory(d);
     ++d.nativeCalls;
     if (d.nativeCalls <= 4 || d.nativeCalls % 1000 == 0)
         log("Native FSR boundary: call=%llu family=%u secondary=%d camera=%d enabled=%d",
@@ -2224,6 +2292,7 @@ static VKAPI_ATTR void VKAPI_CALL L_DestroyDevice(VkDevice device,
     }
     d->fn<PFN_vkDeviceWaitIdle>("vkDeviceWaitIdle")(device);
     d->commands.clear();
+    if(d->reclaimFence)d->fn<PFN_vkDestroyFence>("vkDestroyFence")(device,d->reclaimFence,nullptr);
     d->neural.stop();
     d->cockpitCompositor.reset();
     d->probes.clear();
@@ -2612,6 +2681,15 @@ static VKAPI_ATTR VkResult VKAPI_CALL L_BeginCommandBuffer(VkCommandBuffer cb,
         auto secondary = old.secondary;
         auto resources = std::move(old.resources);
         if(resources)resources->neuralOwner.reset();
+        // Successful Begin means this command buffer is no longer in flight.
+        // Return disabled NR scratch allocations too, rather than pinning them
+        // in a command-buffer cache for the rest of the flight.
+        // An FG presenter can outlive the application's source-frame fence.
+        // Leave its shared output/depth/motion cache to the existing FG drain.
+        if(resources&&!d->enabled&&d->fgRequested.empty())resources.reset();
+        else if(resources&&!d->neural.enabled()){
+            resources->neuralColor.release();resources->neuralOutput.release();
+        }
         auto captures = std::move(old.capturedDepths);
         if (!old.submitted) {
             resources.reset();
@@ -2629,6 +2707,7 @@ static VKAPI_ATTR VkResult VKAPI_CALL L_BeginCommandBuffer(VkCommandBuffer cb,
         old.family = family;
         old.secondary = secondary;
         old.epoch = d->epoch;
+        old.recording=++d->recordingSerial;
         old.oneTime = (c->flags & VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT) != 0;
         if (secondary && (c->flags & VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT) &&
             c->pInheritanceInfo)
@@ -3774,6 +3853,7 @@ static VKAPI_ATTR VkResult VKAPI_CALL L_QueueSubmit(VkQueue queue, uint32_t coun
             for (uint32_t n = 0; n < submits[i].commandBufferCount; ++n)
                 commands.push_back(submits[i].pCommandBuffers[n]);
         submittedProbes(*d, queue, commands);
+        reclaimCompletedFrames(*d,queue);
     }
     return result;
 }
@@ -3794,6 +3874,7 @@ static VKAPI_ATTR VkResult VKAPI_CALL L_QueueSubmit2(VkQueue queue, uint32_t cou
             for (uint32_t n = 0; n < submits[i].commandBufferInfoCount; ++n)
                 commands.push_back(submits[i].pCommandBufferInfos[n].commandBuffer);
         submittedProbes(*d, queue, commands);
+        reclaimCompletedFrames(*d,queue);
     }
     return result;
 }

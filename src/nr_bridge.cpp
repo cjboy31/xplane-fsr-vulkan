@@ -8,6 +8,7 @@
 #include "nr_build_cfg.hpp"
 #include "nr_models.hpp"
 #include "nr_pass_policy.hpp"
+#include "nr_memory_budget.hpp"
 #include "update_http.hpp"
 #include <filesystem>
 #include <algorithm>
@@ -45,6 +46,13 @@ extern "C" __declspec(dllexport) void *XPFSR_NR_Create(const xpfsr::nr::Host *ho
                 "NR adapter ABI mismatch");
         require(config->root && config->width && config->height && config->controls.valid(),
                 "Invalid NR configuration");
+        const auto memory=xpfsr::nr::queryGpuMemoryBudget(host->instance,host->physical,host->physicalDispatch);
+        const auto estimate=xpfsr::nr::estimatedProfileBytes(config->width,config->height,config->controls[xpfsr::nr::Scale],config->controls[xpfsr::nr::Passes]);
+        if(memory.available&&!xpfsr::nr::profileFits(memory.budget,memory.usage,estimate))throw std::runtime_error(xpfsr::nr::memoryAdmissionReason(memory,estimate));
+        if(host->log){std::ostringstream text;text<<"NR memory admission: estimated profile "<<estimate/xpfsr::nr::MiB<<" MiB; ";
+            if(memory.available)text<<"heap usage "<<memory.usage/xpfsr::nr::MiB<<" MiB / budget "<<memory.budget/xpfsr::nr::MiB<<" MiB; texture reserve "<<xpfsr::nr::textureReserveBytes(memory.budget)/xpfsr::nr::MiB<<" MiB";
+            else text<<"driver memory budget unavailable; admission is unverified";
+            host->log(text.str().c_str());}
         const auto root = std::filesystem::canonical(config->root);
         const auto text = root.wstring();
         require(std::all_of(text.begin(), text.end(), [](wchar_t c) { return c < 128; }),
