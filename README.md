@@ -8,7 +8,7 @@ Laminar Research product.
 
 ## Download and setup
 
-[Windows Normal — recommended](https://github.com/cjboy31/xplane-fsr-vulkan/releases/tag/v0.7.3-alpha)
+[Windows Normal — recommended](https://github.com/cjboy31/xplane-fsr-vulkan/releases/tag/v0.7.4-alpha)
 · [All releases](https://github.com/cjboy31/xplane-fsr-vulkan/releases)
 · [Join Discord](https://discord.gg/yh396QNgHZ)
 
@@ -35,12 +35,13 @@ always clearer. Visual results vary by aircraft, view, graphics card and display
 
 ## Updates and help
 
-The next UI package replaces the desktop rendering dashboard with a **Plugin
-Updater**. Rendering settings stay in X-Plane. An in-sim **Changelog** replaces
-the startup video. Existing 0.7.3 downloads keep their original interface until
-updated. Read the instructions included with your download.
+Version 0.7.4 replaces the desktop rendering dashboard with a **Plugin Updater**
+for FSR and Native AA. Rendering settings stay in X-Plane. Open **Changelog**
+inside the simulator to read changes; startup videos are retired. An optional
+[shadow script](extras/shadows/README.txt) is included separately and starts Off.
+Read the instructions included with your download.
 
-[Setup instructions](docs/INSTALLATION-0.7.3.txt) ·
+[Setup instructions](docs/INSTALLATION-0.7.4.txt) ·
 [Report a problem](https://github.com/cjboy31/xplane-fsr-vulkan/issues) ·
 [Discord support](https://discord.gg/yh396QNgHZ)
 
