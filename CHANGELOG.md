@@ -1,5 +1,22 @@
 # Changes
 
+## 0.7.3-alpha
+
+- Add a shared renderer choice for installations using both FSR and independent
+  Native AA 0.3.0. Choose Native AA, FSR/NR/frame generation, the original
+  simulator or Automatic; only one renderer processes a session.
+- Put the next-launch selector on Rendering in the in-sim panel. Switching
+  requires a normal restart and retains both mods' quality and graphics choices.
+  Explicit desktop FSR/native-comparison launches override only that launch.
+- Make the inactive panel and fresh logs explain intentional renderer selection.
+  Process-identity-tagged ownership removes initialization-order dependence in
+  updated builds; older already-active FSR versions make AA remain inactive.
+- Retain the existing NR/FG, UI scaling, startup, CPU/memory and update-channel
+  fixes. Full regression, actual activation and coordinated Windows startup
+  checks pass. This does not add FSR4/NR/FG Linux or macOS rendering support.
+- Include a skippable narrated guide explaining renderer choices, preserved
+  settings, status and the required restart. Native AA itself remains separate.
+
 ## 0.7.2-alpha
 
 - Add the Windows in-sim controls preview under Plugins > FSR 3/4 + Frame Gen.

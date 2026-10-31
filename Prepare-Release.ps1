@@ -82,6 +82,8 @@ if($FeatureVideo){
         $seconds=[int][Math]::Round([double]$provenance.seconds)
         if($provenance.approved_guide_reuse){
             $guideSummary='This maintenance package reuses a previously approved guide unchanged, including its original on-screen version. Current fixes and setup behavior are described above and in the instructions. No revised film or new rendering-quality comparison is claimed.'
+        }elseif($provenance.project.capture.text_only){
+            $guideSummary="This $seconds-second guide uses original text and aviation graphics to explain renderer selection, saved choices and setup. It contains no simulator comparison or performance demonstration."
         }elseif($provenance.project.capture.background_only){
             $guideSummary="This $seconds-second guide explains this version's features and setup. A previously reviewed simulator still is used only as background; it is not an NR/FG before-after comparison or a performance demonstration."
         }else{
@@ -124,8 +126,8 @@ $sourceCommit. A passing fixture does not establish live-flight visual quality.
 Cockpit-screen restoration still requires frame generation Off and currently
 supports only the default Cirrus SR22. SDK runtimes
 are included under their binary redistribution terms; simulator source assets
-and user data are excluded. The guide contains reviewed simulator screenshots;
-visuals retain their owners' rights. Keep all supplied license notices.
+and user data are excluded. Any simulator visuals retain their owners' rights.
+Keep all supplied license notices.
 
 ### Feature guide
 

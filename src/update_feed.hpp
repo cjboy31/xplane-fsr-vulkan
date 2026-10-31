@@ -10,11 +10,11 @@
 #include <vector>
 namespace updates {
 #ifdef XPFSR_NR_DEVELOPMENT
-inline constexpr char currentVersion[] = "0.7.2-experimental.1";
+inline constexpr char currentVersion[] = "0.7.3-experimental.1";
 #elif defined(XPFSR_FG_DEVELOPMENT)
-inline constexpr char currentVersion[] = "0.7.2-experimental.1";
+inline constexpr char currentVersion[] = "0.7.3-experimental.1";
 #else
-inline constexpr char currentVersion[] = "0.7.2-alpha";
+inline constexpr char currentVersion[] = "0.7.3-alpha";
 #endif
 inline constexpr char repository[] = "https://github.com/cjboy31/xplane-fsr-vulkan";
 inline void require(bool ok, const char *why) {
