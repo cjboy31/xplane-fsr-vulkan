@@ -3,6 +3,7 @@
 #include "settings_transaction.hpp"
 #include "shared.hpp"
 #include "framegen_policy.hpp"
+#include "renderer_selection.hpp"
 #include <algorithm>
 #include <fstream>
 #include <functional>
@@ -27,7 +28,7 @@ inline std::string valueName(const Controls &c,Field f){
     return std::to_string(value)+"%";
 }
 struct Rect {int x{},y{},w{},h{};bool contains(int a,int b)const{return a>=x&&a<x+w&&b>=y&&b<y+h;}};
-enum class Kind {Tab,Processing,Mode,FrameGen,NRField,Budget,Help,Close,Preset,Graphics,ApplyGraphics,OpenChoice,ChooseOption,CloseChoice,FGToggle,FGProvider,ImportModel,CloudPreset};
+enum class Kind {Tab,Processing,Mode,FrameGen,NRField,Budget,Help,Close,Preset,Graphics,ApplyGraphics,OpenChoice,ChooseOption,CloseChoice,FGToggle,FGProvider,ImportModel,CloudPreset,Renderer};
 inline constexpr int contentTop=160, footerHeight=120, modelSetupHeight=132;
 inline Rect footerNotice(int width,int height){return {24,height-112,width-48,34};}
 inline Rect footerGuidance(int width,int height){return {24,height-62,width-48,51};}
@@ -45,6 +46,7 @@ class Panel {
     uint64_t previousRecords{},lastProgress{};bool sawStatus{};
 public:
     launcher::Preferences choices;
+    xp_renderer::Choice rendererChoice{xp_renderer::Choice::automatic};
     app::Telemetry telemetry{};
     int tab{},scroll{},helpField{-1};std::string notice,activity="PLUGIN LOADED - renderer not confirmed",nrStatus="NR status not available";
     bool dropdownOpen{};Action dropdown{Kind::Mode};int dropdownScroll{};
@@ -59,8 +61,9 @@ public:
     void configurationOnly(const std::string &reason,bool activationBypassed=false){rendererConnected=false;liveNR=false;sessionFG=false;activity=activationBypassed?"RENDERER BYPASSED - see startup reason below":"RENDERER NOT LOADED - next-session settings available";nrStatus="Not running in this session";notice=reason;}
     void graphicsSupport(std::function<void()> callback){queueGraphics=std::move(callback);}
     void modelSupport(std::function<void()> callback){importModel=std::move(callback);}
-    void refresh(){if(configured())choices=launcher::load(file);}
+    void refresh(){if(configured()){choices=launcher::load(file);if(!choices.simulator.empty())try{rendererChoice=xp_renderer::read(choices.simulator);}catch(const std::exception& e){rendererChoice=xp_renderer::Choice::off;notice=std::string(e.what())+". Choose Renderer again to repair it, then restart.";}}}
     std::vector<std::string> choiceOptions(Action a)const{
+        if(a.kind==Kind::Renderer)return {"Automatic - Native AA if installed","Native AA - independent anti-aliasing","FSR / NR / frame generation","Original simulator - both mods Off"};
         if(a.kind==Kind::NRField&&(a.field<0||a.field>=Count))return {};
         if(a.kind==Kind::Mode)return {std::begin(fsrNames),std::end(fsrNames)};
         if(a.kind==Kind::FrameGen)return {std::begin(fgNames),std::end(fgNames)};
@@ -72,6 +75,7 @@ public:
         return {};
     }
     int choiceCurrent(Action a)const{
+        if(a.kind==Kind::Renderer)return int(rendererChoice);
         if(a.kind==Kind::Mode)return choices.mode;if(a.kind==Kind::FrameGen)return choices.frameGeneration;
         if(a.kind==Kind::FGProvider)return choices.lastFrameGeneration-1;
         if(a.kind==Kind::CloudPreset)return 0;
@@ -127,6 +131,12 @@ public:
             if(!importModel)throw std::runtime_error("Model import support is unavailable; reinstall the complete in-sim package.");
             importModel();return;
         }
+        if(action.kind==Kind::Renderer){
+            refresh();const int next=int(rendererChoice)+action.delta;
+            if(next<0||next>3)throw std::runtime_error("Invalid renderer selection");
+            xp_renderer::save(choices.simulator,xp_renderer::Choice(next));rendererChoice=xp_renderer::Choice(next);
+            notice=std::string("Saved: ")+xp_renderer::label(rendererChoice)+". Close and restart X-Plane using your usual launcher. Current renderer and both mods' settings are retained.";return;
+        }
         if(refreshFirst)refresh();auto p=choices;
         if(action.kind==Kind::Processing)p.enabled=action.delta?action.delta>0:!p.enabled;
         if(action.kind==Kind::Mode){p.mode=(p.mode+action.delta+5)%5;p.presetId.clear();if(!p.mode){p.frameGeneration=0;p.neuralRendering=0;p.nr[Enabled]=0;}}
@@ -177,7 +187,7 @@ public:
         if(action.kind==Kind::CloudPreset)notice="Cloud clarity setup saved: Maximum clouds with "+std::string(action.delta==1?"Ultra Quality input.":"full input and Native AA.")+" Select Apply graphics after exit, then restart. Higher source resolution costs GPU time; distant cloud detail remains limited by X-Plane's cloud pass.";
         if(action.kind==Kind::Graphics&&action.field==8)notice="Cloud quality saved for next session. Select Apply graphics after exit. This controls X-Plane's cloud quality; FSR/FG/NR choices are retained.";
     }
-    int maxScroll(int height)const{return !configured()||tab==2?0:std::max(0,(tab==1?Count*64+modelSetupHeight:tab==3?642:510)-std::max(1,height-contentTop-footerHeight));}
+    int maxScroll(int height)const{return !configured()||tab==2?0:std::max(0,(tab==1?Count*64+modelSetupHeight:tab==3?642:566)-std::max(1,height-contentTop-footerHeight));}
     int maxDropdownScroll(int height)const{return std::max(0,int(choiceOptions(dropdown).size())*36-std::max(1,height-contentTop-footerHeight-68));}
     bool wheel(int amount,int height){auto &position=dropdownOpen?dropdownScroll:scroll;int next=std::clamp(position+amount,0,dropdownOpen?maxDropdownScroll(height):maxScroll(height));if(next==position)return false;position=next;return true;}
     std::string help()const{
@@ -196,6 +206,7 @@ public:
         if(helpField==202)return "A resolution preset selects output, input scale and FSR provider together. It sets MSAA, FXAA and frame generation Off. Queue Apply after exit to use its graphics settings on your next launch. Custom graphics edits retain your selected FSR/FG providers.";
         if(helpField==203)return "Select your own nvngx_dlssnr.dll 310.9.16 (Small + Original) or 310.8.0 (Original). The background importer reads it without loading or executing it, and verifies supported model hashes. It does not copy the NVIDIA DLL into the application. A first import can finish during your flight; turn NR Off then On to retry. Existing differing models are protected while X-Plane is running.";
         if(helpField==204)return "Cloud clarity setups increase the scene input resolution and select Maximum cloud quality. Ultra Quality retains upscaling; Native AA uses full scene input and can cost much more GPU time. Your FSR provider family, FG, NR, MSAA and output choices are retained. This may reduce blockiness but cannot guarantee a cloud-engine fix. Apply after exit and compare the same weather/view. X-Plane's core rendering table is not modified.";
+        if(helpField==205)return "Choose one renderer for the next launch: independent Native AA, FSR / NR / frame generation, or the original simulator. Automatic prefers installed Native AA. Close X-Plane normally and restart with your usual launcher. Both mods' settings are retained. Update both mods for load-order independent selection; an explicit desktop FSR launch overrides this choice for that launch only.";
         if(tab==1)return "Import your own model DLL here. First-time import runs in the background; after success turn NR Off then On. Live NR sliders save automatically. FSR continues during model preparation; NR requires supported AMD RDNA4 FP8 hardware.";
         return tab==3?"Choose your graphics settings, then select Apply after exit. Close X-Plane normally; the background component applies only these settings with a backup. Restart using your usual launcher. FSR/FG choices are retained for custom edits. FXAA is native-only; MSAA + FSR is experimental.":"Live NR and processing controls save automatically. Presets/graphics and FSR/FG providers need a new session. Queue changed graphics on the Image quality tab before exiting. FG pauses while this panel is visible. The desktop app is optional.";
     }
@@ -215,7 +226,7 @@ public:
             if(toggle){text(24,y+8,width-220,label);bool on=kind==Kind::NRField?choices.nr[Field(field)]!=0:value=="On";out.push_back({{width-178,y+2,98,34},on?"On":"Off",true,on,{kind,field,on?-1:1},Widget::Toggle});}
             else if(slider){text(24,y,width-240,label);text(width-190,y,100,value);auto &s=settings[field];out.push_back({{24,y+24,width-112,28},value,true,false,{kind,field},Widget::Slider,choices.nr[Field(field)],s.minimum,s.maximum});}
             else{text(24,y,width-120,label);out.push_back({{24,y+22,width-104,30},value,true,false,{Kind::OpenChoice,int(kind),field},Widget::Choice});}
-            const int help=kind==Kind::NRField?field:kind==Kind::Graphics?100+field:kind==Kind::CloudPreset?204:kind==Kind::Mode?200:kind==Kind::FrameGen||kind==Kind::FGToggle||kind==Kind::FGProvider?201:202;
+            const int help=kind==Kind::Renderer?205:kind==Kind::NRField?field:kind==Kind::Graphics?100+field:kind==Kind::CloudPreset?204:kind==Kind::Mode?200:kind==Kind::FrameGen||kind==Kind::FGToggle||kind==Kind::FGProvider?201:202;
             button({width-66,y+4,36,30},"?",{Kind::Help,help});
         };
         if(!configured()){
@@ -227,6 +238,8 @@ public:
         }else if(helpField>=0){
             text(24,top,width-140,helpField<Count?utf8(settings[helpField].label):"Setting guidance");button({width-112,top-4,88,30},"Back",{Kind::Help,-1});
         }else if(tab==0){
+            row(origin,"Renderer - next launch (one mod at a time)",xp_renderer::label(rendererChoice),Kind::Renderer,0);
+            origin+=56;
             row(origin,"Resolution preset - queue graphics before exiting",choices.presetId.empty()?"Custom":utf8(graphics::presetById(choices.presetId).label),Kind::Preset,0);
             if(origin+56>=top){button({24,origin+56,width-48,38},rendererConnected?"Enable FSR processing - live":"Enable FSR processing - next session",{Kind::Processing,0,choices.enabled?-1:1},choices.enabled);out.back().widget=Widget::Toggle;}
             row(origin+112,"FSR / AA - next session",fsrNames[std::clamp(choices.mode,0,4)],Kind::Mode,0);

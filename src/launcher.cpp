@@ -208,7 +208,7 @@ struct EnvironmentScope {
         for (auto *name :
              {L"XPFSR24_COCKPIT_RESTORE", L"XPFSR24_GHOST_REDUCTION", L"VK_LAYER_PATH",
               L"VK_INSTANCE_LAYERS", L"VK_LOADER_LAYERS_ENABLE", L"VK_LOADER_DEBUG",
-              L"DISABLE_VULKAN_OBS_CAPTURE", L"DISABLE_XPFSR24", L"XPFSR24_AUTOMATIC", L"XPFSR24_FG_GUARD", L"XPFSR24_FG_CONTROL", L"XPFSR24_MODE",
+              L"DISABLE_VULKAN_OBS_CAPTURE", L"DISABLE_XPFSR24", L"XPFSR24_AUTOMATIC", L"XP_RENDERER_REQUEST", L"XP_RENDERER_SESSION_PID", L"XP_RENDERER_SESSION_CHOICE", L"XP_RENDERER_OWNER", L"XPFSR24_FG_GUARD", L"XPFSR24_FG_CONTROL", L"XPFSR24_MODE",
               L"XPFSR24_NR",L"XPFSR24_NR_ROOT",L"XPFSR24_NR_STATUS",L"XPFSR24_NR_CONTROL",L"XPFSR24_NR_ALLOW_FG",
               L"XPFSR24_SESSION", L"XPFSR24_PROVIDER", L"XPFSR24_FG", L"XPFSR24_FG_PRESENTER",L"XPFSR24_FG_SYNCHRONIZED", L"XPFSR24_RUNTIME",
               L"XPFSR24_LOG", L"XPFSR24_STATUS", L"XPFSR24_CONTROL",L"XPFSR24_SETTINGS"}) {
@@ -257,6 +257,12 @@ static void launch(const fs::path &root, const std::wstring &arguments, bool nat
     activeSessionToken=app::prepareSessionProfile(appDirectory,preferences,nrChannel,native);
     SetEnvironmentVariableW(L"XPFSR24_FG_GUARD",nullptr);
     SetEnvironmentVariableW(L"XPFSR24_AUTOMATIC",nullptr);
+    // An explicit desktop launch overrides the saved next-session preference
+    // only for its child. Restore the parent's environment with EnvironmentScope.
+    SetEnvironmentVariableW(L"XP_RENDERER_REQUEST",native?L"off":L"fsr");
+    SetEnvironmentVariableW(L"XP_RENDERER_SESSION_PID",nullptr);
+    SetEnvironmentVariableW(L"XP_RENDERER_SESSION_CHOICE",nullptr);
+    SetEnvironmentVariableW(L"XP_RENDERER_OWNER",nullptr);
     SetEnvironmentVariableW(L"DISABLE_XPFSR24",native?L"1":nullptr);
     SetEnvironmentVariableW(L"VK_LAYER_PATH",native?nullptr:(appDirectory/L"layer").c_str());
     SetEnvironmentVariableW(L"VK_INSTANCE_LAYERS",native?nullptr:L"VK_LAYER_XPFSR24");

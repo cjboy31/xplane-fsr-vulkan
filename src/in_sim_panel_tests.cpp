@@ -30,6 +30,14 @@ int wmain(int argc,wchar_t**argv){try{
     insim::ConfigurationSession only;auto onlyToken=only.open(installed);auto fresh=graphics::read(installed/L"logs/renderer.log");check(graphics::read(installed/L"logs/renderer.log.previous")=="old renderer sentinel"&&fresh.find("plugin-only")!=std::string::npos&&fresh.find(onlyToken)!=std::string::npos,"Plugin-only session retained stale renderer logs");
     insim::ConfigurationSession second;check(second.open(installed)!=onlyToken&&graphics::read(installed/L"logs/renderer.log")==fresh&&only.open(installed)==onlyToken,"A second configuration session or repeated poll erased active diagnostics");
     disconnected.bind(installedFile,nullptr,false,false);disconnected.configurationOnly("Renderer absent; saved settings recovered");app::Telemetry absent{};absent.active=1;absent.recordings=100;disconnected.observe(absent,1000);++absent.recordings;disconnected.observe(absent,1100);check(disconnected.activity.find("NOT LOADED")!=std::string::npos&&!disconnected.rendererLinked(),"Recovered settings falsely confirmed rendering");
+    const auto beforeRenderer=launcher::serialized(launcher::load(installedFile));
+    disconnected.act({insim::Kind::Renderer,0,2});
+    check(xp_renderer::read(sim)==xp_renderer::Choice::fsr&&disconnected.notice.find("restart")!=std::string::npos,"Renderer choice was not saved with restart feedback");
+    check(launcher::serialized(launcher::load(installedFile))==beforeRenderer,"Renderer switch reset FSR, NR, FG or graphics choices");
+    insim::Panel reopenedRenderer;reopenedRenderer.bind(installedFile,nullptr,false,false);
+    check(reopenedRenderer.choiceCurrent({insim::Kind::Renderer})==2,"Renderer dropdown did not restore selection");
+    insim::ConfigurationSession aaSession;auto aaToken=aaSession.open(root/L"aa-session","Native AA owns this session. FSR intentionally inactive.");
+    check(graphics::read(root/L"aa-session/logs/renderer.log").find("intentionally inactive")!=std::string::npos&&graphics::read(root/L"aa-session/logs/renderer.log").find("Restart is required")==std::string::npos&&!aaToken.empty(),"Intentional renderer selection was logged as a startup fault");
     disconnected.configurationOnly("Startup bypass: actual activation failure",true);disconnected.observe(absent,1200);
     check(disconnected.activity.find("BYPASSED")!=std::string::npos&&disconnected.notice.find("actual activation failure")!=std::string::npos&&!disconnected.rendererLinked(),"Startup bypass was mislabeled as a missing layer");
     for(auto size:{std::pair{640,480},std::pair{880,740},std::pair{1280,900}}){
