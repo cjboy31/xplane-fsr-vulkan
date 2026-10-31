@@ -56,6 +56,10 @@ inline Choice read(const std::filesystem::path& root){
     return parse(normalized.substr(prefix.size(),normalized.size()-prefix.size()-1));
 }
 inline bool aa_installed(const std::filesystem::path& root){std::ifstream in(root/"Resources/plugins/NativeAA/standalone.enabled");std::string line;std::getline(in,line);return line=="NativeAAStandalone=1";}
+inline Choice visibleChoice(const std::filesystem::path& root){
+    const auto saved=read(root);
+    return saved==Choice::automatic?(aa_installed(root)?Choice::native_aa:Choice::fsr):saved;
+}
 class Lock {
 #ifdef _WIN32
     HANDLE handle{};
