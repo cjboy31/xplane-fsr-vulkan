@@ -3,6 +3,7 @@
 #include "layer_registration.hpp"
 #include "plugin_install.hpp"
 #include "deferred_graphics.hpp"
+#include "session_export.hpp"
 #include "nr_import_setup.hpp"
 #include "installer_cleanup.hpp"
 #include <iostream>
@@ -38,6 +39,11 @@ int wmain(int argc,wchar_t **argv){
             graphics::require(used==wcslen(argv[2])&&pid<=MAXDWORD,"Invalid simulator PID");
             app::waitAndApplyGraphics(root,DWORD(pid),argv[3]);return 0;
         }
+        if(action==L"--finish-session"){
+            graphics::require(argc==4,"Simulator PID and session token required");size_t used{};auto pid=std::stoul(argv[2],&used);
+            graphics::require(used==wcslen(argv[2])&&pid<=MAXDWORD,"Invalid simulator PID");
+            app::finishSession(root,DWORD(pid),argv[3]);return 0;
+        }
         graphics::require(argc<=3,"Unexpected integration setup argument");
         if(action==L"--uninstall-integration"){
             graphics::require(argc==2,"Uninstall uses this installation's saved simulator only");
@@ -52,7 +58,10 @@ int wmain(int argc,wchar_t **argv){
         graphics::require(std::filesystem::is_regular_file(std::filesystem::path(p.simulator)/L"X-Plane.exe"),"Select the folder containing X-Plane.exe");
         auto previous=app::registryString(HKEY_CURRENT_USER,app::integrationOwnerKey,L"Manifest");
         graphics::require(previous.empty()||!_wcsicmp(previous.c_str(),app::LayerRegistration::manifest(root).c_str()),"Disable automatic activation in the other app installation before enabling it here");
-        app::verifyRuntime(root/L"runtime",true);app::installPlugin(root,p.simulator);registration.enable(root);
+        app::verifyRuntime(root/L"runtime",true);
+        if(!std::filesystem::exists(xp_renderer::file(p.simulator)))xp_renderer::save(p.simulator,xp_renderer::Choice::fsr);
+        app::synchronizeInput(root);
+        app::installPlugin(root,p.simulator);registration.enable(root);
         return 0;
     }catch(const std::exception&e){
         OutputDebugStringA(e.what());std::error_code ec;std::filesystem::create_directories(root/L"logs",ec);

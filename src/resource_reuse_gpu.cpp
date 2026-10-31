@@ -5,6 +5,53 @@
 #define wmain unusedStandaloneMain
 #include "probe_support.hpp"
 #undef wmain
+#include <future>
+static VKAPI_ATTR VkResult VKAPI_CALL routingAcquire(VkDevice,VkSwapchainKHR,uint64_t,VkSemaphore,VkFence,uint32_t *index){*index=7;return VK_SUCCESS;}
+static VKAPI_ATTR VkResult VKAPI_CALL routingAcquire2(VkDevice,const VkAcquireNextImageInfoKHR*,uint32_t *index){*index=8;return VK_SUCCESS;}
+static VKAPI_ATTR VkResult VKAPI_CALL routingImages(VkDevice,VkSwapchainKHR,uint32_t *count,VkImage*){*count=3;return VK_SUCCESS;}
+static std::atomic<unsigned> sdkRoutingCalls{};
+static VKAPI_ATTR void VKAPI_CALL routingBarrier(VkCommandBuffer,VkPipelineStageFlags,VkPipelineStageFlags,VkDependencyFlags,uint32_t,const VkMemoryBarrier*,uint32_t,const VkBufferMemoryBarrier*,uint32_t count,const VkImageMemoryBarrier *images){require(count==1&&images[0].oldLayout==VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,"SDK barrier layout was rewritten");++sdkRoutingCalls;}
+static VKAPI_ATTR void VKAPI_CALL routingBarrier2(VkCommandBuffer,const VkDependencyInfo *info){require(info->imageMemoryBarrierCount==1&&info->pImageMemoryBarriers[0].oldLayout==VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,"SDK barrier2 layout was rewritten");++sdkRoutingCalls;}
+static VKAPI_ATTR VkResult VKAPI_CALL routingGraphics(VkDevice,VkPipelineCache,uint32_t,const VkGraphicsPipelineCreateInfo*,const VkAllocationCallbacks*,VkPipeline*){++sdkRoutingCalls;return VK_SUCCESS;}
+static VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL routingDpa(VkDevice,const char *name){
+    if(!strcmp(name,"vkAcquireNextImageKHR"))return reinterpret_cast<PFN_vkVoidFunction>(routingAcquire);
+    if(!strcmp(name,"vkAcquireNextImage2KHR"))return reinterpret_cast<PFN_vkVoidFunction>(routingAcquire2);
+    if(!strcmp(name,"vkGetSwapchainImagesKHR"))return reinterpret_cast<PFN_vkVoidFunction>(routingImages);
+    if(!strcmp(name,"vkCmdPipelineBarrier"))return reinterpret_cast<PFN_vkVoidFunction>(routingBarrier);
+    if(!strcmp(name,"vkCmdPipelineBarrier2"))return reinterpret_cast<PFN_vkVoidFunction>(routingBarrier2);
+    if(!strcmp(name,"vkCreateGraphicsPipelines"))return reinterpret_cast<PFN_vkVoidFunction>(routingGraphics);
+    return nullptr;
+}
+static void verifyPresenterRouting(){
+    void *dispatch=&dispatch;auto handle=reinterpret_cast<VkDevice>(&dispatch);
+    auto state=std::make_shared<Device>();state->handle=handle;state->next=routingDpa;
+    {std::lock_guard<std::mutex> registry(registryLock);devices[dispatch]=state;}
+    struct Cleanup{void *key;~Cleanup(){std::lock_guard<std::mutex> registry(registryLock);devices.erase(key);}}cleanup{dispatch};
+    auto native=reinterpret_cast<VkSwapchainKHR>(uintptr_t(0x123)),proxy=reinterpret_cast<VkSwapchainKHR>(uintptr_t(0x456));
+    auto generation=std::make_shared<SwapchainGeneration>();state->fgSwapchains[proxy]=generation;
+    require(state->findFGSwapchain(proxy)==generation,"App-facing swapchain ownership lost");
+    auto image=reinterpret_cast<VkImage>(uintptr_t(0x789));state->fgBackbuffers[image]=generation;
+    for(int operation=0;operation<6;++operation){
+        std::future<VkResult> result;bool completed=false;uint32_t output=0;
+        {std::lock_guard<std::recursive_mutex> presenting(state->lock);
+            result=std::async(std::launch::async,[&]{
+                if(operation==0)return L_AcquireNextImageKHR(handle,native,0,VK_NULL_HANDLE,VK_NULL_HANDLE,&output);
+                if(operation==1){VkAcquireNextImageInfoKHR info{VK_STRUCTURE_TYPE_ACQUIRE_NEXT_IMAGE_INFO_KHR};info.swapchain=native;info.deviceMask=1;return L_AcquireNextImage2KHR(handle,&info,&output);}
+                if(operation==2)return L_GetSwapchainImagesKHR(handle,native,&output,nullptr);
+                SdkScope sdk;auto command=reinterpret_cast<VkCommandBuffer>(&dispatch);output=9;
+                if(operation==3){VkImageMemoryBarrier barrier{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};barrier.image=image;barrier.oldLayout=VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;L_CmdPipelineBarrier(command,0,0,0,0,nullptr,0,nullptr,1,&barrier);}
+                if(operation==4){VkImageMemoryBarrier2 barrier{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2};barrier.image=image;barrier.oldLayout=VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;VkDependencyInfo info{VK_STRUCTURE_TYPE_DEPENDENCY_INFO};info.imageMemoryBarrierCount=1;info.pImageMemoryBarriers=&barrier;L_CmdPipelineBarrier2(command,&info);}
+                if(operation==5)return L_CreateGraphicsPipelines(handle,VK_NULL_HANDLE,0,nullptr,nullptr,nullptr);
+                return VK_SUCCESS;
+            });
+            completed=result.wait_for(std::chrono::seconds(2))==std::future_status::ready;
+        } // Release even on a regression, so the failed test can finish cleanly.
+        require(result.get()==VK_SUCCESS&&output==(operation==0?7u:operation==1?8u:operation==2?3u:9u),"Native SDK operation was misrouted");
+        require(completed,"SDK native swapchain routing waited for Present's renderer lock");
+    }
+    require(sdkRoutingCalls==3&&state->commands.empty()&&state->layouts.empty(),"SDK commands polluted application tracking");
+    std::cout<<"PASS: SDK acquire/acquire2/images/barriers/graphics creation finish while Present owns the renderer lock; private SDK layouts and proxy ownership preserved.\n";
+}
 static PFN_vkGetDeviceProcAddr fixtureNativeDpa{};
 static bool fixtureFailAllocation{};
 static VKAPI_ATTR VkResult VKAPI_CALL fixtureAllocate(VkDevice device,const VkMemoryAllocateInfo*info,const VkAllocationCallbacks*callbacks,VkDeviceMemory*out){
@@ -22,6 +69,7 @@ struct ReuseFixture {
         if(!vk.device)return;vk.waitIdle(vk.device);frame.reset();
         if(nativeView)vk.dev<PFN_vkDestroyImageView>("vkDestroyImageView")(vk.device,nativeView,nullptr);depth.reset();
         if(device){device->idleFrames.clear();device->idleDepths.clear();
+            if(device->reclaimFence)vk.dev<PFN_vkDestroyFence>("vkDestroyFence")(vk.device,device->reclaimFence,nullptr);
             if(device->packPipeline)vk.dev<PFN_vkDestroyPipeline>("vkDestroyPipeline")(vk.device,device->packPipeline,nullptr);
             if(device->packMsaaPipeline)vk.dev<PFN_vkDestroyPipeline>("vkDestroyPipeline")(vk.device,device->packMsaaPipeline,nullptr);
             if(device->packPipelineLayout)vk.dev<PFN_vkDestroyPipelineLayout>("vkDestroyPipelineLayout")(vk.device,device->packPipelineLayout,nullptr);
@@ -35,6 +83,7 @@ struct ReuseFixture {
     }
 };
 int wmain(){try{
+    verifyPresenterRouting();
     ReuseFixture f;f.vk.open();auto &vk=f.vk;
     f.device=std::make_unique<Device>();auto &d=*f.device;d.handle=vk.device;d.physical=vk.physical;fixtureNativeDpa=vk.gdpa;d.next=fixtureDpa;d.memory=vk.memory;d.graphicsFamily=vk.family;
     d.instance=std::make_shared<Instance>();d.instance->handle=vk.instance;d.instance->next=vk.gipa;setupPack(d);
@@ -83,6 +132,17 @@ int wmain(){try{
         retireFrame(d,f.frame);retireDepth(d,f.depth);
     }
     require(d.frameSetupCost.calls==1&&d.depthSetupCost.calls==1&&d.idleFrames.hits==63&&d.idleDepths.hits==63,"Production creation/reuse counters disagree");
+    // Exercise production retirement against a real completed GPU recording.
+    // The application fence is complete, but the SDK lease is deliberately not.
+    auto& cold=d.commands[f.command];cold.oneTime=cold.submitted=true;cold.recording=100;cold.submittedQueue=vk.queue;
+    cold.resources=d.idleFrames.take(frameKey);require(bool(cold.resources),"FG lifetime fixture lost its GPU resources");
+    cold.resources->fgLease=5;d.fgRequested="4.0.2";d.epoch=200;d.fgCompletedLease=4;
+    reclaimCompletedFrames(d,vk.queue);require(cold.resources&&!d.reclaimPending,"A completed application fence released a pending SDK image");
+    d.fgCompletedLease=5;d.lastReclaimCheck=0;reclaimCompletedFrames(d,vk.queue);
+    require(cold.resources&&d.reclaimPending,"Cold FG resource was not fenced after SDK completion");
+    check(vk.dev<PFN_vkWaitForFences>("vkWaitForFences")(vk.device,1,&d.reclaimFence,VK_TRUE,10000000000ull),"FG retirement fence");
+    reclaimCompletedFrames(d,vk.queue);require(!cold.resources&&!d.reclaimPending,"Completed cold FG resource stayed pinned");
+    d.commands.clear();d.fgRequested.clear();
     // Force a real allocation API failure before capture records GPU commands.
     // The original depth remains valid and no null map entry reaches selection.
     source.create.extent.height=64;f.depth=std::make_shared<DepthCapture>();f.depth->create(d,source,vk.family);
@@ -91,7 +151,9 @@ int wmain(){try{
     Command fault;fault.family=vk.family;fault.activeCaptureEligible=true;fault.activeDepth=f.depth->image;fault.depths.emplace(f.depth->image,Depth{f.nativeView,f.depth->image,VK_IMAGE_LAYOUT_UNDEFINED,1});
     d.mode=Mode::Upscale;fixtureFailAllocation=true;captureDepth(d,f.command,fault);
     require(!fixtureFailAllocation&&fault.capturedDepths.empty()&&d.allocationPaused&&!d.runtimeFailed,"Pre-recording OOM poisoned capture selection instead of native bypass");
+    const auto failedCalls=d.depthSetupCost.calls;fixtureFailAllocation=true;captureDepth(d,f.command,fault);
+    require(fixtureFailAllocation&&d.depthSetupCost.calls==failedCalls,"OOM retry ignored backoff and allocated again during the same frame");fixtureFailAllocation=false;
     VkMemoryRequirements originalRequirements{};vk.dev<PFN_vkGetImageMemoryRequirements>("vkGetImageMemoryRequirements")(vk.device,f.depth->image,&originalRequirements);require(originalRequirements.size>0,"OOM recovery destroyed the original depth image");
     d.idleFrames.limit(0);d.idleDepths.limit(0);require(!d.idleFrames.bytes()&&!d.idleDepths.bytes(),"Idle memory did not retire under pressure");
-    std::cout<<"PASS: 64 actual fenced GPU readbacks, production frame/depth reuse, descriptor rebinding, discarded old contents, one allocation set, pressure trim and simulated pre-recording OOM/native-depth preservation. Resource fixture only; no FSR quality claim.\n";return 0;
+    std::cout<<"PASS: 64 actual fenced GPU readbacks, production frame/depth reuse, descriptor rebinding, pending SDK lease retention, cold FG retirement after both completions, pressure trim and pre-recording OOM/backoff/native-depth preservation. Resource fixture only; no FSR quality claim.\n";return 0;
 }catch(const std::exception&e){std::cerr<<"FAIL: "<<e.what()<<'\n';return 1;}}

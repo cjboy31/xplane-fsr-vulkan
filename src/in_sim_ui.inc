@@ -5,6 +5,8 @@
 #include "nr_model_import.hpp"
 #include "session_logs.hpp"
 #include "in_sim_binding.hpp"
+#include "session_export.hpp"
+#include <shellapi.h>
 #include <XPLMDisplay.h>
 #include <XPLMGraphics.h>
 #include <GL/gl.h>
@@ -18,6 +20,8 @@ static std::filesystem::path setupRoot;
 static std::wstring setupToken;
 static HANDLE setupGraphicsJob{};
 static HANDLE setupImportJob{};
+static HANDLE setupLogJob{};
+static std::wstring setupLogToken;
 static std::string setupLastBindingReport;
 static insim::ConfigurationSession setupConfigurationSession;
 static std::wstring setupImportToken;
@@ -60,6 +64,22 @@ static void setupOpenUpdater(){
     if(!CreateProcessW(exe.c_str(),command.data(),nullptr,nullptr,FALSE,0,nullptr,setupRoot.c_str(),&startup,&process))throw std::runtime_error("Could not open the plugin updater.");
     CloseHandle(process.hThread);CloseHandle(process.hProcess);
 }
+static void setupOpenLogs(){
+    const auto sim=std::filesystem::path(setupPanel.choices.simulator);
+    if(sim.empty()||!app::validSessionToken(setupToken))throw std::runtime_error("No simulator session is linked to this log.");
+    if(!app::exportSessionLog(setupRoot,sim,setupToken,STILL_ACTIVE))throw std::runtime_error("The current session log is not available yet.");
+    if(reinterpret_cast<INT_PTR>(ShellExecuteW(nullptr,L"open",app::userLogDirectory(sim).c_str(),nullptr,nullptr,SW_SHOWNORMAL))<=32)
+        throw std::runtime_error("Open Output / FSR-Logs in your X-Plane folder.");
+}
+static void setupMonitorLogs(){
+    if(!app::validSessionToken(setupToken)||setupLogToken==setupToken)return;
+    const auto helper=setupRoot/L"IntegrationSetup.exe";
+    if(!std::filesystem::is_regular_file(helper)){setupPanel.notice="Session log helper is missing. Use Diagnostics > Open log folder before exiting, then reinstall the complete package.";return;}
+    auto command=L"\""+helper.wstring()+L"\" --finish-session "+std::to_wstring(GetCurrentProcessId())+L" "+setupToken;
+    STARTUPINFOW startup{sizeof(startup)};PROCESS_INFORMATION process{};
+    if(!CreateProcessW(helper.c_str(),command.data(),nullptr,nullptr,FALSE,CREATE_NO_WINDOW|BELOW_NORMAL_PRIORITY_CLASS,nullptr,setupRoot.c_str(),&startup,&process)){setupPanel.notice="Session log export could not start. Use Diagnostics > Open log folder before exiting.";return;}
+    CloseHandle(process.hThread);if(setupLogJob)CloseHandle(setupLogJob);setupLogJob=process.hProcess;setupLogToken=setupToken;
+}
 static void setupPollImport(){
     if(!setupImportJob)return;
     auto status=xpfsr::nr::readModelImportProgress(setupRoot,setupImportToken);
@@ -97,15 +117,20 @@ static void setupBind(){
     }
     bool canNR=connected&&name==L"Local\\XPFSR24-NR-v4-"+setupToken&&setupNR.open(name.c_str())&&setupNR.read(live);
     auto fg=setupEnvironment(L"XPFSR24_FG");
-    setupPanel.bind(file,canNR?&setupNR:nullptr,canNR,!fg.empty(),[](const launcher::Preferences&p){
+    setupPanel.bind(file,canNR?&setupNR:nullptr,canNR,connected&&!fg.empty()&&setupEnvironment(L"XPFSR24_FG_READY")==L"1",[](const launcher::Preferences&p){
         if(shared)InterlockedExchange(&shared->enabled,p.enabled?1:0);
         auto path=setupEnvironment(L"XPFSR24_CONTROL");
         if(!path.empty()&&std::filesystem::weakly_canonical(path)==std::filesystem::weakly_canonical(setupRoot/L"logs/renderer-control.txt")){
             std::ofstream out{std::filesystem::path(path)};out<<(p.enabled?'1':'0');if(!out)throw std::runtime_error("Saved, but the live processing control could not be updated");}
+        auto fgPath=setupEnvironment(L"XPFSR24_FG_CONTROL");
+        if(!setupEnvironment(L"XPFSR24_FG").empty()&&!fgPath.empty()&&std::filesystem::weakly_canonical(fgPath)==std::filesystem::weakly_canonical(setupRoot/L"logs/renderer-fg-control.txt")){
+            std::ofstream out{std::filesystem::path(fgPath)};out<<(p.frameGeneration?'1':'0');if(!out)throw std::runtime_error("Saved, but the live frame-generation switch could not be updated");}
     });
     setupPanel.graphicsSupport(setupQueueGraphics);
     setupPanel.modelSupport(setupImportModel);
     setupPanel.updateSupport(setupOpenUpdater);
+    setupPanel.logSupport(setupOpenLogs);
+    setupMonitorLogs();
     auto activationError=setupEnvironment(L"XPFSR24_ACTIVATION_ERROR");
     if(!connected){
         const auto owner=xp_renderer::environment("XP_RENDERER_OWNER");
@@ -227,4 +252,4 @@ static void setupShow() noexcept{try{
     }else XPLMSetWindowIsVisible(setupWindow,1);
     setupPresence.setVisible(true);setupLastPoll=0;setupPoll();XPLMBringWindowToFront(setupWindow);
 }catch(const std::exception&e){std::string text="XPFSR24: setup panel: ";text+=e.what();text+='\n';XPLMDebugString(text.c_str());}catch(...){}}
-static void setupStop(){setupHide();if(setupWindow)XPLMDestroyWindow(setupWindow);setupWindow=nullptr;setupNR.close();setupPresence.close();if(setupGraphicsJob)CloseHandle(setupGraphicsJob);setupGraphicsJob=nullptr;if(setupImportJob)CloseHandle(setupImportJob);setupImportJob=nullptr;setupConfigurationSession.close();}
+static void setupStop(){setupHide();if(setupWindow)XPLMDestroyWindow(setupWindow);setupWindow=nullptr;setupNR.close();setupPresence.close();if(setupGraphicsJob)CloseHandle(setupGraphicsJob);setupGraphicsJob=nullptr;if(setupImportJob)CloseHandle(setupImportJob);setupImportJob=nullptr;if(setupLogJob)CloseHandle(setupLogJob);setupLogJob=nullptr;setupLogToken.clear();setupConfigurationSession.close();}

@@ -55,22 +55,22 @@ static VKAPI_ATTR VkResult VKAPI_CALL L_CreateSwapchainKHR(VkDevice device,
         info->presentMode,
         info->pNext ? int(static_cast<const VkBaseInStructure *>(info->pNext)->sType) : 0,
         info->imageUsage, d->fgRequested.c_str());
-    auto previous = d->fgSwapchains.find(info->oldSwapchain);
+    auto previous = d->findFGSwapchain(info->oldSwapchain);
     try {
-        if (previous != d->fgSwapchains.end()) {
+        if (previous) {
             SdkScope sdk;
             stopGenerator(*d);
-            auto result = previous->second->presentation->recreate(*info);
+            auto result = previous->presentation->recreate(*info);
             if (result != VK_SUCCESS)
                 return result;
-            previous->second->retired = true;
+            previous->retired = true;
             auto generation = std::make_shared<SwapchainGeneration>();
-            generation->presentation = previous->second->presentation;
+            generation->presentation = previous->presentation;
             generation->width = info->imageExtent.width;
             generation->height = info->imageExtent.height;
             generation->format = info->imageFormat;
             *output = reinterpret_cast<VkSwapchainKHR>(generation.get());
-            d->fgSwapchains[*output] = generation;
+            {std::lock_guard<std::mutex> lookup(d->fgLookupLock);d->fgSwapchains[*output] = generation;}
             d->fgCurrent = generation;
             return VK_SUCCESS;
         }
@@ -95,7 +95,7 @@ static VKAPI_ATTR VkResult VKAPI_CALL L_CreateSwapchainKHR(VkDevice device,
             generation->height = info->imageExtent.height;
             generation->format = info->imageFormat;
             *output = reinterpret_cast<VkSwapchainKHR>(generation.get());
-            d->fgSwapchains[*output] = generation;
+            {std::lock_guard<std::mutex> lookup(d->fgLookupLock);d->fgSwapchains[*output] = generation;}
             d->fgCurrent = generation;
             strncpy(d->status.fgReason, "FG swapchain ready; waiting for scene depth and motion",
                     159);
@@ -108,10 +108,10 @@ static VKAPI_ATTR VkResult VKAPI_CALL L_CreateSwapchainKHR(VkDevice device,
         d->fgFailed = true;
         strncpy(d->status.fgReason, e.what(), 159);
         log("FG swapchain unavailable: %s", e.what());
-        if (previous != d->fgSwapchains.end())
+        if (previous)
             return VK_ERROR_INITIALIZATION_FAILED;
     }
-    if (!d->fgRequested.empty() && !d->fgCurrent) {
+    if (!d->fgRequested.empty() && !d->fgCurrent && !d->fgFailed) {
         strncpy(d->status.fgReason, "FG swapchain requirements unmet; native presentation", 159);
     }
     auto result = native(device, info, allocator, output);
@@ -129,14 +129,13 @@ static VKAPI_ATTR void VKAPI_CALL L_DestroySwapchainKHR(VkDevice device, VkSwapc
     std::shared_ptr<SwapchainGeneration> generation;
     {
         std::lock_guard<std::recursive_mutex> lock(d->lock);
-        auto it = d->fgSwapchains.find(swapchain);
-        if (it != d->fgSwapchains.end()) {
-            generation = it->second;
+        generation=d->findFGSwapchain(swapchain);
+        if (generation) {
             if (d->fgCurrent == generation) {
                 stopGenerator(*d);
                 d->fgCurrent.reset();
             }
-            d->fgSwapchains.erase(it);
+            {std::lock_guard<std::mutex> lookup(d->fgLookupLock);d->fgSwapchains.erase(swapchain);}
         } else
             d->nativeSwapchains.erase(swapchain);
     }
@@ -150,13 +149,7 @@ static VKAPI_ATTR VkResult VKAPI_CALL L_GetSwapchainImagesKHR(VkDevice device,
                                                               VkSwapchainKHR swapchain,
                                                               uint32_t *count, VkImage *images) {
     auto d = deviceFor(device);
-    std::shared_ptr<SwapchainGeneration> generation;
-    {
-        std::lock_guard<std::recursive_mutex> lock(d->lock);
-        auto it = d->fgSwapchains.find(swapchain);
-        if (it != d->fgSwapchains.end())
-            generation = it->second;
-    }
+    auto generation=d->findFGSwapchain(swapchain);
     if (generation) {
         SdkScope sdk;
         auto result = generation->presentation->functions.pOutGetSwapchainImagesKHR(
@@ -176,13 +169,7 @@ static VKAPI_ATTR VkResult VKAPI_CALL L_AcquireNextImageKHR(VkDevice device,
                                                             uint64_t timeout, VkSemaphore semaphore,
                                                             VkFence fence, uint32_t *index) {
     auto d = deviceFor(device);
-    std::shared_ptr<SwapchainGeneration> generation;
-    {
-        std::lock_guard<std::recursive_mutex> lock(d->lock);
-        auto it = d->fgSwapchains.find(swapchain);
-        if (it != d->fgSwapchains.end())
-            generation = it->second;
-    }
+    auto generation=d->findFGSwapchain(swapchain);
     if (generation) {
         SdkScope sdk;
         static unsigned traces = 0;
@@ -200,14 +187,12 @@ static VKAPI_ATTR VkResult VKAPI_CALL L_AcquireNextImage2KHR(VkDevice device,
                                                              const VkAcquireNextImageInfoKHR *info,
                                                              uint32_t *index) {
     auto d = deviceFor(device);
-    {
-        std::lock_guard<std::recursive_mutex> lock(d->lock);
-        if (d->fgSwapchains.count(info->swapchain)) {
+    auto generation=d->findFGSwapchain(info->swapchain);
+    if (generation) {
             if (info->deviceMask != 1 || info->pNext)
                 return VK_ERROR_FEATURE_NOT_PRESENT;
-        }
     }
-    if (d->fgSwapchains.count(info->swapchain))
+    if (generation)
         return L_AcquireNextImageKHR(device, info->swapchain, info->timeout, info->semaphore,
                                      info->fence, index);
     auto native = d->fn<PFN_vkAcquireNextImage2KHR>("vkAcquireNextImage2KHR");
@@ -218,13 +203,7 @@ static VKAPI_ATTR void VKAPI_CALL L_SetHdrMetadataEXT(VkDevice device, uint32_t 
                                                       const VkHdrMetadataEXT *metadata) {
     auto d = deviceFor(device);
     for (uint32_t i = 0; i < count; ++i) {
-        std::shared_ptr<SwapchainGeneration> generation;
-        {
-            std::lock_guard<std::recursive_mutex> lock(d->lock);
-            auto it = d->fgSwapchains.find(chains[i]);
-            if (it != d->fgSwapchains.end())
-                generation = it->second;
-        }
+        auto generation=d->findFGSwapchain(chains[i]);
         if (generation) {
             SdkScope sdk;
             auto handle = generation->presentation->handle();
@@ -281,9 +260,10 @@ static VkResult presentFrame(Device &d, VkQueue queue, const VkPresentInfoKHR *i
                                             d.fgSequence.prepared, active);
             }
             d.status.fgActive = active;
-            if (!active)
+            if (!active && !d.fgFailed)
                 strncpy(d.status.fgReason,
-                        d.panelOpen ? "FG paused while in-sim setup is visible; selection retained"
+                        !d.fgLiveEnabled ? "FG Off - live switch disabled"
+                        : d.panelOpen ? "FG paused while in-sim setup is visible; selection retained"
                         : d.groundSafety.active
                             ? "FG paused by ground camera safety; selection retained"
                         : d.enabled ? "FG bypass: submitted scene and prepared source must match"
@@ -314,13 +294,14 @@ static VkResult presentFrame(Device &d, VkQueue queue, const VkPresentInfoKHR *i
         auto present = *info;
         present.pSwapchains = &proxy;
         result = generation->presentation->functions.pOutQueuePresentKHR(queue, &present);
-        if(d.fgSynchronized && d.status.fgActive && (result==VK_SUCCESS||result==VK_SUBOPTIMAL_KHR)){
+        const bool pressureDrain=d.memoryBudget.available&&!xpfsr::nr::profileFits(d.memoryBudget.budget,d.memoryBudget.usage,0);
+        if((d.fgSynchronized||pressureDrain) && d.status.fgActive && (result==VK_SUCCESS||result==VK_SUBOPTIMAL_KHR)){
             // The compatibility path deliberately gives up CPU/GPU overlap.
             // Drain SDK-managed interpolation/composition/presents before the
             // next source can prepare on another host recording thread. Keep
             // the same device guard; SDK native present traffic bypasses it.
             // No semaphore is re-used and no old swapchain image is re-presented.
-            try {generation->presentation->wait();}
+            try {generation->presentation->wait();d.fgCompletedLease=std::max(d.fgCompletedLease,d.fgPreparedLease);}
             catch(const std::exception &e){
                 d.fgFailed=true;d.status.fgActive=0;
                 snprintf(d.status.fgReason,160,"FG synchronization failed: %.120s",e.what());

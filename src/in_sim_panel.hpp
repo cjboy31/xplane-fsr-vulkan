@@ -30,8 +30,8 @@ inline std::string valueName(const Controls &c,Field f){
     return std::to_string(value)+"%";
 }
 struct Rect {int x{},y{},w{},h{};bool contains(int a,int b)const{return a>=x&&a<x+w&&b>=y&&b<y+h;}};
-enum class Kind {Tab,Processing,Mode,FrameGen,NRField,Budget,Help,Close,Preset,Graphics,ApplyGraphics,OpenChoice,ChooseOption,CloseChoice,FGToggle,FGProvider,ImportModel,CloudPreset,Renderer,Changelog,Updates};
-inline constexpr int contentTop=160, footerHeight=120, modelSetupHeight=132;
+enum class Kind {Tab,Processing,Mode,FrameGen,NRField,Budget,Help,Close,Preset,Graphics,ApplyGraphics,OpenChoice,ChooseOption,CloseChoice,FGToggle,FGProvider,ImportModel,CloudPreset,Renderer,Changelog,Updates,Logs};
+inline constexpr int contentTop=188, footerHeight=120, modelSetupHeight=132;
 inline Rect footerNotice(int width,int height){return {24,height-112,width-48,34};}
 inline Rect footerGuidance(int width,int height){return {24,height-62,width-48,51};}
 enum class Widget {Label,Button,Toggle,Slider,Choice};
@@ -44,12 +44,13 @@ class Panel {
     std::function<void()> queueGraphics;
     std::function<void()> importModel;
     std::function<void()> openUpdater;
+    std::function<void()> openLogs;
     bool liveNR{},sessionFG{},rendererConnected{true};
     std::vector<const graphics::Preset*> displayPresets;
     uint64_t previousRecords{},lastProgress{};bool sawStatus{};
 public:
     launcher::Preferences choices;
-    xp_renderer::Choice rendererChoice{xp_renderer::Choice::automatic};
+    xp_renderer::Choice rendererChoice{xp_renderer::Choice::fsr};
     app::Telemetry telemetry{};
     int tab{},scroll{},helpField{-1},helpScroll{};std::string notice,activity="PLUGIN LOADED - renderer not confirmed",nrStatus="NR status not available";
     bool dropdownOpen{};Action dropdown{Kind::Mode};int dropdownScroll{};
@@ -61,13 +62,27 @@ public:
     }
     bool configured()const{return !file.empty();}
     bool rendererLinked()const{return configured()&&rendererConnected;}
+    std::string frameGenerationStatus()const{
+        if(!rendererLinked())return "Not running in this session";
+        if(!choices.frameGeneration)return sessionFG?"Off - live switch available":"Off";
+        if(!sessionFG)return sawStatus&&telemetry.fgReason[0]?std::string(telemetry.fgReason,strnlen(telemetry.fgReason,sizeof(telemetry.fgReason))):"Restart needed to enable frame generation";
+        if(!sawStatus||!lastProgress||activity.find("WAITING")==0)return "Waiting for current-session renderer status";
+        const std::string reason(telemetry.fgReason,strnlen(telemetry.fgReason,sizeof(telemetry.fgReason)));
+        // The panel itself pauses interpolation. Never call a saved On choice
+        // or old generated-frame count proof of generation right now.
+        if(reason.find("setup is visible")!=std::string::npos)return "Paused while this panel is open - close it to run";
+        if(!telemetry.fgActive)return reason.empty()?"Waiting for a usable scene - see Diagnostics":reason;
+        if(!telemetry.fgGenerated||!telemetry.displayedPresents)return "Starting - waiting for generated and presented frames";
+        return "Running - "+std::to_string(telemetry.fgGenerated)+" frames generated this session";
+    }
     void configurationOnly(const std::string &reason,bool activationBypassed=false){rendererConnected=false;liveNR=false;sessionFG=false;activity=activationBypassed?"RENDERER BYPASSED - see startup reason below":"RENDERER NOT LOADED - next-session settings available";nrStatus="Not running in this session";notice=reason;}
     void graphicsSupport(std::function<void()> callback){queueGraphics=std::move(callback);}
     void updateSupport(std::function<void()> callback){openUpdater=std::move(callback);}
+    void logSupport(std::function<void()> callback){openLogs=std::move(callback);}
     void modelSupport(std::function<void()> callback){importModel=std::move(callback);}
-    void refresh(){if(configured()){choices=launcher::load(file);if(!choices.simulator.empty())try{rendererChoice=xp_renderer::read(choices.simulator);}catch(const std::exception& e){rendererChoice=xp_renderer::Choice::off;notice=std::string(e.what())+". Choose Renderer again to repair it, then restart.";}}}
+    void refresh(){if(configured()){choices=launcher::load(file);if(!choices.simulator.empty())try{rendererChoice=xp_renderer::visibleChoice(choices.simulator);}catch(const std::exception& e){rendererChoice=xp_renderer::Choice::off;notice=std::string(e.what())+". Choose Renderer again to repair it, then restart.";}}}
     std::vector<std::string> choiceOptions(Action a)const{
-        if(a.kind==Kind::Renderer)return {"Automatic - Native AA if installed","Native AA - independent anti-aliasing","FSR / NR / frame generation","Original simulator - both mods Off"};
+        if(a.kind==Kind::Renderer)return {"Native AA - independent anti-aliasing","FSR / NR / frame generation","Original simulator - both mods Off"};
         if(a.kind==Kind::NRField&&(a.field<0||a.field>=Count))return {};
         if(a.kind==Kind::Mode)return {std::begin(fsrNames),std::end(fsrNames)};
         if(a.kind==Kind::FrameGen)return {std::begin(fgNames),std::end(fgNames)};
@@ -79,7 +94,7 @@ public:
         return {};
     }
     int choiceCurrent(Action a)const{
-        if(a.kind==Kind::Renderer)return int(rendererChoice);
+        if(a.kind==Kind::Renderer)return int(rendererChoice)-1;
         if(a.kind==Kind::Mode)return choices.mode;if(a.kind==Kind::FrameGen)return choices.frameGeneration;
         if(a.kind==Kind::FGProvider)return choices.lastFrameGeneration-1;
         if(a.kind==Kind::CloudPreset)return 0;
@@ -124,6 +139,7 @@ public:
         notice=liveNR?"Saved. NR/processing controls are live; FSR and FG providers apply next session.":"Saved for the next session. This session has no live NR renderer; correct/queue graphics and restart using your usual launcher.";
     }
     void act(Action action,bool refreshFirst=true){
+        if(action.kind==Kind::Logs){if(!openLogs)throw std::runtime_error("Log support is unavailable. Reinstall the complete package.");openLogs();notice="Opened Output / FSR-Logs in your X-Plane folder. A fresh copy is also saved when X-Plane exits.";return;}
         if(action.kind==Kind::Changelog){helpField=300;helpScroll=0;dropdownOpen=false;return;}
         if(action.kind==Kind::Updates){if(!openUpdater)throw std::runtime_error("The updater is missing. Reinstall the complete package.");openUpdater();notice="Updater opened. You can check now; close X-Plane before installing.";return;}
         if(action.kind==Kind::Tab){tab=std::clamp(action.field,0,3);scroll=0;helpField=-1;dropdownOpen=false;return;}
@@ -139,7 +155,7 @@ public:
         }
         if(action.kind==Kind::Renderer){
             refresh();const int next=int(rendererChoice)+action.delta;
-            if(next<0||next>3)throw std::runtime_error("Invalid renderer selection");
+            if(next<1||next>3)throw std::runtime_error("Invalid renderer selection");
             xp_renderer::save(choices.simulator,xp_renderer::Choice(next));rendererChoice=xp_renderer::Choice(next);
             notice=std::string("Saved: ")+xp_renderer::label(rendererChoice)+". Close and restart X-Plane using your usual launcher. Current renderer and both mods' settings are retained.";return;
         }
@@ -189,11 +205,13 @@ public:
             if(f==Enabled)p.neuralRendering=p.nr[Enabled]?4:0;
         }
         if(launcher::serialized(p)!=launcher::serialized(choices))persist(p);
+        if(action.kind==Kind::FGToggle)notice=sessionFG?(choices.frameGeneration?"Frame generation On. Close this panel to resume; check Diagnostics for generated frames.":"Frame generation Off. The change is live; your method stays saved."):(choices.frameGeneration?"Frame generation saved On. Restart X-Plane to load its presenter; it is not running yet.":"Frame generation saved Off. Your method stays saved.");
+        if(action.kind==Kind::FGProvider)notice="Frame generation method saved. The new method applies after restarting X-Plane. The current method is retained for this flight.";
         if(action.kind==Kind::Budget)notice=budgetSelectionMessage(action.field);
         if(action.kind==Kind::CloudPreset)notice="Cloud clarity setup saved: Maximum clouds with "+std::string(action.delta==1?"Ultra Quality input.":"full input and Native AA.")+" Select Apply graphics after exit, then restart. Higher source resolution costs GPU time; distant cloud detail remains limited by X-Plane's cloud pass.";
         if(action.kind==Kind::Graphics&&action.field==8)notice="Cloud quality saved for next session. Select Apply graphics after exit. This controls X-Plane's cloud quality; FSR/FG/NR choices are retained.";
     }
-    int maxScroll(int height)const{return !configured()||tab==2?0:std::max(0,(tab==1?Count*64+modelSetupHeight:tab==3?642:566)-std::max(1,height-contentTop-footerHeight));}
+    int maxScroll(int height)const{return !configured()?0:std::max(0,(tab==1?Count*64+modelSetupHeight:tab==2?360:tab==3?642:566)-std::max(1,height-contentTop-footerHeight));}
     int maxDropdownScroll(int height)const{return std::max(0,int(choiceOptions(dropdown).size())*36-std::max(1,height-contentTop-footerHeight-68));}
     bool wheel(int amount,int height){auto &position=dropdownOpen?dropdownScroll:scroll;int next=std::clamp(position+amount,0,dropdownOpen?maxDropdownScroll(height):maxScroll(height));if(next==position)return false;position=next;return true;}
     std::string help()const{
@@ -202,7 +220,7 @@ public:
         if(helpField>=0&&helpField<Count)return utf8(settings[helpField].help);
         if(helpField==100)return "MSAA smooths the edges of 3D objects. Higher levels use more graphics time and memory. Combining it with FSR is experimental. Start Off or 2x. Apply after exit, then restart.";
         if(helpField==101)return "FXAA is a fast smoother that can soften text and textures. Keep it Off with FSR Native AA or upscaling. Use it only when the FSR mode is Off.";
-        if(helpField==102)return "Input detail controls how much detail X-Plane draws before FSR. Full is required for Native AA. Quality is a good starting point for upscaling. At 4K output, Quality starts with a 1440p picture. Lower levels can improve speed but lose detail.";
+        if(helpField==102)return "Input detail controls how much detail X-Plane draws before FSR. Native AA always starts at Full. Select FSR Upscaling to use lower input settings. At 4K output, Quality starts with a 1440p picture. Lower levels can improve speed but lose detail. Apply after exit, then restart.";
         if(helpField==103)return "Output resolution is the picture sent to your display. Keep current keeps your existing display setup. Select a supported size, then Apply after exit and restart. A higher setting cannot add pixels your monitor does not have.";
         if(helpField==104)return "Keep menus and text about the same size when this plugin changes output resolution. Leave this On unless you want X-Plane to choose its own menu size.";
         if(helpField==105)return "Try to reduce trails left by FSR 3. It can make some thin lines flicker more. This only affects FSR 3 and needs a restart.";
@@ -210,11 +228,11 @@ public:
         if(helpField==107)return "Show a green tint on screen areas accepted by cockpit screen protection. Use it to check alignment, then turn it Off. Unsupported layouts may show no tint. This requires frame generation Off and a restart.";
         if(helpField==108)return "Choose X-Plane's cloud quality. Higher quality can reduce blocky clouds but uses more graphics time. It cannot add every missing distant detail. Apply after exit, then restart. Your weather stays the same.";
         if(helpField==200)return "Native AA keeps the full input resolution and smooths edges. Upscaling builds a larger picture from a smaller input and can improve speed. Match Input detail on the Image quality tab and keep FXAA Off. Changes need a restart.";
-        if(helpField==201)return "Frame generation adds pictures between real frames to make movement look smoother. It does not speed up the simulation. Use it after your base frame rate is steady. Changes need a restart. It pauses while this panel is open.";
+        if(helpField==201)return "Frame generation adds pictures between real frames to make movement look smoother. It does not speed up the simulation. Start with a steady base frame rate. If this session started with frame generation, On/Off works live. Otherwise restart once to load it. Changing the method needs a restart. It pauses while this panel is open. The status above and Diagnostics show whether frames are really being generated.";
         if(helpField==202)return "A preset chooses resolution and FSR settings together. It turns MSAA, FXAA and frame generation Off as a starting point. Choose Apply after exit, close X-Plane normally, then reopen it. Custom keeps your separate FSR and frame-generation choices.";
         if(helpField==203)return "Select your own supported nvngx_dlssnr.dll, version 310.9.16 or 310.8.0. The importer reads the model without running the DLL. Models are not included in this download. Wait for the import result, then turn NR Off and On if needed.";
         if(helpField==204)return "These cloud presets raise input detail and choose Maximum cloud quality. Higher detail can reduce blockiness but costs graphics time. Native AA is the most demanding choice. Your weather and other effects stay selected. Apply after exit and restart.";
-        if(helpField==205)return "Choose Native AA, the separate FSR mod, or the original simulator for your next launch. Only one mod processes the scene. Automatic prefers Native AA when installed. Close and reopen X-Plane after changing this. Both mods keep your choices.";
+        if(helpField==205)return "Choose Native AA, the separate FSR mod, or the original simulator for your next launch. Only one mod processes the scene. Close and reopen X-Plane after changing this. Both mods keep your choices. The input scale is prepared after a normal exit; Native AA uses Full.";
         if(helpField==206)return "Turn FSR image processing on or off during your flight. Off shows the current simulator picture without FSR processing. The FSR and frame-generation methods still need a restart when changed.";
         if(helpField==207)return "Choose a quick NR speed and detail setting. Performance uses a smaller model picture. Quality uses a larger one. Each uses one pass. Your lighting and color choices stay saved. Wait for the NR status to confirm the change.";
         return tab==3?"Choose your graphics settings, then select Apply after exit. Close X-Plane normally; the background component applies only these settings with a backup. Restart using your usual launcher. FSR/FG choices are retained for custom edits. FXAA is native-only; MSAA + FSR is experimental.":"Live NR and processing controls save automatically. Presets/graphics and FSR/FG providers need a new session. Queue changed graphics on the Image quality tab before exiting. FG pauses while this panel is visible. Open Changelog for changes, or Updates for the separate updater.";
@@ -224,11 +242,12 @@ public:
         auto text=[&](int x,int y,int w,const std::string &s){out.push_back({{x,y,w,20},s});};
         auto button=[&](Rect r,const std::string&s,Action action,bool selected=false){out.push_back({r,s,true,selected,action,Widget::Button});};
         text(24,20,width-360,product::heading);text(24,48,width-48,activity);
-        text(24,64,width-48,"NR: "+nrStatus);
+        text(24,70,width-48,"NR: "+nrStatus);
+        text(24,92,width-48,"Frame generation: "+frameGenerationStatus());
         button({width-320,12,96,30},"Changelog",{Kind::Changelog});
         if(configured())button({width-216,12,96,30},"Updates",{Kind::Updates});
         button({width-112,12,88,30},"Close",{Kind::Close});
-        int tabWidth=(width-72)/4;const char *tabs[]={"Rendering","Neural rendering","Diagnostics","Image quality"};for(int i=0;i<4;++i)button({24+i*(tabWidth+8),108,tabWidth,32},tabs[i],{Kind::Tab,i},tab==i);
+        int tabWidth=(width-72)/4;const char *tabs[]={"Rendering","Neural rendering","Diagnostics","Image quality"};for(int i=0;i<4;++i)button({24+i*(tabWidth+8),136,tabWidth,32},tabs[i],{Kind::Tab,i},tab==i);
         int top=contentTop,bottom=height-footerHeight;scroll=std::clamp(scroll,0,maxScroll(height));int origin=top-scroll;
         auto row=[&](int y,const std::string &label,const std::string &value,Kind kind,int field){
             if(y<top||y+54>bottom)return;
@@ -254,8 +273,8 @@ public:
             row(origin,"Resolution preset - after restart",choices.presetId.empty()?"Custom":utf8(graphics::presetById(choices.presetId).label),Kind::Preset,0);
             if(origin+56>=top&&origin+94<=bottom){button({24,origin+56,width-104,38},rendererConnected?"Enable FSR - live":"Enable FSR - after restart",{Kind::Processing,0,choices.enabled?-1:1},choices.enabled);out.back().widget=Widget::Toggle;button({width-66,origin+60,36,30},"?",{Kind::Help,206});}
             row(origin+112,"FSR mode - after restart",fsrNames[std::clamp(choices.mode,0,4)],Kind::Mode,0);
-            row(origin+168,"Frame generation - after restart",choices.frameGeneration?"On":"Off",Kind::FGToggle,0);
-            row(origin+224,"Frame generation method",fgNames[std::clamp(choices.lastFrameGeneration,1,4)],Kind::FGProvider,0);
+            row(origin+168,sessionFG?"Frame generation - live":"Frame generation - after restart",choices.frameGeneration?"On":"Off",Kind::FGToggle,0);
+            row(origin+224,"Frame generation method - after restart",fgNames[std::clamp(choices.lastFrameGeneration,1,4)],Kind::FGProvider,0);
             row(origin+280,liveNR?"Neural rendering - live":"Neural rendering - next session",valueName(choices.nr,Enabled),Kind::NRField,Enabled);
             row(origin+336,liveNR?"Where to use NR - live":"Where to use NR - after restart",valueName(choices.nr,Scope),Kind::NRField,Scope);
             row(origin+392,liveNR?"When to apply NR - live":"When to apply NR - after restart",valueName(choices.nr,Order),Kind::NRField,Order);
@@ -278,11 +297,15 @@ public:
             row(origin+504,"Cloud clarity presets", "Choose a clarity setup...",Kind::CloudPreset,0);
             if(origin+580>=top&&origin+612<=bottom)button({24,origin+580,width-48,32},"Apply graphics after I close X-Plane",{Kind::ApplyGraphics},choices.manualPending);
         }else{
-            text(24,top,width-48,"Renderer activity requires advancing frames; loading this plugin alone is not proof.");
-            text(24,top+34,width-48,"FSR source recordings: "+std::to_string(telemetry.recordings));
-            text(24,top+64,width-48,"Input "+std::to_string(telemetry.renderWidth)+" x "+std::to_string(telemetry.renderHeight)+"  /  Output "+std::to_string(telemetry.outputWidth)+" x "+std::to_string(telemetry.outputHeight));
-            text(24,top+94,width-48,"Generated frames: "+std::to_string(telemetry.fgGenerated)+"  /  Presented: "+std::to_string(telemetry.displayedPresents));
-            text(24,top+128,width-48,"NR: "+nrStatus);text(24,top+184,width-48,"Current-session logs are in the installation's logs folder.");
+            if(origin>=top&&origin+32<=bottom)button({24,origin,width-48,32},"Open log folder",{Kind::Logs});
+            auto detail=[&](int offset,const std::string& message,int lines=20){const auto y=origin+offset;if(y>=top&&y+lines<=bottom){text(24,y,width-48,message);out.back().rect.h=lines;}};
+            detail(48,"Renderer activity requires advancing frames; loading this plugin alone is not proof.");
+            detail(82,"FSR source recordings: "+std::to_string(telemetry.recordings));
+            detail(112,"Input "+std::to_string(telemetry.renderWidth)+" x "+std::to_string(telemetry.renderHeight)+"  /  Output "+std::to_string(telemetry.outputWidth)+" x "+std::to_string(telemetry.outputHeight));
+            detail(142,"Generated frames: "+std::to_string(telemetry.fgGenerated)+"  /  Presented: "+std::to_string(telemetry.displayedPresents));
+            detail(176,"FG: "+frameGenerationStatus(),52);
+            detail(236,"NR: "+nrStatus,52);
+            detail(304,"Logs: X-Plane / Output / FSR-Logs. A copy is saved after exit.",40);
         }
         // Only fully visible controls are clickable. Long labels/help are clipped
         // and wrapped by the XPLM drawing adapter inside the panel's content area.

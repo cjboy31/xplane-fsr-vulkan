@@ -5,6 +5,7 @@
 #include "running_profile.hpp"
 #include "named_lock.hpp"
 #include "renderer_selection.hpp"
+#include "loader_order.hpp"
 #include <memory>
 namespace app {
 // Implicit discovery loads a DLL into many processes. Only the exact selected
@@ -56,6 +57,7 @@ public:
             const auto decision=xp_renderer::claim(exe.parent_path(),xp_renderer::Choice::fsr);
             graphics::require(decision.allowed,decision.reason.c_str());
             setEnvironment(L"XPFSR24_AUTOMATIC",L"1");
+            setEnvironment(L"XPFSR24_CAPTURE_ORDERED",LoaderOrderRegistration{}.active(root,exe)?L"1":L"");
             // The panel must remain reachable to correct a saved profile even
             // when renderer validation fails for this session.
             setEnvironment(L"XPFSR24_SETTINGS",(root/L"settings.ini").wstring());
@@ -71,7 +73,7 @@ public:
             auto current=saved.mode?graphics::current(saved.simulator):graphics::Options{};
             auto p=runningProfile(saved,current,captureLoaded);validateSessionProfile(p);
             setEnvironment(L"XPFSR24_PENDING_GRAPHICS",runningGraphicsNotice(saved,p));
-            setEnvironment(L"XPFSR24_FG_GUARD",captureLoaded&&saved.frameGeneration?L"FG paused: OBS capture hook was already loaded. Saved FG choice retained. Use the optional desktop launch path for capture compatibility.":L"");
+            setEnvironment(L"XPFSR24_FG_GUARD",captureLoaded&&saved.frameGeneration?L"FG capture compatibility selected. The requested frame-generation algorithm is retained; the synchronized presenter will be checked during startup.":L"");
             if(p.mode){
                 graphics::require(current.fxaa==0,"Set FXAA Off in X-Plane for FSR");
                 graphics::require((p.mode==1||p.mode==3)?current.scale==0:current.scale>0,"X-Plane input scale does not match the running FSR mode");}

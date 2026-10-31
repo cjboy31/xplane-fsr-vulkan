@@ -1,5 +1,14 @@
 # Changes
 
+## Unreleased
+
+- Start fresh setup with a blank simulator path; keep existing user installations.
+- Remove Automatic from the image-processor menu. Choose Native AA, FSR or Original simulator.
+- Prepare compatible input scale and FXAA settings with X-Plane closed, without changing MSAA, output size or UI size.
+- Add Open log folder to Diagnostics and copy session logs to X-Plane / Output / FSR-Logs after exit.
+- Delay repeated memory-allocation retries and retire completed old FG resources safely. Native rendering continues while memory is low.
+- Delay first-use FSR setup until the initial scene stabilizes. Live stutter validation is still in progress.
+
 ## 0.7.4-alpha
 
 - Rendering controls stay inside X-Plane. The desktop app is now a plugin updater for FSR and independent Native AA.

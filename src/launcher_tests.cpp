@@ -20,7 +20,7 @@ int wmain(int argc, wchar_t **argv) {
         graphics::fs::create_directories(dir);
         auto file = dir / L"settings.ini";
         auto defaults = launcher::load(file);
-        require(defaults.mode == 0 && defaults.enabled && defaults.cockpitRestore &&
+        require(defaults.simulator.empty() && defaults.mode == 0 && defaults.enabled && defaults.cockpitRestore &&
                     defaults.frameGeneration == 0 && defaults.neuralRendering == 0 && defaults.presetId.empty(),
                 "First-run defaults");
         // Exercise upgrading the ANSI file created by the old launcher/installer.

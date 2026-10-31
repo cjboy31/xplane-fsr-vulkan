@@ -96,11 +96,8 @@ Function .onInit
   ${If} $ImportSettings != ""
     Call ValidateImportSettings
   ${EndIf}
-  ${If} $TestMode != 1
-  ${AndIf} $ImportSettings == ""
-    IfFileExists "D:\X-Plane 12\X-Plane.exe" 0 +2
-      StrCpy $XPlaneDir "D:\X-Plane 12"
-  ${EndIf}
+  ; A fresh installation starts blank. Never ship a developer's simulator path.
+  ; Existing/imported choices are retained by the settings import and setup helper.
   ClearErrors
   ${GetOptions} $Parameters "/AUTOUPDATE=" $0
   ${If} $0 == "1"

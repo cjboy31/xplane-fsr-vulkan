@@ -19,6 +19,7 @@
 #include <condition_variable>
 #include <optional>
 #include "frame_sequence.hpp"
+#include "render_safety.hpp"
 #include "fsr24.hpp"
 #include "pacing.hpp"
 #include "shared.hpp"
@@ -74,14 +75,24 @@ struct SwapchainGeneration {
     bool retired{};
 };
 std::string requestedFrameGeneration() {
-    if(app::environment(L"XPFSR24_AUTOMATIC")==L"1"&&GetModuleHandleW(L"graphics-hook64.dll")){
-        SetEnvironmentVariableW(L"XPFSR24_FG_GUARD",L"FG paused: OBS capture hook was loaded during Vulkan startup. Saved FG choice retained. Optional desktop launch supports capture compatibility.");
-        return {};
-    }
     if (!app::frameGenerationAvailable || (requestedNeuralRendering()&&!allowNeuralFrameGeneration()))
         return {};
     wchar_t mode[32]{};
     GetEnvironmentVariableW(L"XPFSR24_FG", mode, 32);
+    // Capture discovery can finish after the automatic profile is prepared.
+    // Resolve the presenter before reserving device queues, not by silently
+    // deleting the user's FG request. Actual device/swapchain errors still fail
+    // closed and remain visible through fgReason.
+    if(app::environment(L"XPFSR24_AUTOMATIC")==L"1"&&GetModuleHandleW(L"graphics-hook64.dll")&&
+       (!wcscmp(mode,L"3.1.6")||!wcscmp(mode,L"4.0.2"))){
+        if(app::environment(L"XPFSR24_CAPTURE_ORDERED")!=L"1"){
+            SetEnvironmentVariableW(L"XPFSR24_FG_GUARD",L"FG needs capture compatibility setup. Close X-Plane, repair in-sim integration with the current installer, then restart. A current Vulkan loader is required.");
+            return {};
+        }
+        SetEnvironmentVariableW(L"XPFSR24_FG_PRESENTER",L"3.1.7");
+        SetEnvironmentVariableW(L"XPFSR24_FG_SYNCHRONIZED",L"1");
+        SetEnvironmentVariableW(L"XPFSR24_FG_GUARD",L"FG capture compatibility selected at Vulkan startup; synchronized presentation requested.");
+    }
     if (!wcscmp(mode, L"3.1.6"))
         return "3.1.6";
     if (!wcscmp(mode, L"4.0.2"))
@@ -193,6 +204,7 @@ struct Command {
     bool activeCaptureEligible{};
     std::map<VkImage, std::shared_ptr<DepthCapture>> capturedDepths;
     uint64_t fgFrame{}, sceneFrame{};
+    uint64_t lastUsePresent{};
     bool oneTime{}, rendering{}, secondary{}, processed{}, failed{}, submitted{}, dynamicOffsets{};
     uint64_t epoch{},recording{};
     VkQueue submittedQueue{};
@@ -289,10 +301,19 @@ struct Device {
     uint32_t fgQueueBase = UINT32_MAX;
     std::array<VkQueue, 4> fgQueues{};
     std::map<VkImage, std::weak_ptr<SwapchainGeneration>> fgBackbuffers;
+    std::mutex fgLookupLock;
     std::map<VkSwapchainKHR, std::shared_ptr<SwapchainGeneration>> fgSwapchains;
+    std::shared_ptr<SwapchainGeneration> findFGSwapchain(VkSwapchainKHR chain){
+        // SDK workers acquire their real native swapchain while Present may
+        // hold the renderer guard waiting for those workers. Routing cannot
+        // take that guard. Copy ownership under a separate, short-lived lock.
+        std::lock_guard<std::mutex> lookup(fgLookupLock);auto it=fgSwapchains.find(chain);
+        return it==fgSwapchains.end()?nullptr:it->second;
+    }
     std::set<VkSwapchainKHR> nativeSwapchains;
     std::shared_ptr<SwapchainGeneration> fgCurrent;
     std::unique_ptr<xpfsr::FrameGenerator> frameGenerator;
+    uint64_t fgIssuedLease{},fgPreparedLease{},fgCompletedLease{};
     std::array<uint32_t, 6> fgKey{};
     xpfsr::FrameSequence fgSequence;
     uint64_t fgPendingSkips{}, fgSourceBypasses{};
@@ -319,6 +340,7 @@ struct Device {
     uint64_t lastBudgetCheck{},lastBudgetMonitor{};
     xpfsr::nr::GpuMemoryBudget memoryBudget;
     bool nrMemoryPaused{},allocationPaused{};
+    xpfsr::AllocationBackoff allocationBackoff;
     VkFence reclaimFence{};
     VkQueue reclaimQueue{};
     bool reclaimPending{},reclaimFailed{};
@@ -396,8 +418,11 @@ struct Device {
         if (GetEnvironmentVariableW(L"XPFSR24_FG_CONTROL", fgPath, 32768)) {
             std::ifstream f{std::filesystem::path(fgPath)};
             char value{};
-            if (f.get(value) && (value == '0' || value == '1'))
-                fgLiveEnabled = value == '1';
+            if (f.get(value) && (value == '0' || value == '1')){
+                const bool next=value=='1';
+                if(next!=fgLiveEnabled)fgResumeReset=true;
+                fgLiveEnabled=next;
+            }
         }
     }
     void bypass(const char *reason) {
@@ -424,10 +449,24 @@ std::shared_ptr<Instance> instanceFor(VkInstance i) {
     auto p = instances.find(key(i));
     return p == instances.end() ? nullptr : p->second;
 }
+bool recognizeSDKWorker(){
+    // The SDK also imports Vulkan functions directly. Its dedicated threads do
+    // not inherit the caller's SdkScope. Identify their first intercepted call
+    // once, outside our registry lock, rather than treating SDK command pools
+    // and commands as application work or making them wait for Present.
+    if(sdkNesting)return false;
+    static thread_local bool assessed=false;if(assessed)return false;assessed=true;
+    auto sdk=GetModuleHandleW(L"amd_fidelityfx_framegeneration_vk.dll");if(!sdk)return false;
+    void *frames[32]{};auto count=CaptureStackBackTrace(0,32,frames,nullptr);
+    for(USHORT i=0;i<count;++i){HMODULE owner{};
+        if(GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS|GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,reinterpret_cast<LPCWSTR>(frames[i]),&owner)&&owner==sdk){++sdkNesting;return true;}
+    }return false;
+}
 template <class H> std::shared_ptr<Device> deviceFor(H h) {
-    std::lock_guard<std::mutex> l(registryLock);
-    auto p = devices.find(key(h));
-    return p == devices.end() ? nullptr : p->second;
+    std::shared_ptr<Device> result;
+    {std::lock_guard<std::mutex> l(registryLock);auto p=devices.find(key(h));if(p!=devices.end())result=p->second;}
+    if(result&&recognizeSDKWorker())log("FG dedicated SDK worker native routing established: thread=%lu",GetCurrentThreadId());
+    return result;
 }
 struct VulkanFailure:std::runtime_error {VkResult result;VulkanFailure(VkResult r,const char*name):std::runtime_error(std::string(name)+" failed: "+std::to_string(r)),result(r){}};
 void check(VkResult r, const char *name) {
@@ -494,7 +533,7 @@ struct DepthCapture {
     VkDeviceSize bytes{};
     VkImageViewCreateInfo view{};
     VkImageLayout layout = VK_IMAGE_LAYOUT_UNDEFINED;
-    uint64_t generation{}, frame{};
+    uint64_t generation{}, frame{},lastUsePresent{};
     uint32_t width{}, height{};
     uint32_t family{};VkSampleCountFlagBits samples{};
     void create(Device &d, const ImageInfo &source,uint32_t queueFamily) {
@@ -545,6 +584,7 @@ struct DepthCapture {
     }
 };
 struct FrameResources {
+    uint64_t fgLease{};
     Device *device{};
     std::shared_ptr<DepthCapture> depthOwner;
     std::shared_ptr<void> neuralOwner;
@@ -667,7 +707,8 @@ void reclaimCompletedFrames(Device&d,VkQueue queue){
         const auto cold=coldCutoff(d.reclaimQueue);
         for(const auto&entry:d.reclaimCommands){auto it=d.commands.find(entry.first);if(it==d.commands.end())continue;auto&command=it->second;
             if(!xpfsr::nr::completedOneTimeRecording(true,command.oneTime,command.submitted,entry.second,command.recording))continue;
-            const bool discard=releaseFrames||(cold&&command.recording<cold);
+            if(command.resources&&!xpfsr::presenterFinished(command.resources->fgLease,d.fgCompletedLease))continue;
+            const bool discard=releaseFrames||(cold&&command.recording<cold)||(!d.fgRequested.empty()&&xpfsr::coldPresent(command.lastUsePresent,d.epoch));
             if(command.resources){auto&f=*command.resources;released+=bool(f.neuralOwner);f.neuralOwner.reset();
                 if(discard){bytes+=frameBytes(f);retireFrame(d,command.resources);}
                 else if(!nrEnabled){bytes+=f.neuralColor.bytes+f.neuralOutput.bytes;f.neuralColor.release();f.neuralOutput.release();}}
@@ -677,10 +718,11 @@ void reclaimCompletedFrames(Device&d,VkQueue queue){
         d.retiredImageBytes+=bytes;d.retiredNROwners+=released; // Aggregate instead of opening/flushing a log for each retired batch.
     }
     const auto cold=coldCutoff(queue);
-    if(nrEnabled&&!d.neural.retiring()&&!releaseFrames&&!cold)return;
+    if(nrEnabled&&!d.neural.retiring()&&!releaseFrames&&!cold&&d.fgRequested.empty())return;
     for(const auto&entry:d.commands){const auto&command=entry.second;const auto*f=command.resources.get();
         if((!f&&command.capturedDepths.empty())||!command.oneTime||!command.submitted||command.submittedQueue!=queue)continue;
-        if(releaseFrames||(cold&&command.recording<cold)||(f&&(((!nrEnabled||d.neural.retiring())&&f->neuralOwner)||(!nrEnabled&&(f->neuralColor.memory||f->neuralOutput.memory)))))d.reclaimCommands.push_back({entry.first,command.recording});
+        if(f&&!xpfsr::presenterFinished(f->fgLease,d.fgCompletedLease))continue;
+        if(releaseFrames||(cold&&command.recording<cold)||(!d.fgRequested.empty()&&xpfsr::coldPresent(command.lastUsePresent,d.epoch))||(f&&(((!nrEnabled||d.neural.retiring())&&f->neuralOwner)||(!nrEnabled&&(f->neuralColor.memory||f->neuralOutput.memory)))))d.reclaimCommands.push_back({entry.first,command.recording});
     }
     if(d.reclaimCommands.empty())return;
     if(!d.reclaimFence){VkFenceCreateInfo create{VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
@@ -838,6 +880,8 @@ void transition(Device &d, VkCommandBuffer cb, OwnedImage &image, VkImageLayout 
 void captureDepth(Device &d, VkCommandBuffer cb, Command &command) {
     if (!command.activeCaptureEligible || !command.activeDepth || !d.enabled || d.mode==Mode::Observe || d.runtimeFailed)
         return;
+    if(d.shared&&!d.startup.observe(d.camera.frame,d.camera.milliseconds,GetTickCount64()))return;
+    if(!d.allocationBackoff.allowed(GetTickCount64()))return;
     auto depth = command.depths.find(command.activeDepth);
     auto meta = d.images.find(command.activeDepth);
     if (depth == command.depths.end() || meta == d.images.end() || !depth->second.cameraCoherent)
@@ -852,10 +896,12 @@ void captureDepth(Device &d, VkCommandBuffer cb, Command &command) {
             if(!candidate){candidate=std::make_shared<DepthCapture>();candidate->create(d,meta->second,command.family);}
             else{candidate->generation=meta->second.generation;candidate->frame=0;candidate->layout=VK_IMAGE_LAYOUT_UNDEFINED;}
         }
-        catch(const std::exception&e){if(!owner)command.capturedDepths.erase(command.activeDepth);d.allocationPaused=true;d.pathReady=false;d.publish("FSR paused: preserved-depth allocation needs more GPU memory; native rendering retained");log("Depth capture allocation bypassed before recording: %s",e.what());return;}
+        catch(const std::exception&e){if(!owner)command.capturedDepths.erase(command.activeDepth);d.allocationBackoff.failed(GetTickCount64());d.allocationPaused=true;d.pathReady=false;d.publish("FSR paused: GPU memory is low; native rendering continues. Retrying in 3 seconds.");log("Depth capture allocation paused for 3 seconds: %s",e.what());return;}
         owner=std::move(candidate);
     }
     auto &captured = *owner;
+    command.lastUsePresent=d.epoch;
+    captured.lastUsePresent=d.epoch;
     captured.frame = depth->second.epoch;
     auto sourceRange = nativeView->second.create.subresourceRange;
     sourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
@@ -1163,8 +1209,10 @@ void stopGenerator(Device &d) {
 }
 void prepareGeneration(Device &d, VkCommandBuffer cb, Command &command, const xpfsr::Frame &frame,
                        uint32_t rw, uint32_t rh, uint32_t ow, uint32_t oh) {
-    if (d.fgRequested.empty() || d.fgFailed || !d.fgCurrent || !d.fgLiveEnabled || d.panelOpen)
-        return;
+    if (d.fgRequested.empty() || d.fgFailed)return;
+    if(!d.fgLiveEnabled){strncpy(d.status.fgReason,"FG Off - live switch disabled",159);return;}
+    if(d.panelOpen){strncpy(d.status.fgReason,"FG paused while in-sim setup is visible; selection retained",159);return;}
+    if(!d.fgCurrent){strncpy(d.status.fgReason,"FG waiting for a compatible presentation surface",159);return;}
     if(!d.startup.ready){
         strncpy(d.status.fgReason,"FG waiting for initial scene stabilization; real frames presented",159);
         return;
@@ -1233,6 +1281,7 @@ void prepareGeneration(Device &d, VkCommandBuffer cb, Command &command, const xp
     d.frameGenerator->prepare(target->presentation->handle(), frame.sequence, source, camera);
     d.fgResumeReset=false;
     command.fgFrame = d.fgSequence.prepared = frame.sequence;
+    if(command.resources)command.resources->fgLease=d.fgPreparedLease=++d.fgIssuedLease;
     ++d.status.fgPrepared;
     if (!d.status.fgActive)
         strncpy(d.status.fgReason, "FG prepared; waiting for SDK presentation callback", 159);
@@ -1453,6 +1502,12 @@ bool replace(Device &d, VkCommandBuffer cb, Command &command) {
         d.bypass(!d.camera.valid ? "Waiting for valid camera metadata"
                                  : "Disabled; native upscaling active");
         return false;
+    }
+    if(!d.startup.observe(d.camera.frame,d.camera.milliseconds,GetTickCount64())){
+        d.bypass("Preparing scene - native rendering continues during startup");return false;
+    }
+    if(!d.allocationBackoff.allowed(GetTickCount64())){
+        d.bypass("GPU memory is low - native rendering continues between retries");return false;
     }
     // This layer captures X-Plane's native reversed-Z Vulkan depth. A publisher
     // still sending the old OpenGL convention must never reach reconstruction.
@@ -1684,11 +1739,11 @@ bool replace(Device &d, VkCommandBuffer cb, Command &command) {
         if(estimate){
             d.memoryBudget=xpfsr::nr::queryGpuMemoryBudget(d.instance->handle,d.physical,d.instance->next);d.lastBudgetCheck=GetTickCount64();
             if(d.memoryBudget.available&&!xpfsr::nr::profileFits(d.memoryBudget.budget,d.memoryBudget.usage,estimate)){
-                d.allocationPaused=true;d.pathReady=false;d.camera.reset=1;d.idleFrames.clear();d.idleDepths.clear();
+                d.allocationBackoff.failed(GetTickCount64());d.allocationPaused=true;d.pathReady=false;d.camera.reset=1;d.idleFrames.clear();d.idleDepths.clear();
                 d.bypass("FSR paused for GPU memory headroom; native rendering retained. Cached resources are retiring; graphics choices retained.");return false;
             }
         }
-        if(d.allocationPaused)d.camera.reset=1;d.allocationPaused=false;
+        if(d.allocationPaused)d.camera.reset=1;d.allocationPaused=false;d.allocationBackoff.recovered();
         auto &context = d.contexts[configKey];
         if (!context) {
             const auto contextStart=GetTickCount64();
@@ -1991,7 +2046,7 @@ bool replace(Device &d, VkCommandBuffer cb, Command &command) {
     } catch (const std::exception &e) {
         const auto*failure=dynamic_cast<const VulkanFailure*>(&e);
         if(!recordingStarted&&failure&&(failure->result==VK_ERROR_OUT_OF_DEVICE_MEMORY||failure->result==VK_ERROR_OUT_OF_HOST_MEMORY)){
-            d.allocationPaused=true;d.pathReady=false;d.status.active=0;d.bypass("FSR memory allocation paused; native rendering retained while GPU resources retire");log("Recoverable pre-recording allocation failure: %s",e.what());return false;
+            d.allocationBackoff.failed(GetTickCount64());d.allocationPaused=true;d.pathReady=false;d.status.active=0;d.bypass("FSR memory allocation paused; native rendering retained while GPU resources retire");log("Recoverable pre-recording allocation failure: %s",e.what());return false;
         }
         d.runtimeFailed = true;
         d.pathReady = false;
@@ -2386,6 +2441,7 @@ static VKAPI_ATTR VkResult VKAPI_CALL L_CreateDevice(VkPhysicalDevice physical,
         state->fgFailed = true;
         strncpy(state->status.fgReason, "No three spare graphics queues for FG", 159);
     }
+    SetEnvironmentVariableW(L"XPFSR24_FG_READY",!state->fgRequested.empty()&&!state->fgFailed?L"1":nullptr);
     {
         std::lock_guard<std::mutex> l(registryLock);
         devices[key(*out)] = state;
@@ -2411,7 +2467,9 @@ static VKAPI_ATTR void VKAPI_CALL L_DestroyDevice(VkDevice device,
     {
         SdkScope sdk;
         d->fgCurrent.reset();
-        d->fgSwapchains.clear();
+        decltype(d->fgSwapchains) retired;
+        {std::lock_guard<std::mutex> lookup(d->fgLookupLock);retired.swap(d->fgSwapchains);}
+        retired.clear(); // No routing lock across SDK waits/destruction.
     }
     d->fn<PFN_vkDeviceWaitIdle>("vkDeviceWaitIdle")(device);
     d->commands.clear();
@@ -2638,6 +2696,7 @@ static VKAPI_ATTR VkResult VKAPI_CALL L_CreateGraphicsPipelines(
     VkDevice device, VkPipelineCache cache, uint32_t count, const VkGraphicsPipelineCreateInfo *c,
     const VkAllocationCallbacks *a, VkPipeline *out) {
     auto d = deviceFor(device);
+    if(sdkNesting)return d->fn<PFN_vkCreateGraphicsPipelines>("vkCreateGraphicsPipelines")(device,cache,count,c,a,out);
     std::vector<VkGraphicsPipelineCreateInfo> infos(c, c + count);
     std::vector<VkPipelineViewportStateCreateInfo> viewports(count);
     std::vector<VkPipelineDynamicStateCreateInfo> dynamic(count);
@@ -2822,7 +2881,8 @@ static VKAPI_ATTR VkResult VKAPI_CALL L_BeginCommandBuffer(VkCommandBuffer cb,
             for (auto it = captures.begin(); it != captures.end();) {
                 auto meta = d->images.find(it->first);
                 if (!it->second||meta == d->images.end() || meta->second.generation != it->second->generation||
-                    (d->fgRequested.empty()&&!d->captureExtents.accepts(it->second->width,it->second->height))){
+                    (!d->captureExtents.accepts(it->second->width,it->second->height))||
+                    xpfsr::coldPresent(it->second->lastUsePresent,d->epoch)){
                     retireDepth(*d,it->second);it = captures.erase(it);}
                 else
                     ++it;
@@ -3281,6 +3341,7 @@ static VKAPI_ATTR void VKAPI_CALL L_CmdPipelineBarrier(
     uint32_t memoryCount, const VkMemoryBarrier *memory, uint32_t bufferCount,
     const VkBufferMemoryBarrier *buffers, uint32_t imageCount, const VkImageMemoryBarrier *images) {
     auto d = deviceFor(cb);
+    if(sdkNesting){d->fn<PFN_vkCmdPipelineBarrier>("vkCmdPipelineBarrier")(cb,src,dst,flags,memoryCount,memory,bufferCount,buffers,imageCount,images);return;}
     std::vector<VkImageMemoryBarrier> forwarded;
     if (imageCount)
         forwarded.assign(images, images + imageCount);
@@ -3311,6 +3372,7 @@ static VKAPI_ATTR void VKAPI_CALL L_CmdPipelineBarrier(
 static VKAPI_ATTR void VKAPI_CALL L_CmdPipelineBarrier2(VkCommandBuffer cb,
                                                         const VkDependencyInfo *c) {
     auto d = deviceFor(cb);
+    if(sdkNesting){auto fn=d->fn<PFN_vkCmdPipelineBarrier2>("vkCmdPipelineBarrier2");if(!fn)fn=d->fn<PFN_vkCmdPipelineBarrier2>("vkCmdPipelineBarrier2KHR");fn(cb,c);return;}
     auto forwarded = *c;
     std::vector<VkImageMemoryBarrier2> images;
     if (c->imageMemoryBarrierCount)

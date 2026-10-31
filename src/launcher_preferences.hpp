@@ -6,7 +6,7 @@
 #include <cstring>
 namespace launcher {
 struct Preferences {
-    std::wstring simulator{L"D:\\X-Plane 12"}, arguments;
+    std::wstring simulator, arguments;
     std::string presetId;
     int mode{}, frameGeneration{}, neuralRendering{};
     int lastFrameGeneration{2};

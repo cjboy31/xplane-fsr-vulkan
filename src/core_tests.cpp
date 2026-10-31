@@ -5,6 +5,7 @@
 #include "framegen_callback_state.hpp"
 #include "startup_readiness.hpp"
 #include "frame_diagnostics.hpp"
+#include "render_safety.hpp"
 #include <atomic>
 #include <iostream>
 #include <stdexcept>
@@ -15,6 +16,12 @@ static void expect(bool value, const char *name) {
 }
 int main() {
     try {
+        xpfsr::AllocationBackoff backoff;
+        expect(backoff.allowed(100),"Initial allocation blocked");backoff.failed(100);
+        expect(!backoff.allowed(101)&&!backoff.allowed(3099)&&backoff.allowed(3100),"Failed allocation retried at frame rate or never recovered");
+        backoff.failed(UINT64_MAX-10);expect(!backoff.allowed(UINT64_MAX-1),"Retry timestamp overflowed");backoff.recovered();expect(backoff.allowed(0),"Allocation recovery remained blocked");
+        expect(!xpfsr::presenterFinished(2,1)&&xpfsr::presenterFinished(2,2)&&xpfsr::presenterFinished(0,0),"Application completion substituted for SDK ownership");
+        expect(!xpfsr::coldPresent(10,130)&&xpfsr::coldPresent(10,131)&&!xpfsr::coldPresent(UINT64_MAX,1),"Cold resource age overflowed or evicted active images");
         xpfsr::FrameDiagnostics resetLog;
         uint64_t detailed{}, resetCount{}, suppressedCount{};
         for (uint64_t i=1;i<=60000;++i) {

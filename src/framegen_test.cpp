@@ -106,7 +106,10 @@ static LRESULT CALLBACK windowProc(HWND w, UINT m, WPARAM a, LPARAM b) {
 }
 int wmain(int argc, wchar_t **argv) {
     std::cout.setf(std::ios::unitbuf);
-    SetEnvironmentVariableW(L"DISABLE_VULKAN_OBS_CAPTURE", L"1");
+    auto option=[&](const wchar_t*name){for(int i=4;i<argc;++i)if(std::wstring(argv[i])==name)return true;return false;};
+    // Explicitly exercise the real installed capture layer without changing
+    // its global registration or another process's environment.
+    SetEnvironmentVariableW(L"DISABLE_VULKAN_OBS_CAPTURE",option(L"--capture-hook")?nullptr:L"1");
     try {
         require(argc >= 3, "FrameGenCheck RUNTIME_DIR RESULT_DIR [3.1.6|4.0.2]");
         std::filesystem::path directory = argv[2];
@@ -114,6 +117,9 @@ int wmain(int argc, wchar_t **argv) {
         std::string wanted = argc > 3 && std::wstring(argv[3]) == L"4.0.2" ? "4.0.2" : "3.1.6";
         Vulkan vk;
         vk.open(true);
+        const bool captureLoaded=GetModuleHandleW(L"graphics-hook64.dll")!=nullptr;
+        std::cout<<"Capture hook loaded="<<captureLoaded<<'\n';
+        require(!option(L"--capture-hook")||captureLoaded,"Requested installed OBS capture hook was not loaded");
         Runtime runtime;
         runtime.load(argv[1], true);
         VkDeviceContext backend{vk.device, vk.physical, vk.gdpa};
@@ -155,7 +161,6 @@ int wmain(int argc, wchar_t **argv) {
         std::vector<VkSurfaceFormatKHR> formats(n);
         formatsFn(vk.physical, surface, &n, formats.data());
         auto format = formats.front();
-        auto option=[&](const wchar_t*name){for(int i=4;i<argc;++i)if(std::wstring(argv[i])==name)return true;return false;};
         const bool srgb=option(L"--srgb"),injectGaps=option(L"--inject-gaps"),async=option(L"--async"),benchmark=option(L"--benchmark");
         for (auto value : formats)
             if (value.format == (srgb ? VK_FORMAT_B8G8R8A8_SRGB : VK_FORMAT_B8G8R8A8_UNORM) &&

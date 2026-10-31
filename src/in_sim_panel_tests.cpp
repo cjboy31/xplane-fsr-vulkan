@@ -8,6 +8,8 @@ static void check(bool value,const char*why){if(!value)throw std::runtime_error(
 int wmain(int argc,wchar_t**argv){try{
     check(argc==2,"Fresh fixture required");std::filesystem::path root=argv[1];check(!std::filesystem::exists(root),"Fixture exists");std::filesystem::create_directories(root);
     auto file=root/L"settings.ini";launcher::Preferences initial;initial.mode=2;launcher::save(file,initial);
+    insim::Panel selector;
+    check(selector.choiceOptions({insim::Kind::Renderer}).size()==3,"Renderer dropdown still offers Automatic");
     insim::Panel disconnected;
     check(disconnected.maxScroll(480)==0,"Unlinked setup displayed an empty scrolling viewport");
     for(auto size:{std::pair{640,480},std::pair{880,740}}){for(const auto &item:disconnected.view(size.first,size.second)){
@@ -31,11 +33,11 @@ int wmain(int argc,wchar_t**argv){try{
     insim::ConfigurationSession second;check(second.open(installed)!=onlyToken&&graphics::read(installed/L"logs/renderer.log")==fresh&&only.open(installed)==onlyToken,"A second configuration session or repeated poll erased active diagnostics");
     disconnected.bind(installedFile,nullptr,false,false);disconnected.configurationOnly("Renderer absent; saved settings recovered");app::Telemetry absent{};absent.active=1;absent.recordings=100;disconnected.observe(absent,1000);++absent.recordings;disconnected.observe(absent,1100);check(disconnected.activity.find("NOT LOADED")!=std::string::npos&&!disconnected.rendererLinked(),"Recovered settings falsely confirmed rendering");
     const auto beforeRenderer=launcher::serialized(launcher::load(installedFile));
-    disconnected.act({insim::Kind::Renderer,0,2});
+    disconnected.act({insim::Kind::OpenChoice,int(insim::Kind::Renderer),0});disconnected.act({insim::Kind::ChooseOption,1});
     check(xp_renderer::read(sim)==xp_renderer::Choice::fsr&&disconnected.notice.find("restart")!=std::string::npos,"Renderer choice was not saved with restart feedback");
     check(launcher::serialized(launcher::load(installedFile))==beforeRenderer,"Renderer switch reset FSR, NR, FG or graphics choices");
     insim::Panel reopenedRenderer;reopenedRenderer.bind(installedFile,nullptr,false,false);
-    check(reopenedRenderer.choiceCurrent({insim::Kind::Renderer})==2,"Renderer dropdown did not restore selection");
+    check(reopenedRenderer.choiceCurrent({insim::Kind::Renderer})==1,"Renderer dropdown did not restore selection");
     insim::ConfigurationSession aaSession;auto aaToken=aaSession.open(root/L"aa-session","Native AA owns this session. FSR intentionally inactive.");
     check(graphics::read(root/L"aa-session/logs/renderer.log").find("intentionally inactive")!=std::string::npos&&graphics::read(root/L"aa-session/logs/renderer.log").find("Restart is required")==std::string::npos&&!aaToken.empty(),"Intentional renderer selection was logged as a startup fault");
     disconnected.configurationOnly("Startup bypass: actual activation failure",true);disconnected.observe(absent,1200);
@@ -50,6 +52,11 @@ int wmain(int argc,wchar_t**argv){try{
     std::wstring name=L"Local\\XPFSRPanelTest-"+std::to_wstring(GetCurrentProcessId());xpfsr::nr::ControlChannel writer,reader;
     check(writer.create(name.c_str(),initial.nr)&&reader.open(name.c_str()),"NR IPC attach");int publications=0;
     insim::Panel panel;panel.bind(file,&writer,true,false,[&](const auto&){++publications;});
+    int logOpens=0;panel.logSupport([&]{++logOpens;});
+    for(auto size:{std::pair{640,480},std::pair{880,740}}){panel.act({insim::Kind::Tab,2});bool openLog=false;
+        for(const auto& item:panel.view(size.first,size.second))openLog|=item.button&&item.action.kind==insim::Kind::Logs;
+        check(openLog,"Log folder button is hidden in a supported viewport");}
+    panel.act({insim::Kind::Logs});check(logOpens==1&&panel.notice.find("FSR-Logs")!=std::string::npos,"Log button has no action or location feedback");panel.act({insim::Kind::Tab,0});
     auto staleDesktop=launcher::load(file);
     for(auto field:{xpfsr::nr::Enabled,xpfsr::nr::Order,xpfsr::nr::Scope})panel.act({insim::Kind::NRField,field,1});
     xpfsr::nr::Controls live;check(reader.read(live)&&live[xpfsr::nr::Enabled]&&live[xpfsr::nr::Order]&&live[xpfsr::nr::Scope],"Live NR changes did not reach renderer IPC");
@@ -119,6 +126,19 @@ int wmain(int argc,wchar_t**argv){try{
         check(cloud&&clarity&&applyCloud,"Cloud controls or Apply cannot be reached in a supported viewport");}
     app::Telemetry status{};status.active=1;status.recordings=100;panel.observe(status,1000);check(panel.activity.find("FSR ACTIVE")==std::string::npos,"Static telemetry falsely confirmed activity");
     status.recordings=101;panel.observe(status,1016);check(panel.activity.find("FSR ACTIVE")!=std::string::npos,"Advancing renderer not confirmed");panel.observe(status,5000);check(panel.activity.find("WAITING")!=std::string::npos,"Stale activity stayed green");
+    insim::Panel fgLive;bool liveFG=false;
+    fgLive.bind(file,&writer,true,true,[&](const auto&p){liveFG=p.frameGeneration!=0;});
+    fgLive.act({insim::Kind::FGToggle,0,-1});
+    fgLive.act({insim::Kind::FGToggle,0,1});check(liveFG&&fgLive.notice.find("Close this panel")!=std::string::npos,"FG On did not publish its live state or explain panel pause");
+    check(fgLive.frameGenerationStatus().find("Waiting")!=std::string::npos,"Saved FG On falsely proved generation");
+    app::Telemetry fgStatus{};fgStatus.active=1;fgStatus.fgActive=1;fgStatus.recordings=1;fgLive.observe(fgStatus,1000);fgStatus.recordings=2;fgLive.observe(fgStatus,1016);
+    check(fgLive.frameGenerationStatus().find("Starting")!=std::string::npos,"FG active flag without generated/presented frames was called running");
+    fgStatus.fgGenerated=8;fgStatus.displayedPresents=16;++fgStatus.recordings;fgLive.observe(fgStatus,1032);check(fgLive.frameGenerationStatus().find("Running")!=std::string::npos,"Confirmed FG counters did not report running");
+    fgStatus.fgActive=0;strcpy(fgStatus.fgReason,"FG paused while in-sim setup is visible; selection retained");++fgStatus.recordings;fgLive.observe(fgStatus,1048);check(fgLive.frameGenerationStatus().find("Paused")!=std::string::npos,"Panel pause falsely reported running");
+    strcpy(fgStatus.fgReason,"No three spare graphics queues for FG");++fgStatus.recordings;fgLive.observe(fgStatus,1064);check(fgLive.frameGenerationStatus().find("queues")!=std::string::npos,"FG startup error was hidden");
+    fgStatus.fgActive=1;fgLive.observe(fgStatus,5000);check(fgLive.frameGenerationStatus().find("Waiting")!=std::string::npos,"Stale FG counters stayed running");
+    fgLive.act({insim::Kind::FGToggle,0,-1});check(!liveFG&&fgLive.frameGenerationStatus().find("Off")==0&&fgLive.notice.find("live")!=std::string::npos,"FG Off was only saved or kept reporting active");
+    fgReopened.act({insim::Kind::FGToggle,0,1});check(fgReopened.frameGenerationStatus().find("Restart needed")==0&&fgReopened.notice.find("not running yet")!=std::string::npos,"Session started without FG falsely advertised live enable");
     app::PanelPresenceChannel owner,observer;check(owner.create(GetCurrentProcessId()),"Presence owner");check(!observer.visible(GetCurrentProcessId(),1000),"Hidden panel paused FG");owner.setVisible(true);check(observer.visible(GetCurrentProcessId(),1010),"Visible panel was not observed");owner.close();check(!observer.visible(GetCurrentProcessId(),1020),"Plugin shutdown left FG paused");
     std::cout<<"PASS: live NR/processing persistence, stale desktop edits, opt-in/no-op safety, viewport/scroll/help coverage, activity proof and panel-presence lifetime.\n";return 0;
 }catch(const std::exception&e){std::cerr<<"FAIL: "<<e.what()<<'\n';return 1;}}

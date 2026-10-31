@@ -102,13 +102,14 @@ The owner's first direct-launch FG test crashed in OBS's installed
 before the loader discovers layers. An implicit layer runs after that decision.
 Changing the variable then cannot retroactively remove an already loaded hook.
 
-Automatic activation therefore retains the saved FG choice but bypasses FG when
-the OBS hook is already loaded, including a second check during device startup.
-It leaves global OBS settings/registration untouched. Direct launch with this
-guard reached live FSR on the R9700; full FG with OBS in the automatic path is
-not certified. The optional desktop path remains available for the early
-capture-compatibility environment. Report the bypass in status instead of
-claiming generated frames. See [OBS's layer manifest](https://github.com/obsproject/obs-studio/blob/master/plugins/win-capture/graphics-hook/obs-vulkan64.json).
+The published safeguard retains the saved FG choice but bypasses FG when the
+hook is already loaded. The next private build instead installs an exact-X-Plane
+loader order so capture can see the queues reserved for FG, and uses the existing
+synchronized presenter. The full capture lifecycle fixture passes; live testing
+is still in progress. Missing/incompatible loader setup still reports a bypass
+rather than risking the known crash. Global OBS registration is unchanged.
+See [the activation investigation](FG-ACTIVATION-20261031.md). The retired desktop
+dashboard is not required for the new setup; the desktop app only updates plugins.
 
 ## Activation timing
 

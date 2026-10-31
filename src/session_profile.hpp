@@ -67,7 +67,10 @@ inline std::string prepareSessionProfile(const std::filesystem::path &root,const
         setEnvironment(pair.first,(root/L"logs"/pair.second).wstring());
     session::write(root/L"logs/renderer-fg-control.txt",fg?"1":"0");
     session::write(root/L"logs/renderer-control.txt",p.enabled?"1":"0");
-    if(fg)setEnvironment(L"DISABLE_VULKAN_OBS_CAPTURE",L"1");
+    // Automatic integration has an exact-X-Plane loader order. Do not change
+    // capture discovery halfway through instance construction. Legacy explicit
+    // launch still sets its process-local opt-out before discovery begins.
+    if(fg&&environment(L"XPFSR24_AUTOMATIC")!=L"1")setEnvironment(L"DISABLE_VULKAN_OBS_CAPTURE",L"1");
     return token;
 }
 } // namespace app

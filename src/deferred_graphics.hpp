@@ -2,6 +2,7 @@
 #pragma once
 #include "session_profile.hpp"
 #include "settings_transaction.hpp"
+#include "managed_input.hpp"
 namespace app {
 inline bool validSessionToken(const std::wstring &s){return s.size()==32&&std::all_of(s.begin(),s.end(),[](wchar_t c){return(c>=L'0'&&c<=L'9')||(c>=L'a'&&c<=L'f');});}
 inline bool applyQueuedGraphics(const std::filesystem::path &root,const std::wstring &token){
@@ -10,6 +11,7 @@ inline bool applyQueuedGraphics(const std::filesystem::path &root,const std::wst
     if(launcher::readSetting(file,L"InSim",L"GraphicsQueued")!=token)return false;
     auto before=launcher::load(file);if(!before.manualPending)return false;
     auto options=before.presetId.empty()?before.manual:graphics::presetById(before.presetId).settings;options.keepUISize=before.keepSimUISize;
+    options=compatibleInput(before,xp_renderer::visibleChoice(before.simulator),options);
     auto backup=graphics::apply(before.simulator,root/L"graphics-backups",options);
     auto after=before;after.manual=options;after.manualApplied=true;after.manualPending=false;
     launcher::transactChoices(file,before,after);
