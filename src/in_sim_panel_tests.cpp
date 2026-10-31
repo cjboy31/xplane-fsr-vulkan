@@ -36,6 +36,8 @@ int wmain(int argc,wchar_t**argv){try{
     check(launcher::serialized(launcher::load(installedFile))==beforeRenderer,"Renderer switch reset FSR, NR, FG or graphics choices");
     insim::Panel reopenedRenderer;reopenedRenderer.bind(installedFile,nullptr,false,false);
     check(reopenedRenderer.choiceCurrent({insim::Kind::Renderer})==2,"Renderer dropdown did not restore selection");
+    insim::ConfigurationSession aaSession;auto aaToken=aaSession.open(root/L"aa-session","Native AA owns this session. FSR intentionally inactive.");
+    check(graphics::read(root/L"aa-session/logs/renderer.log").find("intentionally inactive")!=std::string::npos&&graphics::read(root/L"aa-session/logs/renderer.log").find("Restart is required")==std::string::npos&&!aaToken.empty(),"Intentional renderer selection was logged as a startup fault");
     disconnected.configurationOnly("Startup bypass: actual activation failure",true);disconnected.observe(absent,1200);
     check(disconnected.activity.find("BYPASSED")!=std::string::npos&&disconnected.notice.find("actual activation failure")!=std::string::npos&&!disconnected.rendererLinked(),"Startup bypass was mislabeled as a missing layer");
     for(auto size:{std::pair{640,480},std::pair{880,740},std::pair{1280,900}}){

@@ -8,13 +8,13 @@ public:
     ConfigurationSession()=default;ConfigurationSession(const ConfigurationSession&)=delete;
     ~ConfigurationSession(){close();}
     void close(){if(owner)CloseHandle(owner);owner=nullptr;token.clear();}
-    std::string open(const std::filesystem::path &root){
+    std::string open(const std::filesystem::path &root,const std::string& reason={}){
         if(!token.empty())return token;
         if(!owner){auto name=app::lockName((root/L"logs/active-session").wstring())+L"-presence";
             auto handle=CreateFileMappingW(INVALID_HANDLE_VALUE,nullptr,PAGE_READWRITE,0,1,name.c_str());bool existed=GetLastError()==ERROR_ALREADY_EXISTS;
             if(handle&&!existed)owner=handle;else if(handle)CloseHandle(handle);}
         token=owner?session::prepare(root/L"logs","activation=plugin-only renderer_loaded=0"):session::id();
-        if(owner)session::write(root/L"logs/renderer.log",session::header(token,"plugin-only")+"Renderer not loaded during Vulkan startup. Saved profile recovered for this selected simulator. Restart is required to activate rendering.\n");
+        if(owner)session::write(root/L"logs/renderer.log",session::header(token,"plugin-only")+(reason.empty()?"Renderer not loaded during Vulkan startup. Saved profile recovered for this selected simulator. Restart is required to activate rendering.":reason)+"\n");
         return token;
     }
 };

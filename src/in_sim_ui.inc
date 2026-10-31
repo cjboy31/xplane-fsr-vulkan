@@ -81,7 +81,10 @@ static void setupBind(){
         // Own the same per-installation log lease as automatic activation. A
         // control-only session must get fresh diagnostics without erasing a
         // different simulator session's active log.
-        auto token=setupConfigurationSession.open(setupRoot);
+        const auto owner=xp_renderer::environment("XP_RENDERER_OWNER"),selection=xp_renderer::environment("XP_RENDERER_SESSION_CHOICE");
+        const std::string reason=owner=="native_aa"?"Native AA owns this session. FSR, NR and frame generation are intentionally inactive; both mods' saved settings are retained.":
+            selection=="off"?"Original simulator selected for this session. Both mod renderers are intentionally inactive; saved settings are retained.":"";
+        auto token=setupConfigurationSession.open(setupRoot,reason);
         setupToken=std::wstring(token.begin(),token.end());SetEnvironmentVariableW(L"XPFSR24_CONFIG_SESSION",setupToken.c_str());
     }
     bool canNR=connected&&name==L"Local\\XPFSR24-NR-v4-"+setupToken&&setupNR.open(name.c_str())&&setupNR.read(live);
