@@ -39,6 +39,13 @@ int wmain(int argc,wchar_t **argv){try{
     check(!app::retirePreviousGuide(root,L"0.7.1-alpha",std::wstring(64,L'0')),"Changed/unowned guide was deleted");
     rejects([&]{app::retirePreviousGuide(root,L"../outside",previousDigest);});
     check(app::retirePreviousGuide(root,L"0.7.1-alpha",previousDigest)&&!std::filesystem::exists(root/L"media/0.7.1-alpha.mp4"),"Verified previous guide was retained");
+    graphics::write(root/L"media/0.7.1-alpha.mp4","previous movie");
+    graphics::write(root/L"media/feature-video.ini","[Video]\nVersion=0.7.1-alpha\nSHA256="+previousMovie+"\n");
+    check(app::retirePreviousGuide(root,L"0.7.1-alpha",previousDigest,true)&&!std::filesystem::exists(root/L"media/feature-video.ini"),"Retired video metadata was retained");
+    std::filesystem::create_directories(root/L"media");graphics::write(root/L"media/TRANSCRIPT.txt","old owned guide text");graphics::write(root/L"media/user.txt","user change");
+    const auto guideTextHash=app::fileHash(root/L"media/TRANSCRIPT.txt");
+    graphics::write(root/L"old-payload.json","{\"product\":\"FSR 3/4 + Frame Gen for X-Plane 12 (Experimental)\",\"files\":[{\"path\":\"media/TRANSCRIPT.txt\",\"sha256\":\""+guideTextHash+"\"},{\"path\":\"media/user.txt\",\"sha256\":\""+std::string(64,'0')+"\"}]}");
+    check(app::retireOwnedMedia(root,root/L"old-payload.json")==1&&!std::filesystem::exists(root/L"media/TRANSCRIPT.txt")&&graphics::read(root/L"media/user.txt")=="user change","Old guide cleanup removed modified data or retained unchanged owned media");
     auto protectedProfile=app::automaticCaptureProfile(p,true);check(protectedProfile.frameGeneration==0&&p.frameGeneration==3&&protectedProfile.mode==p.mode&&protectedProfile.neuralRendering==p.neuralRendering,"Capture guard changed saved choices or other processing");
     check(app::automaticCaptureProfile(p,false).frameGeneration==3,"Capture-free profile lost FG");
     auto pending=p;pending.manualPending=true;pending.mode=3;

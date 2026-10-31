@@ -11,7 +11,7 @@ int wmain(int argc,wchar_t**argv){try{
     insim::Panel disconnected;
     check(disconnected.maxScroll(480)==0,"Unlinked setup displayed an empty scrolling viewport");
     for(auto size:{std::pair{640,480},std::pair{880,740}}){for(const auto &item:disconnected.view(size.first,size.second)){
-        check(!item.button||item.action.kind==insim::Kind::Close||item.action.kind==insim::Kind::Tab,"Unlinked panel displayed clickable rendering settings");
+        check(!item.button||item.action.kind==insim::Kind::Close||item.action.kind==insim::Kind::Tab||item.action.kind==insim::Kind::Changelog,"Unlinked panel displayed clickable rendering settings");
         if(item.widget==insim::Widget::Label&&item.rect.h>20&&item.rect.y<size.second-insim::footerHeight)check(item.rect.y>=insim::contentTop&&item.rect.y+item.rect.h<=size.second-insim::footerHeight,"Connection guidance overlaps the footer");}}
     auto sim=root/L"selected-sim";std::filesystem::create_directories(sim);graphics::write(sim/L"X-Plane.exe","fixture");
     auto installed=root/L"installed";std::filesystem::create_directories(installed/L"auto");auto installedFile=installed/L"settings.ini",manifest=installed/L"auto/XPFSR24Implicit.json";
@@ -97,7 +97,7 @@ int wmain(int argc,wchar_t**argv){try{
     check(refused&&launcher::serialized(launcher::load(file))==saved,"Unavailable import changed preferences");
     int imports=0;panel.modelSupport([&]{++imports;panel.modelImportBusy=true;});panel.act({insim::Kind::ImportModel});panel.act({insim::Kind::ImportModel});
     check(imports==1&&launcher::serialized(launcher::load(file))==saved,"Duplicate import or model picker changed rendering choices");
-    panel.act({insim::Kind::Help,203});check(panel.help().find("never")!=std::string::npos||panel.help().find("without loading")!=std::string::npos,"Missing model import guidance");panel.act({insim::Kind::Help,-1});
+    panel.act({insim::Kind::Help,203});check(panel.help().find("never")!=std::string::npos||panel.help().find("without running")!=std::string::npos,"Missing model import guidance");panel.act({insim::Kind::Help,-1});
     panel.nrStatus="NR bypassed: NR model missing";panel.act({insim::Kind::Budget,2});check(panel.selectedBudget()==2&&panel.notice.find("Waiting for a model")!=std::string::npos,"Budget selection falsely implied missing NR was active");
     before=publications;panel.act({insim::Kind::Budget,2});check(publications==before&&panel.notice.find("Selected: Quality 67%")!=std::string::npos,"Selecting the current budget gave no feedback or restarted NR");
     panel.act({insim::Kind::Tab,0});panel.scroll=panel.maxScroll(740);int highlights=0;
@@ -118,7 +118,7 @@ int wmain(int argc,wchar_t**argv){try{
         for(int position=0;position<=cloudReopened.maxScroll(size.second)+46;position+=23){cloudReopened.scroll=position;for(auto &item:cloudReopened.view(size.first,size.second)){cloud|=item.action.kind==insim::Kind::OpenChoice&&item.action.field==int(insim::Kind::Graphics)&&item.action.delta==8;clarity|=item.action.kind==insim::Kind::OpenChoice&&item.action.field==int(insim::Kind::CloudPreset);applyCloud|=item.action.kind==insim::Kind::ApplyGraphics;}}
         check(cloud&&clarity&&applyCloud,"Cloud controls or Apply cannot be reached in a supported viewport");}
     app::Telemetry status{};status.active=1;status.recordings=100;panel.observe(status,1000);check(panel.activity.find("FSR ACTIVE")==std::string::npos,"Static telemetry falsely confirmed activity");
-    status.recordings=101;panel.observe(status,1016);check(panel.activity.find("FSR ACTIVE")!=std::string::npos,"Advancing renderer not confirmed");panel.observe(status,5000);check(panel.activity.find("waiting")!=std::string::npos,"Stale activity stayed green");
+    status.recordings=101;panel.observe(status,1016);check(panel.activity.find("FSR ACTIVE")!=std::string::npos,"Advancing renderer not confirmed");panel.observe(status,5000);check(panel.activity.find("WAITING")!=std::string::npos,"Stale activity stayed green");
     app::PanelPresenceChannel owner,observer;check(owner.create(GetCurrentProcessId()),"Presence owner");check(!observer.visible(GetCurrentProcessId(),1000),"Hidden panel paused FG");owner.setVisible(true);check(observer.visible(GetCurrentProcessId(),1010),"Visible panel was not observed");owner.close();check(!observer.visible(GetCurrentProcessId(),1020),"Plugin shutdown left FG paused");
     std::cout<<"PASS: live NR/processing persistence, stale desktop edits, opt-in/no-op safety, viewport/scroll/help coverage, activity proof and panel-presence lifetime.\n";return 0;
 }catch(const std::exception&e){std::cerr<<"FAIL: "<<e.what()<<'\n';return 1;}}

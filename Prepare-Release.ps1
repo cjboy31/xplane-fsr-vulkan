@@ -27,7 +27,7 @@ $changelog = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'CHANGELOG.md') -
 $entry = [regex]::Match($changelog, ('(?ms)^##\s+'+[regex]::Escape($Version)+'\r?\n(.*?)(?=^##\s|\z)'))
 if (-not $entry.Success) { throw 'Add this version to CHANGELOG.md before preparing a release' }
 $changes = $entry.Groups[1].Value.Trim()
-if ([version](($Version -split '-')[0]) -ge [version]'0.6.2') {
+if ([version](($Version -split '-')[0]) -ge [version]'0.6.2' -and [version](($Version -split '-')[0]) -lt [version]'0.7.4') {
     if (-not $FeatureVideo) { throw 'This release requires the exact installer-tested feature video' }
     if ($result.featureVideoSha256 -ne (Get-FileHash -LiteralPath $FeatureVideo).Hash.ToLowerInvariant() -or
         $result.featureVideoBytes -ne (Get-Item -LiteralPath $FeatureVideo).Length -or
@@ -91,6 +91,7 @@ if($FeatureVideo){
         }
     }
 }
+$guideSection=if([version](($Version -split '-')[0]) -ge [version]'0.7.4'){'Read changes inside X-Plane: Plugins > FSR 3/4 + Frame Gen > View changelog. Startup videos have been retired. The desktop program is now an updater.'}else{"The optional feature guide is included with this older release. $guideSummary"}
 $notes = @"
 ## FSR 3/4 + Frame Gen for X-Plane $Version
 
@@ -123,17 +124,14 @@ it installs the newly named app. Ghosting Fix remains the cockpit feature's name
 The attached archive passed integrity, extraction, payload hashes,
 install/update/uninstall and saved-choice preservation checks. Source commit:
 $sourceCommit. A passing fixture does not establish live-flight visual quality.
-Cockpit-screen restoration still requires frame generation Off and currently
-supports only the default Cirrus SR22. SDK runtimes
+Cockpit screen protection requires frame generation Off and a supported screen layout. SDK runtimes
 are included under their binary redistribution terms; simulator source assets
 and user data are excluded. Any simulator visuals retain their owners' rights.
 Keep all supplied license notices.
 
 ### Feature guide
 
-The captioned, narrated MP4 plays offline once per installed version. Skip it
-immediately, disable future videos, or replay from What's new. $guideSummary
-The version-specific changes and validation scope are listed above.
+$guideSection
 The separate Linux/Mac preview packages are unchanged.
 
 Installer SHA-256: $hash

@@ -51,7 +51,11 @@ static void refreshUpdateUI() {
     bool busy = j->phase == UpdateJob::checking || j->phase == UpdateJob::downloading ||
                 j->phase == UpdateJob::ready;
     std::wstring title =
+#ifdef XPFSR_UPDATER_ONLY
+        j->phase == UpdateJob::available ? L"FSR update available..." : L"FSR updates / release channel";
+#else
         j->phase == UpdateJob::available ? L"Update available..." : L"Updates / Channel";
+#endif
     SetWindowTextW(updatesButton, title.c_str());
     if (!updateWindow)
         return;
@@ -72,7 +76,7 @@ static void refreshUpdateUI() {
                        ? L"New installations import your current saved choices.\r\n\r\n"
                        : L"This older setup cannot import choices automatically. They remain "
                          L"in this copy's settings.ini; copy it to the new app folder with "
-                         L"both launchers closed if needed.\r\n\r\n";
+                         L"both updaters closed if needed.\r\n\r\n";
     message += matching ? j->message : L"Check the selected channel before installing.";
     if (j->phase == UpdateJob::downloading)
         message += L"\r\nDownloaded " + std::to_wstring(j->bytes / 1024) + L" / " +
@@ -82,7 +86,7 @@ static void refreshUpdateUI() {
                    wide(j->release.name.c_str());
         if (j->release.channelSwitch)
             message += L"\r\nThis changes release channels and may install an older version. "
-                       L"Experimental FG may flicker or show artifacts; it is not a quality fix. "
+                       L"Early builds can have more bugs. "
                        L"Use the install button below to change builds.";
     }
     if (text(updateText) != message)
@@ -108,7 +112,7 @@ static void startUpdateCheck() {
     auto j = std::make_shared<UpdateJob>();
     updateJob = j;
     j->phase = UpdateJob::checking;
-    j->message = L"Checking GitHub Releases... You can keep using the launcher.";
+    j->message = L"Checking GitHub Releases... You can keep using X-Plane.";
     j->channel = releaseChannel;
     auto notifyWindow = window;
     std::thread([j, notifyWindow] {
@@ -120,7 +124,7 @@ static void startUpdateCheck() {
             j->phase = j->release ? UpdateJob::available : UpdateJob::current;
             j->message = j->release
                              ? L"An update is available. Open release to read its changes. "
-                               L"Download and install closes/reopens this launcher and preserves "
+                               L"Download and install closes/reopens this updater and preserves "
                                L"saved choices. Close every X-Plane and GPU-check process first."
                          : j->channel == updates::installedChannel()
                              ? L"This channel is already installed. No newer compatible installer "
@@ -190,7 +194,7 @@ static void beginUpdateInstall() {
             j->phase = UpdateJob::ready;
             j->message =
                 j->automaticInstall
-                    ? L"Download verified. Installing and reopening the launcher..."
+                    ? L"Download verified. Installing and reopening the updater..."
                     : L"Download verified. Opening setup to choose the installation folder...";
         } catch (const std::exception &e) {
             std::lock_guard<std::mutex> guard(j->mutex);

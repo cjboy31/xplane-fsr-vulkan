@@ -52,6 +52,14 @@ static void setupImportModel(){
     setupPanel.modelImportStatus="Opening the file selector. Select your own supported nvngx_dlssnr.dll.";
     setupPanel.notice="NR model import runs separately; FSR continues. Your rendering selections are retained.";
 }
+static void setupOpenUpdater(){
+    const auto exe=setupRoot/L"XPlaneFSR24.exe";
+    if(!std::filesystem::is_regular_file(exe))throw std::runtime_error("The plugin updater is missing. Reinstall the complete package.");
+    std::wstring command=L"\""+exe.wstring()+L"\" --updates";
+    STARTUPINFOW startup{sizeof(startup)};PROCESS_INFORMATION process{};
+    if(!CreateProcessW(exe.c_str(),command.data(),nullptr,nullptr,FALSE,0,nullptr,setupRoot.c_str(),&startup,&process))throw std::runtime_error("Could not open the plugin updater.");
+    CloseHandle(process.hThread);CloseHandle(process.hProcess);
+}
 static void setupPollImport(){
     if(!setupImportJob)return;
     auto status=xpfsr::nr::readModelImportProgress(setupRoot,setupImportToken);
@@ -97,11 +105,12 @@ static void setupBind(){
     });
     setupPanel.graphicsSupport(setupQueueGraphics);
     setupPanel.modelSupport(setupImportModel);
+    setupPanel.updateSupport(setupOpenUpdater);
     auto activationError=setupEnvironment(L"XPFSR24_ACTIVATION_ERROR");
     if(!connected){
         const auto owner=xp_renderer::environment("XP_RENDERER_OWNER");
         if(owner=="native_aa"){
-            setupPanel.configurationOnly("Native AA owns this session. FSR, NR and frame generation are inactive. Choose Renderer > FSR on Rendering, then restart. Both mods' saved choices are retained.",true);
+            setupPanel.configurationOnly("Native AA is active, so FSR is off for this session. To switch, choose FSR under Image processor on Rendering, then restart. Both mods keep your settings.",true);
             setupPanel.activity="NATIVE AA SESSION - FSR / NR / frame generation inactive";
         }
         else if(!activationError.empty())setupPanel.configurationOnly("Startup bypass: "+insim::utf8(activationError)+". Saved settings retained; correct the setup and restart X-Plane.",true);
@@ -139,10 +148,17 @@ static void setupText(int x,int y,int width,const std::string &value,bool accent
     std::string clipped=value;while(!clipped.empty()&&XPLMMeasureString(xplmFont_Proportional,clipped.data(),int(clipped.size()))>width)clipped.pop_back();
     float color[3]={accent?.27f:.9f,accent?.87f:.94f,accent?.93f:.98f};XPLMDrawString(color,x,y,clipped.data(),nullptr,xplmFont_Proportional);
 }
-static void setupWrapped(int x,int y,int width,const std::string &value,int lines){
-    std::istringstream input(value);std::string word,line;int row=0;
-    while(input>>word){auto next=line.empty()?word:line+" "+word;if(!line.empty()&&XPLMMeasureString(xplmFont_Proportional,next.data(),int(next.size()))>width){setupText(x,y-row*17,width,line);line=word;if(++row>=lines)return;}else line=next;}
-    if(row<lines)setupText(x,y-row*17,width,line);
+static std::vector<std::string> setupWrapLines(int width,const std::string &value){
+    std::vector<std::string> lines;std::istringstream paragraphs(value);std::string paragraph;
+    while(std::getline(paragraphs,paragraph)){
+        std::istringstream input(paragraph);std::string word,line;
+        while(input>>word){auto next=line.empty()?word:line+" "+word;if(!line.empty()&&XPLMMeasureString(xplmFont_Proportional,next.data(),int(next.size()))>width){lines.push_back(line);line=word;}else line=next;}
+        lines.push_back(line);
+    }return lines;
+}
+static void setupWrapped(int x,int y,int width,const std::string &value,int lines,int skip=0){
+    const auto wrapped=setupWrapLines(width,value);
+    for(int row=0;row<lines&&row+skip<int(wrapped.size());++row)setupText(x,y-row*17,width,wrapped[row+skip]);
 }
 static void setupDraw(XPLMWindowID h,void*) noexcept{try{
     if(!XPLMGetWindowIsVisible(h))return;
@@ -169,7 +185,13 @@ static void setupDraw(XPLMWindowID h,void*) noexcept{try{
             if(item.widget==insim::Widget::Choice)setupText(int(x)+r.w-25,int(y)-20,18,"v",true);
         }
     }
-    if(setupPanel.helpField>=0)setupWrapped(left+24,top-insim::contentTop-62,width-48,setupPanel.help(),std::max(1,(height-insim::contentTop-198)/17));
+    if(setupPanel.helpField>=0){
+        const int rows=std::max(1,(height-insim::contentTop-insim::footerHeight-62)/17);
+        const int maxSkip=std::max(0,int(setupWrapLines(width-48,setupPanel.help()).size())-rows);
+        setupPanel.helpScroll=std::clamp(setupPanel.helpScroll,0,maxSkip);
+        setupWrapped(left+24,top-insim::contentTop-62,width-48,setupPanel.help(),rows,setupPanel.helpScroll);
+        if(maxSkip)setupText(left+24,bottom+insim::footerHeight+8,width-48,"Scroll to read more. Back returns to your settings.");
+    }
     if(setupPanel.helpField<0&&(setupPanel.dropdownOpen?setupPanel.maxDropdownScroll(height):setupPanel.maxScroll(height))>0){
         const int track=std::max(1,height-insim::contentTop-insim::footerHeight),maximum=setupPanel.dropdownOpen?setupPanel.maxDropdownScroll(height):setupPanel.maxScroll(height),thumb=std::max(24,track*track/(track+maximum));
         glColor4f(.12f,.65f,.75f,1);int y=insim::contentTop+(track-thumb)*(setupPanel.dropdownOpen?setupPanel.dropdownScroll:setupPanel.scroll)/std::max(1,maximum);
@@ -194,7 +216,7 @@ static int setupMouse(XPLMWindowID h,int x,int y,XPLMMouseStatus mouse,void*) no
 static void setupKey(XPLMWindowID,char key,XPLMKeyFlags flags,char,void*,int losing) noexcept{if(!losing&&(flags&xplm_DownFlag)&&key==27){if(setupPanel.dropdownOpen)setupPanel.dropdownOpen=false;else if(setupPanel.helpField>=0)setupPanel.helpField=-1;else setupHide();}}
 static XPLMCursorStatus setupCursor(XPLMWindowID,int,int,void*){return xplm_CursorDefault;}
 static int setupRightMouse(XPLMWindowID h,int x,int y,XPLMMouseStatus,void*) noexcept{int l,t,r,b;XPLMGetWindowGeometry(h,&l,&t,&r,&b);return x>=l&&x<r&&y>=b&&y<=t;}
-static int setupWheel(XPLMWindowID h,int x,int y,int wheel,int clicks,void*) noexcept{int left,top,right,bottom;XPLMGetWindowGeometry(h,&left,&top,&right,&bottom);if(x<left||x>=right||y<bottom||y>top)return 0;if(wheel==0)setupPanel.wheel(-clicks*46,top-bottom);return 1;}
+static int setupWheel(XPLMWindowID h,int x,int y,int wheel,int clicks,void*) noexcept{int left,top,right,bottom;XPLMGetWindowGeometry(h,&left,&top,&right,&bottom);if(x<left||x>=right||y<bottom||y>top)return 0;if(wheel==0){if(setupPanel.helpField>=0){const int rows=std::max(1,(top-bottom-insim::contentTop-insim::footerHeight-62)/17),maximum=std::max(0,int(setupWrapLines(right-left-48,setupPanel.help()).size())-rows);setupPanel.helpScroll=std::clamp(setupPanel.helpScroll-clicks*3,0,maximum);}else setupPanel.wheel(-clicks*46,top-bottom);}return 1;}
 struct SetupMonitor {int mouseX{},mouseY{},left{},top{},right{},bottom{};bool found{};};
 static void setupMonitor(int,int left,int top,int right,int bottom,void*ref){auto &m=*static_cast<SetupMonitor*>(ref);if(!m.found||(m.mouseX>=left&&m.mouseX<right&&m.mouseY>=bottom&&m.mouseY<top)){m.left=left;m.top=top;m.right=right;m.bottom=bottom;m.found=true;}}
 static void setupShow() noexcept{try{

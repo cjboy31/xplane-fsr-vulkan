@@ -51,7 +51,7 @@ static void loadDisplayProfile() {
     try {
         displayMesh = cockpit::loadSr22(std::filesystem::u8path(path));
         XPLMDebugString(
-            "XPFSR24: SR22 G1000 display mesh loaded from user's aircraft; two screens.\n");
+            "XPFSR24: Supported cockpit display mesh loaded from user's aircraft; two screens.\n");
     } catch (const std::exception &e) {
         std::string message = "XPFSR24: cockpit restore inactive: ";
         message += e.what();
@@ -214,6 +214,7 @@ static float update(float elapsed, float, int, void *) {
 }
 static void command(void *, void *item) {
     if(reinterpret_cast<intptr_t>(item)==1){setupShow();return;}
+    if(reinterpret_cast<intptr_t>(item)==2){setupShow();setupPanel.act({insim::Kind::Changelog});return;}
     try{
         if(!setupPanel.configured())setupBind();
         if(setupPanel.configured()){setupPanel.act({insim::Kind::Processing});return;}
@@ -229,7 +230,7 @@ static void command(void *, void *item) {
 PLUGIN_API int XPluginStart(char *name, char *signature, char *description) {
     strcpy(name, "FSR 3/4 + Frame Gen for X-Plane");
     strcpy(signature, "org.xpfsr24.alpha");
-    strcpy(description, "FSR camera metadata and in-simulator setup panel");
+    strcpy(description, "FSR anti-aliasing, upscaling, frame generation and live settings");
     auto key = app::mappingName(GetCurrentProcessId());
     mapping = CreateFileMappingW(INVALID_HANDLE_VALUE, nullptr, PAGE_READWRITE, 0,
                                  sizeof(app::Shared), key.c_str());
@@ -253,7 +254,8 @@ PLUGIN_API int XPluginStart(char *name, char *signature, char *description) {
     setupPresence.create(GetCurrentProcessId());
     int item = XPLMAppendMenuItem(XPLMFindPluginsMenu(), "FSR 3/4 + Frame Gen", nullptr, 0);
     menu = XPLMCreateMenu("FSR 3/4 + Frame Gen", XPLMFindPluginsMenu(), item, command, nullptr);
-    XPLMAppendMenuItem(menu,"Open in-sim setup",reinterpret_cast<void*>(1),0);
+    XPLMAppendMenuItem(menu,"Open settings",reinterpret_cast<void*>(1),0);
+    XPLMAppendMenuItem(menu,"View changelog",reinterpret_cast<void*>(2),0);
     XPLMAppendMenuItem(menu, "Enable / disable temporal upscaling", nullptr, 0);
     XPLMDebugString("XPFSR24: alpha camera publisher loaded; Vulkan layer performs upscaling.\n");
     // Diagnose/recover the selected installation at plugin startup, even when

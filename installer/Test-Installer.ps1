@@ -76,7 +76,7 @@ foreach($file in $manifest.files){
   if((Get-FileHash -LiteralPath $path).Hash.ToLowerInvariant() -ne $file.sha256){throw "Installed hash mismatch: $($file.path)"}
 }
 $featureVideo = $null
-if([version](($manifest.packageVersion -split '-')[0]) -ge [version]'0.6.2') {
+if([version](($manifest.packageVersion -split '-')[0]) -ge [version]'0.6.2' -and [version](($manifest.packageVersion -split '-')[0]) -lt [version]'0.7.4') {
   $videoVersion = $manifest.packageVersion
   foreach($name in @(($videoVersion+'.mp4'),'feature-video.ini','TRANSCRIPT.txt','CAPTIONS.srt','PROVENANCE.json','CREDITS-AND-LICENSES.txt')) {
     if(('media/'+$name) -notin $manifest.files.path){throw ('Required feature guide file absent: '+$name)}
@@ -104,6 +104,7 @@ if($nrPackage){
 Add-Content -LiteralPath (Join-Path $installed 'settings.ini') -Value "`r`n[Launcher]`r`nPreset=fsr4-4k-quality`r`nMode=4`r`nFrameGeneration=2`r`nCockpitRestore=0`r`nEnabled=1`r`nGhostReduction=0`r`nAlignmentTint=0`r`n[Window]`r`nClientWidth=900`r`nClientHeight=740"
 $savedChoiceBlock = (Get-Content -LiteralPath (Join-Path $installed 'settings.ini') -Raw) -split '\[Launcher\]',2 | Select-Object -Last 1
 if([version](($manifest.packageVersion -split '-')[0]) -ge [version]'0.7.2'){
+  New-Item -ItemType Directory -Force -Path (Join-Path $installed 'media') | Out-Null
   $previousGuide=Join-Path $installed 'media\0.7.1-alpha.mp4'
   Set-Content -LiteralPath $previousGuide -Value 'Inert previous-version movie fixture'
   $previousHash=(Get-FileHash -LiteralPath $previousGuide).Hash.ToLowerInvariant()
