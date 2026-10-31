@@ -177,7 +177,7 @@ public:
         if(action.kind==Kind::CloudPreset)notice="Cloud clarity setup saved: Maximum clouds with "+std::string(action.delta==1?"Ultra Quality input.":"full input and Native AA.")+" Select Apply graphics after exit, then restart. Higher source resolution costs GPU time; distant cloud detail remains limited by X-Plane's cloud pass.";
         if(action.kind==Kind::Graphics&&action.field==8)notice="Cloud quality saved for next session. Select Apply graphics after exit. This controls X-Plane's cloud quality; FSR/FG/NR choices are retained.";
     }
-    int maxScroll(int height)const{return tab==2?0:std::max(0,(tab==1?Count*64+modelSetupHeight:tab==3?642:510)-std::max(1,height-contentTop-footerHeight));}
+    int maxScroll(int height)const{return !configured()||tab==2?0:std::max(0,(tab==1?Count*64+modelSetupHeight:tab==3?642:510)-std::max(1,height-contentTop-footerHeight));}
     int maxDropdownScroll(int height)const{return std::max(0,int(choiceOptions(dropdown).size())*36-std::max(1,height-contentTop-footerHeight-68));}
     bool wheel(int amount,int height){auto &position=dropdownOpen?dropdownScroll:scroll;int next=std::clamp(position+amount,0,dropdownOpen?maxDropdownScroll(height):maxScroll(height));if(next==position)return false;position=next;return true;}
     std::string help()const{
@@ -263,7 +263,7 @@ public:
         // Only fully visible controls are clickable. Long labels/help are clipped
         // and wrapped by the XPLM drawing adapter inside the panel's content area.
         out.erase(std::remove_if(out.begin(),out.end(),[&](const Item&i){return i.rect.x<0||i.rect.y<0||i.rect.x+i.rect.w>width||i.rect.y+i.rect.h>height||(i.rect.y>=top&&i.rect.y+i.rect.h>bottom);}),out.end());
-        out.push_back({footerNotice(width,height),notice.empty()?"Saved automatically. The desktop app is an optional secondary interface.":notice});
+        out.push_back({footerNotice(width,height),notice.empty()?(configured()?"Saved automatically. The desktop app is an optional secondary interface.":"Setup is not linked. No saved choices have been changed."):notice});
         if(helpField<0)out.push_back({footerGuidance(width,height),dropdownOpen?"Choose an option. Scroll to reveal more choices; Back returns without changing the selection.":help()});
         return out;
     }

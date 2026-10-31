@@ -9,6 +9,7 @@ int wmain(int argc,wchar_t**argv){try{
     check(argc==2,"Fresh fixture required");std::filesystem::path root=argv[1];check(!std::filesystem::exists(root),"Fixture exists");std::filesystem::create_directories(root);
     auto file=root/L"settings.ini";launcher::Preferences initial;initial.mode=2;launcher::save(file,initial);
     insim::Panel disconnected;
+    check(disconnected.maxScroll(480)==0,"Unlinked setup displayed an empty scrolling viewport");
     for(auto size:{std::pair{640,480},std::pair{880,740}}){for(const auto &item:disconnected.view(size.first,size.second)){
         check(!item.button||item.action.kind==insim::Kind::Close||item.action.kind==insim::Kind::Tab,"Unlinked panel displayed clickable rendering settings");
         if(item.widget==insim::Widget::Label&&item.rect.h>20&&item.rect.y<size.second-insim::footerHeight)check(item.rect.y>=insim::contentTop&&item.rect.y+item.rect.h<=size.second-insim::footerHeight,"Connection guidance overlaps the footer");}}
@@ -16,9 +17,15 @@ int wmain(int argc,wchar_t**argv){try{
     auto installed=root/L"installed";std::filesystem::create_directories(installed/L"auto");auto installedFile=installed/L"settings.ini",manifest=installed/L"auto/XPFSR24Implicit.json";
     auto installChoices=initial;installChoices.simulator=sim.wstring();launcher::save(installedFile,installChoices);launcher::writeSetting(L"InSim",L"Enabled",L"1",installedFile.c_str());graphics::write(manifest,"fixture");
     auto recovered=insim::resolveSettings(sim/L"X-Plane.exe",{},{},manifest);check(recovered.file==std::filesystem::weakly_canonical(installedFile)&&recovered.recovered,"Missing startup environment lost the installed profile");
+    check(insim::resolveSettings(sim/L"X-Plane.exe",{},{},{}).reason.find("No installation registration")!=std::string::npos,"Missing registration lost its diagnostic reason");
     check(insim::resolveSettings(sim/L"other.exe",{},{},manifest).file.empty(),"Settings recovery accepted a different executable");
+    check(insim::resolveSettings(sim/L"other.exe",{},{},manifest).reason.find("does not match")!=std::string::npos,"Simulator mismatch lost its diagnostic reason");
     check(insim::resolveSettings(sim/L"X-Plane.exe",{},installed/L"runtime",{}).file==std::filesystem::weakly_canonical(installedFile),"Legacy desktop runtime did not recover its own settings");
     launcher::writeSetting(L"InSim",L"Enabled",L"0",installedFile.c_str());check(insim::resolveSettings(sim/L"X-Plane.exe",{},{},manifest).file.empty(),"Disabled installation was recovered through registration");
+    check(insim::resolveSettings(sim/L"X-Plane.exe",{},{},manifest).reason.find("disabled")!=std::string::npos,"Disabled integration lost its diagnostic reason");
+    launcher::writeSetting(L"InSim",L"Enabled",L"1",installedFile.c_str());
+    auto missingManifest=installed/L"gone/auto/XPFSR24Implicit.json";
+    check(insim::resolveSettings(sim/L"X-Plane.exe",{},{},missingManifest).reason.find("manifest is missing")!=std::string::npos,"Missing manifest lost its diagnostic reason");
     std::filesystem::create_directories(installed/L"logs");graphics::write(installed/L"logs/renderer.log","old renderer sentinel");
     insim::ConfigurationSession only;auto onlyToken=only.open(installed);auto fresh=graphics::read(installed/L"logs/renderer.log");check(graphics::read(installed/L"logs/renderer.log.previous")=="old renderer sentinel"&&fresh.find("plugin-only")!=std::string::npos&&fresh.find(onlyToken)!=std::string::npos,"Plugin-only session retained stale renderer logs");
     insim::ConfigurationSession second;check(second.open(installed)!=onlyToken&&graphics::read(installed/L"logs/renderer.log")==fresh&&only.open(installed)==onlyToken,"A second configuration session or repeated poll erased active diagnostics");

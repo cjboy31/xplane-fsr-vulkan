@@ -49,7 +49,7 @@ $includes=@(('-I'+(Join-Path $build 'generated')),('-I'+(Join-Path $VulkanHeader
 if($LASTEXITCODE -ne 0){throw 'Layer build failed'}
 & $Compiler '-std=c++17' '-O2' '-static' '-shared' '-Wl,--no-insert-timestamp' '-DWIN32_LEAN_AND_MEAN' '-DNOMINMAX' ('-I'+(Join-Path $XPlaneSdk 'CHeaders\XPLM')) (Join-Path $source 'plugin.cpp') (Join-Path $XPlaneSdk 'Libraries\Win\XPLM_64.lib') '-lopengl32' '-lbcrypt' '-ladvapi32' '-o' (Join-Path $bin 'plugin\64\win.xpl')
 if($LASTEXITCODE -ne 0){throw 'Plugin build failed'}
-& $Compiler '-std=c++17' '-O2' '-static' '-municode' '-Wl,--no-insert-timestamp' '-DWIN32_LEAN_AND_MEAN' '-DNOMINMAX' (Join-Path $source 'integration_setup.cpp') '-lbcrypt' '-ladvapi32' '-lcomdlg32' '-o' (Join-Path $bin 'IntegrationSetup.exe')
+& $Compiler '-std=c++17' '-O2' '-static' '-municode' '-Wl,--no-insert-timestamp' '-DWIN32_LEAN_AND_MEAN' '-DNOMINMAX' (Join-Path $source 'integration_setup.cpp') '-lbcrypt' '-ladvapi32' '-lcomdlg32' '-luser32' '-o' (Join-Path $bin 'IntegrationSetup.exe')
 if($LASTEXITCODE -ne 0){throw 'Integration setup build failed'}
 if(Test-Path (Join-Path $source 'launcher.cpp')){
  & $Compiler '-std=c++17' '-O2' '-static' '-municode' '-mwindows' '-Wl,--no-insert-timestamp' '-DWIN32_LEAN_AND_MEAN' '-DNOMINMAX' @channelFlags (Join-Path $source 'launcher.cpp') (Join-Path $build 'app-icon.o') '-lcomctl32' '-lshell32' '-lole32' '-lbcrypt' '-lwinhttp' '-lcomdlg32' '-lgdiplus' '-ldwmapi' '-luxtheme' '-loleacc' '-luuid' '-lmfuuid' '-loleaut32' '-o' (Join-Path $bin 'XPlaneFSR24.exe')

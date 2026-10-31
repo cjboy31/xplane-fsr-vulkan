@@ -256,6 +256,10 @@ PLUGIN_API int XPluginStart(char *name, char *signature, char *description) {
     XPLMAppendMenuItem(menu,"Open in-sim setup",reinterpret_cast<void*>(1),0);
     XPLMAppendMenuItem(menu, "Enable / disable temporal upscaling", nullptr, 0);
     XPLMDebugString("XPFSR24: alpha camera publisher loaded; Vulkan layer performs upscaling.\n");
+    // Diagnose/recover the selected installation at plugin startup, even when
+    // the setup window stays closed. Never let a setup failure disable camera
+    // metadata or escape across the plugin ABI.
+    try{setupBind();}catch(const std::exception&e){setupPanel.notice=e.what();XPLMDebugString((std::string("XPFSR24 setup startup: ")+e.what()+"\n").c_str());}catch(...){XPLMDebugString("XPFSR24 setup startup: unknown binding failure\n");}
     return 1;
 }
 PLUGIN_API int XPluginEnable() {

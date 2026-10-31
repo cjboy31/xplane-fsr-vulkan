@@ -18,6 +18,7 @@ static std::filesystem::path setupRoot;
 static std::wstring setupToken;
 static HANDLE setupGraphicsJob{};
 static HANDLE setupImportJob{};
+static std::string setupLastBindingReport;
 static insim::ConfigurationSession setupConfigurationSession;
 static std::wstring setupImportToken;
 static int setupDragField=-1;
@@ -62,10 +63,13 @@ static void setupPollImport(){
 }
 static void setupBind(){
     wchar_t manifest[32768]{};DWORD manifestBytes=sizeof(manifest);
-    auto registered=RegGetValueW(HKEY_CURRENT_USER,L"SOFTWARE\\XPFSR24\\InSim",L"Manifest",RRF_RT_REG_SZ,nullptr,manifest,&manifestBytes)==ERROR_SUCCESS?std::filesystem::path(manifest):std::filesystem::path{};
-    wchar_t executable[32768]{};GetModuleFileNameW(nullptr,executable,32768);
+    const auto registryResult=RegGetValueW(HKEY_CURRENT_USER,L"SOFTWARE\\XPFSR24\\InSim",L"Manifest",RRF_RT_REG_SZ,nullptr,manifest,&manifestBytes);
+    auto registered=registryResult==ERROR_SUCCESS?std::filesystem::path(manifest):std::filesystem::path{};
+    wchar_t executable[32768]{};const auto executableLength=GetModuleFileNameW(nullptr,executable,32768);
     auto binding=insim::resolveSettings(executable,setupEnvironment(L"XPFSR24_SETTINGS"),setupEnvironment(L"XPFSR24_RUNTIME"),registered);
-    if(binding.file.empty())return;
+    std::string report="XPFSR24 setup binding: pid="+std::to_string(GetCurrentProcessId())+" registry_result="+std::to_string(registryResult)+" executable_length="+std::to_string(executableLength)+" result="+(binding.file.empty()?binding.reason:"linked")+" executable="+insim::utf8(executable)+" manifest="+insim::utf8(registered.wstring());
+    if(report!=setupLastBindingReport){XPLMDebugString((report+"\n").c_str());setupLastBindingReport=std::move(report);}
+    if(binding.file.empty()){setupPanel.notice=binding.reason+". Setup has not changed any selections.";return;}
     auto file=binding.file;
     setupRoot=file.parent_path();setupToken=setupEnvironment(L"XPFSR24_SESSION");
     if(setupToken.empty())setupToken=setupEnvironment(L"XPFSR24_CONFIG_SESSION");

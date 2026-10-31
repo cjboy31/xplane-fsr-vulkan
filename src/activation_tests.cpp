@@ -3,6 +3,7 @@
 #include "layer_registration.hpp"
 #include "deferred_graphics.hpp"
 #include <iostream>
+#include <future>
 static void check(bool ok,const char *why){if(!ok)throw std::runtime_error(why);}
 template<class F>static void rejects(F f){bool failed=false;try{f();}catch(...){failed=true;}check(failed,"Unsafe configuration was accepted");}
 int wmain(int argc,wchar_t **argv){try{
@@ -59,6 +60,17 @@ int wmain(int argc,wchar_t **argv){try{
     for(auto dir:{root,root/L"second"}){std::filesystem::create_directories(dir/L"auto");std::filesystem::create_directories(dir/L"layer");graphics::write(dir/L"auto/XPFSR24Implicit.json","fixture");graphics::write(dir/L"layer/XPFSR24Layer.dll","fixture");launcher::save(dir/L"settings.ini",p);}
     HKEY key{};check(RegCreateKeyExW(HKEY_CURRENT_USER,layers.c_str(),0,nullptr,0,KEY_SET_VALUE,nullptr,&key,nullptr)==ERROR_SUCCESS,"Fixture registry setup");DWORD value=7;RegSetValueExW(key,L"Other-layer.json",0,REG_DWORD,reinterpret_cast<BYTE*>(&value),sizeof(value));RegCloseKey(key);
     registration.enable(root);DWORD enabled=99,bytes=sizeof(enabled);check(RegGetValueW(HKEY_CURRENT_USER,layers.c_str(),app::LayerRegistration::manifest(root).c_str(),RRF_RT_REG_DWORD,nullptr,&enabled,&bytes)==ERROR_SUCCESS&&enabled==0,"Implicit registration must use DWORD zero");
+    registration.repair(root);
+    launcher::writeSetting(L"InSim",L"Enabled",L"0",(root/L"settings.ini").c_str());rejects([&]{registration.repair(root);});
+    check(launcher::readSetting(root/L"settings.ini",L"InSim",L"Enabled")==L"0","Registration repair re-enabled an opted-out installation");registration.enable(root);
+    std::future<std::string> racingRepair;std::promise<void> repairStarted;
+    {app::NamedLock guard(app::lockName(owner));
+        racingRepair=std::async(std::launch::async,[&]{repairStarted.set_value();try{registration.repair(root);return std::string{};}catch(const std::exception&e){return std::string(e.what());}});
+        repairStarted.get_future().wait();Sleep(50);
+        launcher::writeSetting(L"InSim",L"Enabled",L"0",(root/L"settings.ini").c_str());
+    }
+    check(racingRepair.get().find("disabled")!=std::string::npos&&launcher::readSetting(root/L"settings.ini",L"InSim",L"Enabled")==L"0","Racing registration repair reversed an opt-out");registration.enable(root);
+    launcher::writeSetting(L"InSim",L"Enabled",L"1",(root/L"second/settings.ini").c_str());rejects([&]{registration.repair(root/L"second");});
     rejects([&]{registration.enable(root/L"second");});registration.disable(root/L"second");check(!_wcsicmp(app::registryString(HKEY_CURRENT_USER,owner.c_str(),L"Manifest").c_str(),app::LayerRegistration::manifest(root).c_str()),"Another installation removed owner");
     // Removal works without a connected simulator and leaves unrelated layers.
     std::filesystem::remove(root/L"sim/X-Plane.exe");registration.disable(root);bytes=sizeof(value);check(RegGetValueW(HKEY_CURRENT_USER,layers.c_str(),L"Other-layer.json",RRF_RT_REG_DWORD,nullptr,&value,&bytes)==ERROR_SUCCESS&&value==7,"Unrelated Vulkan layer changed");

@@ -18,7 +18,7 @@ public:
         return token;
     }
 };
-struct SettingsBinding { std::filesystem::path file; bool recovered{}; };
+struct SettingsBinding { std::filesystem::path file; bool recovered{}; std::string reason; };
 inline SettingsBinding resolveSettings(const std::filesystem::path &executable,
     const std::filesystem::path &environmentFile, const std::filesystem::path &runtime,
     const std::filesystem::path &registeredManifest) {
@@ -32,14 +32,17 @@ inline SettingsBinding resolveSettings(const std::filesystem::path &executable,
     // their own profile from the process-local runtime path, never a disk scan.
     if(runtime.is_absolute()&&valid(runtime.parent_path()/L"settings.ini"))
         return {std::filesystem::weakly_canonical(runtime.parent_path()/L"settings.ini"),true};
+    if(registeredManifest.empty())return {{},false,"No installation registration is visible to this simulator session"};
     if(registeredManifest.is_absolute()&&registeredManifest.filename()==L"XPFSR24Implicit.json"&&
         registeredManifest.parent_path().filename()==L"auto"){
         auto root=registeredManifest.parent_path().parent_path(),file=root/L"settings.ini";
         std::error_code ec;
-        if(std::filesystem::is_regular_file(registeredManifest,ec)&&!ec&&valid(file)&&
-            launcher::readSetting(file,L"InSim",L"Enabled",L"0")==L"1")
-            return {std::filesystem::weakly_canonical(file),true};
+        if(!std::filesystem::is_regular_file(registeredManifest,ec)||ec)return {{},false,"The registered Vulkan manifest is missing or inaccessible"};
+        if(!std::filesystem::is_regular_file(file,ec)||ec)return {{},false,"The registered settings file is missing or inaccessible"};
+        if(!valid(file))return {{},false,"The registered profile does not match the current simulator executable"};
+        if(launcher::readSetting(file,L"InSim",L"Enabled",L"0")!=L"1")return {{},false,"In-sim integration is disabled in the registered installation"};
+        return {std::filesystem::weakly_canonical(file),true};
     }
-    return {};
+    return {{},false,"The registered installation manifest path is invalid"};
 }
 } // namespace insim

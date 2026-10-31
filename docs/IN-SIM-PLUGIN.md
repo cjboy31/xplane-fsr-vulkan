@@ -49,14 +49,27 @@ of Visual Engine compatibility or complete in-sim feature parity.
   Tests cover wrong-executable/disabled-install rejection, legacy recovery,
   disconnected layout, inactive telemetry and protection of another session's log.
 
-  The owner reported a missing renderer after applying cloud settings and
-  relaunching through Explorer. The cloud preferences were applied, but that
-  session omitted the renderer DLL and had no startup settings environment.
-  Registration and manifest checks subsequently passed; its exact initial
-  omission remains unconfirmed. Refreshing the owned registration and launching
-  the corrected build through Windows loaded the renderer with cloud choices
-  retained. Verification of another owner-shortcut restart is still required;
-  profile/UI recovery alone is not an activation fix.
+  A normal Explorer launch reproduced a missing renderer and an unlinked panel.
+  In-process diagnostics returned Windows error 2 for the installation owner
+  key while setup-environment reads of the same registration succeeded. The
+  settings file was intact. This establishes different registration visibility
+  between those launch contexts; the Windows mechanism causing that difference
+  has not been identified. Startup now logs lookup results and the specific
+  rejection reason in X-Plane's own log, even without opening the panel.
+  An unlinked panel does not claim settings were saved or show an empty scroll
+  range. Profile recovery alone still does not establish renderer activity.
+
+  Double-clicking `IntegrationSetup.exe` from the installed package provides a
+  registration-only repair in the normal desktop user's context. The equivalent
+  noninteractive operation is `--repair-registration`. It requires an already
+  enabled profile, verified runtime and an installed plugin matching that exact
+  package. It refuses another installation's owner or an opted-out profile,
+  preserves user settings/models and never replaces a loaded plugin. The repair
+  reports its result; restart X-Plane normally to activate the Vulkan layer.
+  After this desktop-context repair, another Explorer launch enumerated the
+  project's Vulkan layer and created a fresh renderer session. This verifies
+  startup registration for that launch; in-flight image quality and third-party
+  launcher compatibility remain separate checks.
 - Neural rendering now has a model DLL selector backed by a separate native
   helper, bounded per-job progress and explicit success/cancel/failure messages.
   The supported user-supplied DLL is read by the pinned extractor, never loaded.

@@ -19,11 +19,17 @@ class LayerRegistration {
 public:
     explicit LayerRegistration(HKEY scope=HKEY_CURRENT_USER,std::wstring layers=implicitKey,std::wstring owner=integrationOwnerKey):hive(scope),layerKey(std::move(layers)),ownerKey(std::move(owner)){}
     static std::filesystem::path manifest(const std::filesystem::path &root){return std::filesystem::weakly_canonical(root/L"auto/XPFSR24Implicit.json");}
-    void enable(const std::filesystem::path &root){
+    void repair(const std::filesystem::path &root){
+        // Repair is not an opt-in or an installation switch. Recreate only the
+        // enabled installation's owned values in the caller's normal user view.
+        enable(root,true);
+    }
+    void enable(const std::filesystem::path &root,bool repairOnly=false){
         graphics::require(root.is_absolute(),"Installation path must be absolute");
         auto m=manifest(root);graphics::require(std::filesystem::is_regular_file(m)&&std::filesystem::is_regular_file(root/L"layer/XPFSR24Layer.dll"),"The automatic Vulkan layer is missing");
         graphics::require(std::filesystem::is_regular_file(std::filesystem::path(launcher::load(root/L"settings.ini").simulator)/L"X-Plane.exe"),"Select the X-Plane installation first");
         NamedLock lock(lockName(ownerKey));
+        if(repairOnly)graphics::require(launcher::readSetting(root/L"settings.ini",L"InSim",L"Enabled",L"0")==L"1","Automatic integration is disabled. Use the installation package to enable it first");
         auto previous=registryString(hive,ownerKey.c_str(),L"Manifest");
         graphics::require(previous.empty()||!_wcsicmp(previous.c_str(),m.c_str()),"Another app installation owns automatic activation. Disable it there before switching installations");
         HKEY key{};checked(RegCreateKeyExW(hive,ownerKey.c_str(),0,nullptr,0,KEY_SET_VALUE,nullptr,&key,nullptr));
