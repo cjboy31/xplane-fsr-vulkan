@@ -11,6 +11,9 @@ int wmain(int argc,wchar_t **argv){
     try{
         graphics::require(argc>=1&&argc<=5,"Usage: IntegrationSetup --repair-registration | --enable [X-Plane folder] | --disable | --uninstall-integration | --apply-graphics-after PID SESSION | --import-nr PID SESSION JOB");
         const std::wstring action=argc==1?L"--repair-registration":argv[1];app::LayerRegistration registration;
+        if(action==L"--retire-media"){
+            graphics::require(argc==3,"Previous payload inventory required");app::retireOwnedMedia(root,argv[2]);return 0;
+        }
         if(action==L"--retire-guide"){
             graphics::require(argc==4,"Previous guide version and SHA-256 required");
             app::retirePreviousGuide(root,argv[2],argv[3],updates::version(updates::currentVersion).key()>=updates::version("0.7.4-alpha").key());return 0;

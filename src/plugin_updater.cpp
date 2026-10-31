@@ -24,6 +24,7 @@ static HWND scaledControl(const wchar_t* type,const wchar_t* label,DWORD style,i
     SendMessageW(result,WM_SETFONT,WPARAM(font),TRUE);theme::apply(result,type);return result;
 }
 static SIZE modalSize(int w,int h){return {theme::px(w),theme::px(h)};}
+#define XPFSR_UPDATER_ONLY 1
 #include "update_ui.inc"
 static LRESULT CALLBACK updaterProcedure(HWND h,UINT message,WPARAM w,LPARAM l){
     switch(message){

@@ -51,7 +51,11 @@ static void refreshUpdateUI() {
     bool busy = j->phase == UpdateJob::checking || j->phase == UpdateJob::downloading ||
                 j->phase == UpdateJob::ready;
     std::wstring title =
+#ifdef XPFSR_UPDATER_ONLY
+        j->phase == UpdateJob::available ? L"FSR update available..." : L"FSR updates / release channel";
+#else
         j->phase == UpdateJob::available ? L"Update available..." : L"Updates / Channel";
+#endif
     SetWindowTextW(updatesButton, title.c_str());
     if (!updateWindow)
         return;

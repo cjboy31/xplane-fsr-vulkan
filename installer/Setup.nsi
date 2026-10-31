@@ -326,6 +326,10 @@ Section "Application"
   ReadINIStr $IntegrationWasEnabled "$INSTDIR\settings.ini" "InSim" "Enabled"
   ReadINIStr $PreviousGuideVersion "$INSTDIR\media\feature-video.ini" "Video" "Version"
   ReadINIStr $PreviousGuideSHA256 "$INSTDIR\media\feature-video.ini" "Video" "SHA256"
+  InitPluginsDir
+  ${If} ${FileExists} "$INSTDIR\PAYLOAD-MANIFEST.json"
+    CopyFiles /SILENT "$INSTDIR\PAYLOAD-MANIFEST.json" "$PLUGINSDIR\Previous-Payload.json"
+  ${EndIf}
   !include "${GENERATED}\InstallFiles.nsh"
   ${If} $PreviousGuideVersion != ""
   ${AndIf} $PreviousGuideSHA256 != ""
@@ -333,6 +337,13 @@ Section "Application"
     ${If} $0 != 0
       SetErrorLevel 9
       Abort "Previous guide cleanup could not finish. Rerun setup into this same folder. Saved settings and models were retained."
+    ${EndIf}
+  ${EndIf}
+  ${If} ${FileExists} "$PLUGINSDIR\Previous-Payload.json"
+    ExecWait '$\"$INSTDIR\IntegrationSetup.exe$\" --retire-media $\"$PLUGINSDIR\Previous-Payload.json$\"' $0
+    ${If} $0 != 0
+      SetErrorLevel 9
+      Abort "Old guide cleanup could not finish. Rerun setup into this same folder. Saved settings and models were kept."
     ${EndIf}
   ${EndIf}
   ; The verified target now contains our payload. Keep it recognizable if a

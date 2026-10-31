@@ -110,7 +110,7 @@ static void setupBind(){
     if(!connected){
         const auto owner=xp_renderer::environment("XP_RENDERER_OWNER");
         if(owner=="native_aa"){
-            setupPanel.configurationOnly("Native AA owns this session. FSR, NR and frame generation are inactive. Choose Renderer > FSR on Rendering, then restart. Both mods' saved choices are retained.",true);
+            setupPanel.configurationOnly("Native AA is active, so FSR is off for this session. To switch, choose FSR under Image processor on Rendering, then restart. Both mods keep your settings.",true);
             setupPanel.activity="NATIVE AA SESSION - FSR / NR / frame generation inactive";
         }
         else if(!activationError.empty())setupPanel.configurationOnly("Startup bypass: "+insim::utf8(activationError)+". Saved settings retained; correct the setup and restart X-Plane.",true);
