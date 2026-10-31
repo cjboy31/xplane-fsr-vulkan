@@ -58,6 +58,13 @@ if($nrPackage){
 foreach($required in @('XPlaneFSR24.exe','NativeAACheck.exe','CockpitRestoreCheck.exe','layer/XPFSR24Layer.dll','plugin/64/win.xpl')){
   if($required -notin $manifest.files.path){throw "Required app component absent from installer: $required"}
 }
+if([version](($manifest.packageVersion -split '-')[0]) -ge [version]'0.7.2'){
+  foreach($required in @('IntegrationSetup.exe','auto/XPFSR24Implicit.json')){
+    if($required -notin $manifest.files.path){throw "Required in-sim setup component absent: $required"}
+  }
+  $implicit=Get-Content -LiteralPath (Join-Path $installed 'auto/XPFSR24Implicit.json') -Raw | ConvertFrom-Json
+  if($implicit.layer.library_path -ne '..\layer\XPFSR24Layer.dll' -or $implicit.layer.disable_environment.DISABLE_XPFSR24 -ne '1'){throw 'Invalid automatic activation manifest'}
+}
 foreach($excluded in @('FrameGenCheck.exe','runtime/amd_fidelityfx_framegeneration_vk.dll')){
  $expectedFG = $manifest.packageVersion -match '^\d+\.\d+\.\d+-experimental\.\d+$' -or [version](($manifest.packageVersion -split '-')[0]) -ge [version]'0.7.1'
  if($expectedFG){
@@ -96,10 +103,17 @@ if($nrPackage){
 }
 Add-Content -LiteralPath (Join-Path $installed 'settings.ini') -Value "`r`n[Launcher]`r`nPreset=fsr4-4k-quality`r`nMode=4`r`nFrameGeneration=2`r`nCockpitRestore=0`r`nEnabled=1`r`nGhostReduction=0`r`nAlignmentTint=0`r`n[Window]`r`nClientWidth=900`r`nClientHeight=740"
 $savedChoiceBlock = (Get-Content -LiteralPath (Join-Path $installed 'settings.ini') -Raw) -split '\[Launcher\]',2 | Select-Object -Last 1
+if([version](($manifest.packageVersion -split '-')[0]) -ge [version]'0.7.2'){
+  $previousGuide=Join-Path $installed 'media\0.7.1-alpha.mp4'
+  Set-Content -LiteralPath $previousGuide -Value 'Inert previous-version movie fixture'
+  $previousHash=(Get-FileHash -LiteralPath $previousGuide).Hash.ToLowerInvariant()
+  Set-Content -LiteralPath (Join-Path $installed 'media\feature-video.ini') -Value "[Video]`r`nVersion=0.7.1-alpha`r`nSHA256=$previousHash"
+}
 $code = Run-Setup ('/S /TEST=1 /XPLANE="'+$simulator+'" /D='+$installed)
 if($code -ne 0){throw "Recognized update failed: $code"}
 $updatedChoiceBlock = (Get-Content -LiteralPath (Join-Path $installed 'settings.ini') -Raw) -split '\[Launcher\]',2 | Select-Object -Last 1
 if($savedChoiceBlock.Trim() -ne $updatedChoiceBlock.Trim()){throw 'Recognized update changed saved launcher choices'}
+if($previousGuide -and (Test-Path -LiteralPath $previousGuide)){throw 'Update retained the verified obsolete version guide'}
 foreach($file in $manifest.files){if((Get-FileHash -LiteralPath (Join-Path $installed $file.path)).Hash.ToLowerInvariant() -ne $file.sha256){throw "Update hash mismatch: $($file.path)"}}
 # Automatic update requires an owned install and preserves the whole settings file.
 $code = Run-Setup ('/S /TEST=1 /AUTOUPDATE=1 /D='+$unrelated)

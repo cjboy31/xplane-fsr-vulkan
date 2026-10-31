@@ -34,4 +34,19 @@ inline void installPlugin(const std::filesystem::path &app,const std::filesystem
     std::wstring digest(current.begin(),current.end());
     graphics::require(launcher::writeSetting(L"InSim",L"PluginSHA256",digest.c_str(),(app/L"settings.ini").c_str()),"Could not save installed plugin ownership");
 }
+inline bool removeOwnedPlugin(const std::filesystem::path &app,const std::filesystem::path &sim){
+    // Never delete an edited/unrelated plugin, even from our named directory.
+    if(sim.empty())return false;
+    auto target=sim/L"Resources/plugins/XPFSR24/64/win.xpl";
+    if(!std::filesystem::is_regular_file(target))return false;
+    const auto old=fileHash(target);
+    const auto recorded=launcher::readSetting(app/L"settings.ini",L"InSim",L"PluginSHA256");
+    const auto source=app/L"plugin/64/win.xpl";
+    const bool current=std::filesystem::is_regular_file(source)&&old==fileHash(source);
+    if(!current&&!publishedPlugin(old)&&old!=std::string(recorded.begin(),recorded.end()))return false;
+    graphics::require(std::filesystem::remove(target),"Close X-Plane before removing its plugin");
+    std::error_code ec;std::filesystem::remove(target.parent_path(),ec);
+    std::filesystem::remove(target.parent_path().parent_path(),ec);
+    return true;
+}
 } // namespace app

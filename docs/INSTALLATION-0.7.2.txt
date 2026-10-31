@@ -1,0 +1,130 @@
+FSR 3/4 + FRAME GEN FOR X-PLANE 12
+0.7.2-alpha - Windows Normal channel, community preview
+
+INSTALL OR UPDATE
+1. Close X-Plane, the optional desktop interface and GPU checks normally.
+2. Run XPlane-FSR3-4-FrameGen-0.7.2-alpha-Setup.exe, or extract the RAR and
+   run XPlane-FSR24-Setup.exe inside it. Both install the same application.
+3. Select the folder containing X-Plane.exe, wherever it is installed. External
+   SSDs are supported. Check "Enable in-sim controls and automatic renderer
+   activation" for normal shortcut/third-party-launcher startup.
+4. Install into the existing official app folder when updating. For a new
+   installation use the default per-user folder or an empty writable folder.
+   Do not install this application into Resources/plugins. Setup installs only
+   its own plugin there when integration is enabled.
+5. Saved choices and locally imported NR models survive recognized updates.
+   A hash-verified obsolete guide is removed; edited/unrecognized files are kept.
+   Automatic updates refresh an existing integration opt-in. Older desktop-only
+   installations need this full setup selection once to enable in-sim startup.
+   Keep a disabled integration choice disabled unless you deliberately enable it.
+
+FIRST FLIGHT / IN-SIM CONTROLS
+Start X-Plane using your usual shortcut. Open Plugins > FSR 3/4 + Frame Gen.
+The panel provides Rendering, Neural rendering, Diagnostics and Image quality.
+It shares settings with the desktop interface. Do not run two simulator
+instances against the same profile. Only the exact selected X-Plane.exe is
+eligible for automatic renderer activation. Other Vulkan programs pass through.
+
+Select FSR 3 or FSR 4 and the matching Native AA or Upscaling mode. Provider
+changes require the next simulator session. Processing On/Off and supported NR
+appearance/order/scope controls are live. NR model/budget changes prepare in the
+background. A green FSR ACTIVE state requires advancing renderer frames; a loaded
+plugin alone does not prove that rendering is active. Read separate NR status.
+
+On Image quality, queue deliberate graphics changes with Apply after exit.
+Close X-Plane normally and allow the background helper to finish before reopening.
+Changes are backed up. An abnormal termination is not permission to edit graphics.
+Launch does not force saved output resolution again. Keep-current-output preserves
+display geometry. The UI-size option compensates supported single-display output
+changes; X-Plane still controls its own fonts/UI. No controller mappings are edited.
+
+REQUIRED SIMULATOR GRAPHICS
+Native AA: Full input scale. Upscaling: a reduced input scale such as Quality.
+FXAA Off for reconstruction. Start with MSAA Off; 2x/4x/8x depth capture remains
+experimental. A 4K Quality example requires 3840 x 2160 output and approximately
+2560 x 1440 input. Selecting 1440p output alone does not make a 4K output image.
+Current input scale is followed without erasing your saved future provider choice.
+Start with NR and FG Off, confirm FSR, then enable one optional feature at a time.
+
+NR MODEL IMPORT
+NR needs compatible Windows RDNA4 FP8 cooperative-matrix hardware/driver support.
+Tested hardware: Radeon AI PRO R9700. Other GPUs require their own checks. The
+current backend requires an ASCII application path. NR is an independent
+experimental scene-color adapter, not official NVIDIA DLSS 5 support.
+
+Use Neural rendering > Import model DLL and select your own supported
+nvngx_dlssnr.dll (310.9.16 or 310.8.0), obtained under its applicable terms.
+The importer reads it as data and verifies extracted model hashes; it does not
+execute the DLL. No NVIDIA DLL or model weights are supplied with this release.
+Watch the progress/result message. Existing differing models cannot be replaced
+during a flight. Toggle NR Off/On after successful import to retry preparation.
+
+Before upscaling is the recommended lower-cost order. After processes the output
+resolution. External only or Full scene controls cockpit inclusion. Try Subtle,
+one pass and Balanced 50% first. Performance/Balanced/Quality use 33/50/67% model
+resolution and show the selected budget. Two or three passes can blur textures
+and cost substantial performance; multi-pass clarity is not guaranteed. NR Off
+retires unused contexts; low memory pauses NR and retries when headroom recovers.
+
+CLOUDS / CLARITY
+Cloud quality uses X-Plane's supported preference. Ultra Quality input or Native
+AA can improve the available source detail, at a GPU cost. Queue these changes
+and restart normally. Distant cloud appearance still depends on X-Plane/weather;
+these controls do not replace the simulator's cloud renderer or guarantee a cure.
+
+FRAME GENERATION
+Both Normal and Experimental channels include existing FG/NR features. FG is
+optional and starts Off. Close the panel to resume FG; generated frames pause
+while controls are visible. Synchronized compatibility modes trade performance
+for stricter SDK pacing. NR + FG requires explicit opt-in and sufficient VRAM.
+If the OBS graphics capture hook is already loaded during automatic activation,
+FG is bypassed for compatibility and the saved choice is retained. The optional
+desktop launch path remains available for early capture-compatibility setup.
+No full HDR, VR, multi-view, multi-monitor or universal artifact-free claim is made.
+Cockpit-screen restoration currently targets default Cirrus SR22 screens and
+requires FG Off; Full scene NR does not add universal instrument masking.
+
+IF FSR IS NOT ACTIVE AFTER A NORMAL RESTART
+Check whether status says not loaded, bypassed, preparing or actively recording.
+Read the current renderer log; logs are scoped to the current process/session.
+Close X-Plane normally. Run Start menu > FSR 3-4 + Frame Gen for X-Plane >
+Repair in-sim activation, then launch normally again. This restores only this
+already-enabled installation's per-user registry entries and preserves choices.
+It will not override a disabled profile or another installation's ownership.
+If setup reports another owner, disable integration in that prior installation
+first. Keep one active app installation per selected simulator.
+
+OPTIONAL DESKTOP INTERFACE / GUIDE / UPDATES
+The desktop application remains installed as a secondary interface for full
+diagnostics, renderer-log viewing, GPU checks, guide playback and Updates/Channel.
+The panel is a preview; these desktop functions have not all migrated in-sim.
+Use the recommended Normal channel for this update. Experimental remains available
+for development packages and is not needed to unlock the current features.
+The bundled video is the previously approved 0.7.1 guide, unchanged, including its
+original on-screen version and desktop workflow. Use this text for current in-sim
+setup. Skip immediately; replay from What's new; mute or disable future playback.
+
+PERFORMANCE / MEMORY LIMITS
+Completed-resource reuse reduces repeated allocation work; captures skip unrelated
+depth sizes. Idle caches are bounded and clear under pressure. These limits do
+not cap X-Plane's textures, SDK arenas, in-flight resources or total VRAM. Reduce
+output/input scale, NR budget/passes or simulator textures if memory is limited.
+NR/FG preparation still adds work; the simulator can remain CPU limited.
+Local stationary FSR-only checks improved versus the previous private build;
+results do not establish a universal speedup or moving-view NR/FG quality.
+
+REMOVAL
+Close X-Plane and the desktop app. Use Windows Apps or Uninstall.exe in the app
+folder. Its owned Vulkan entry and recognized plugin are removed; unrelated
+plugins/preferences are retained. Local NR models/cache, logs and backups remain
+for you to keep or delete. The app's settings.ini is removed on full uninstall;
+back it up first if you want to reinstall later. Updating preserves it.
+Uninstall registration also works with the simulator drive disconnected.
+
+PLATFORMS / SUPPORT
+This package is Windows x64 Vulkan. Separate Linux FSR 3 preview and Mac diagnostic
+probe downloads have narrower capabilities; no Mac Metal renderer or multi-GPU
+offload is delivered here. See the repository's platform and optimization roadmap.
+Community: https://discord.gg/yh396QNgHZ
+Official downloads: https://github.com/cjboy31/xplane-fsr-vulkan/releases
+Keep LICENSE.txt, REDISTRIBUTION.txt and all component/media notices together.

@@ -1,10 +1,11 @@
 # In-simulator controls and third-party launchers
 
-Development: 2026-10-30. The in-sim interface is becoming the primary workflow.
-The desktop application remains available on GitHub as an **optional secondary
-interface**. Both share saved choices. Current public 0.7.1 downloads still use
-the desktop launch workflow; this development branch is not a released claim
-of Visual Engine compatibility or complete in-sim feature parity.
+Windows 0.7.2-alpha includes the in-sim controls preview. Full setup can install
+and enable automatic activation for the selected simulator. The desktop app
+remains an **optional secondary interface**, sharing saved choices and providing
+updates, guide playback and complete diagnostics. This is not a claim of complete
+in-sim parity or certification of Visual Engine/other launchers. Read
+[the current installation instructions](INSTALLATION-0.7.2.txt).
 
 ## Development progress
 
@@ -30,7 +31,11 @@ of Visual Engine compatibility or complete in-sim feature parity.
   tests cover configuration/registry ownership. Unrelated Vulkan resource/device
   calls passed two lifecycles through both explicit and real implicit discovery,
   without creating renderer logs. Direct launch reached live FSR on the owner's
-  machine. Visual Engine itself and installer/update wiring remain unverified.
+  machine. Visual Engine itself remains unverified. Setup packages the helper/manifest,
+  can enable integration, refreshes an existing opt-in during updates and removes
+  its owned registration/recognized plugin on uninstall. Opt-outs are retained.
+  Isolated tests cover ownership and install/update/uninstall payload behavior;
+  they do not certify every external launcher or Windows registry context.
 - Preset/custom AA/output changes can be queued in-sim. A background component
   waits for the selected simulator's normal exit, then applies supported graphics
   changes with a backup. Fixtures verify source PID/path/token, abnormal-exit
@@ -105,13 +110,13 @@ not certified. The optional desktop path remains available for the early
 capture-compatibility environment. Report the bypass in status instead of
 claiming generated frames. See [OBS's layer manifest](https://github.com/obsproject/obs-studio/blob/master/plugins/win-capture/graphics-hook/obs-vulkan64.json).
 
-## Current released plugin
+## Activation timing
 
 `Resources/plugins/XPFSR24/64/win.xpl` publishes camera metadata using public
 read-only XPLM datarefs and provides an enable/disable menu. The Vulkan layer
-does the FSR/NR work. The desktop launcher currently configures that layer
-before starting X-Plane. Installing the XPLM plugin alone does not activate
-the renderer when another application launches the simulator.
+does the FSR/NR work. The setup-enabled implicit layer configures the renderer before device creation;
+the optional desktop path can also configure it explicitly. Installing the XPLM
+plugin alone does not activate the renderer for another launcher's process.
 
 The tested X-Plane 12.4.4-r1 startup log lists Vulkan initialization before
 loading XPFSR24 and other XPLM plugins. Required device features must be

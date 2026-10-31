@@ -2,6 +2,8 @@
 #include "implicit_activation.hpp"
 #include "layer_registration.hpp"
 #include "deferred_graphics.hpp"
+#include "plugin_install.hpp"
+#include "installer_cleanup.hpp"
 #include <iostream>
 #include <future>
 static void check(bool ok,const char *why){if(!ok)throw std::runtime_error(why);}
@@ -12,6 +14,31 @@ int wmain(int argc,wchar_t **argv){try{
     std::filesystem::create_directories(root/L"other-sim");graphics::write(root/L"other-sim/X-Plane.exe","different fixture");
     launcher::Preferences p;p.simulator=(root/L"sim").wstring();p.mode=4;p.frameGeneration=3;p.cockpitRestore=false;p.neuralRendering=4;p.nr[xpfsr::nr::Enabled]=1;p.nr[xpfsr::nr::AllowFG]=1;
     launcher::save(root/L"settings.ini",p);
+    std::filesystem::create_directories(root/L"plugin/64");
+    graphics::write(root/L"plugin/64/win.xpl","owned fixture plugin");
+    const auto installedPlugin=root/L"sim/Resources/plugins/XPFSR24/64/win.xpl";
+    app::installPlugin(root,root/L"sim");
+    check(app::fileHash(installedPlugin)==app::fileHash(root/L"plugin/64/win.xpl"),"Integration did not install its plugin");
+    graphics::write(root/L"plugin/64/win.xpl","updated fixture plugin");
+    app::installPlugin(root,root/L"sim");
+    check(app::fileHash(installedPlugin)==app::fileHash(root/L"plugin/64/win.xpl"),"Integration update did not recognize its recorded plugin");
+    graphics::write(installedPlugin,"unrelated edited plugin");
+    rejects([&]{app::installPlugin(root,root/L"sim");});
+    check(!app::removeOwnedPlugin(root,root/L"sim")&&graphics::read(installedPlugin)=="unrelated edited plugin","Uninstall removed an unrelated plugin");
+    std::filesystem::remove(installedPlugin);app::installPlugin(root,root/L"sim");
+    graphics::write(installedPlugin.parent_path()/L"user.txt","keep user file");
+    check(app::removeOwnedPlugin(root,root/L"sim")&&!std::filesystem::exists(installedPlugin)&&graphics::read(installedPlugin.parent_path()/L"user.txt")=="keep user file","Owned plugin removal lost unrelated files");
+    check(!app::removeOwnedPlugin(root,root/L"disconnected")&&!app::removeOwnedPlugin(root,{}),"Missing simulator cleanup failed");
+    std::filesystem::create_directories(root/L"media");
+    graphics::write(root/L"media/0.7.1-alpha.mp4","previous movie");
+    const auto previousMovie=app::fileHash(root/L"media/0.7.1-alpha.mp4");
+    launcher::writeSetting(L"Video",L"Version",L"0.7.1-alpha",(root/L"media/feature-video.ini").c_str());
+    const std::wstring previousDigest(previousMovie.begin(),previousMovie.end());
+    check(!app::retirePreviousGuide(root,L"0.7.1-alpha",previousDigest),"Same-version repair deleted the current guide");
+    launcher::writeSetting(L"Video",L"Version",L"0.7.2-alpha",(root/L"media/feature-video.ini").c_str());
+    check(!app::retirePreviousGuide(root,L"0.7.1-alpha",std::wstring(64,L'0')),"Changed/unowned guide was deleted");
+    rejects([&]{app::retirePreviousGuide(root,L"../outside",previousDigest);});
+    check(app::retirePreviousGuide(root,L"0.7.1-alpha",previousDigest)&&!std::filesystem::exists(root/L"media/0.7.1-alpha.mp4"),"Verified previous guide was retained");
     auto protectedProfile=app::automaticCaptureProfile(p,true);check(protectedProfile.frameGeneration==0&&p.frameGeneration==3&&protectedProfile.mode==p.mode&&protectedProfile.neuralRendering==p.neuralRendering,"Capture guard changed saved choices or other processing");
     check(app::automaticCaptureProfile(p,false).frameGeneration==3,"Capture-free profile lost FG");
     auto pending=p;pending.manualPending=true;pending.mode=3;

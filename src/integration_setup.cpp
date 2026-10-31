@@ -4,12 +4,17 @@
 #include "plugin_install.hpp"
 #include "deferred_graphics.hpp"
 #include "nr_import_setup.hpp"
+#include "installer_cleanup.hpp"
 #include <iostream>
 int wmain(int argc,wchar_t **argv){
     std::filesystem::path root=app::processExecutable().parent_path();
     try{
-        graphics::require(argc>=1&&argc<=5,"Usage: IntegrationSetup --repair-registration | --enable [X-Plane folder] | --disable | --apply-graphics-after PID SESSION | --import-nr PID SESSION JOB");
+        graphics::require(argc>=1&&argc<=5,"Usage: IntegrationSetup --repair-registration | --enable [X-Plane folder] | --disable | --uninstall-integration | --apply-graphics-after PID SESSION | --import-nr PID SESSION JOB");
         const std::wstring action=argc==1?L"--repair-registration":argv[1];app::LayerRegistration registration;
+        if(action==L"--retire-guide"){
+            graphics::require(argc==4,"Previous guide version and SHA-256 required");
+            app::retirePreviousGuide(root,argv[2],argv[3]);return 0;
+        }
         if(action==L"--repair-registration"){
             graphics::require(argc<=2,"Registration repair does not accept another installation path");
             auto p=launcher::load(root/L"settings.ini");
@@ -31,6 +36,12 @@ int wmain(int argc,wchar_t **argv){
             app::waitAndApplyGraphics(root,DWORD(pid),argv[3]);return 0;
         }
         graphics::require(argc<=3,"Unexpected integration setup argument");
+        if(action==L"--uninstall-integration"){
+            graphics::require(argc==2,"Uninstall uses this installation's saved simulator only");
+            graphics::ensureSimulatorClosed();
+            const auto p=launcher::load(root/L"settings.ini");
+            registration.disable(root);app::removeOwnedPlugin(root,p.simulator);return 0;
+        }
         if(action==L"--disable"){registration.disable(root);return 0;}
         graphics::require(action==L"--enable","Unknown integration setup operation");
         graphics::ensureSimulatorClosed();
