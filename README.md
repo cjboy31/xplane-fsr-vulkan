@@ -20,16 +20,23 @@ product, and is not a complete solution to ghosting or stutter.
 
 ## Downloads and current source
 
-**Windows 0.7.2-alpha: in-sim controls preview and performance/memory fixes.**
-Use the [Normal release](https://github.com/cjboy31/xplane-fsr-vulkan/releases/tag/v0.7.2-alpha).
+**Windows 0.7.3-alpha: shared renderer selection with independent Native AA.**
+Use the [Normal release](https://github.com/cjboy31/xplane-fsr-vulkan/releases/tag/v0.7.3-alpha).
 In full setup, select your simulator and enable in-sim integration. Then launch
 normally and open **Plugins > FSR 3/4 + Frame Gen**. The desktop application is
 an **optional secondary interface**, retained for updates, guide playback and
 full diagnostics. Both interfaces share saved choices. Existing automatic
 updates refresh an enabled integration; desktop-only users run full setup once
-to opt in. See [current instructions](docs/INSTALLATION-0.7.2.txt),
+to opt in. See [current instructions](docs/INSTALLATION-0.7.3.txt),
 [panel limits](docs/IN-SIM-PLUGIN.md) and [measured CPU findings](docs/CPU-PERFORMANCE.md).
 Third-party launcher combinations and full in-sim feature parity remain under test.
+
+If both mods are installed, update Native AA to 0.3.0 and FSR to 0.7.3 Normal.
+Choose **Rendering > Renderer** here or the **Renderer** tab in Native AA, then
+close X-Plane normally and restart. Only the selected renderer processes the
+session; each mod keeps its own quality/graphics choices. See
+[renderer selection](docs/RENDERER-SELECTION.md). Native AA has separate
+[Windows alpha and Linux beta downloads](https://github.com/cjboy31/make-xp-anti-aliasing-great-again/releases).
 
 **Normal includes all current rendering features.** Both channels
 include FSR 3/4, independent neural rendering, frame generation and optional
@@ -50,9 +57,9 @@ broader hardware, display and long-flight quality remain unverified.
 The [async FG investigation](docs/ASYNC-FRAME-GENERATION.md) includes controlled
 results and developer test commands; it does not enable async in the launcher.
 
-- **Windows Normal (recommended):** [0.7.2-alpha installer and instructions](https://github.com/cjboy31/xplane-fsr-vulkan/releases/tag/v0.7.2-alpha). All current NR, FG and compatibility features. NR + FG requires explicit opt-in and compatible hardware/model. Start with FG Off and one NR pass.
+- **Windows Normal (recommended):** [0.7.3-alpha installer and instructions](https://github.com/cjboy31/xplane-fsr-vulkan/releases/tag/v0.7.3-alpha). All current NR, FG and compatibility features plus shared Native AA selection. NR + FG requires explicit opt-in and compatible hardware/model. Start with FG Off and one NR pass.
 - **Windows Experimental:** [0.7.1-experimental.1 installer](https://github.com/cjboy31/xplane-fsr-vulkan/releases/tag/v0.7.1-experimental.1). Same current feature set; future development track. Switch builds through **Updates / Channel**.
-- **Feature video:** [Watch or download the 0.7.1 guide](https://github.com/cjboy31/xplane-fsr-vulkan/releases/download/v0.7.1-alpha/XPlane-FSR3-4-0.7.1-alpha-Feature-Guide.mp4). Explains live NR order/controls, FG choices, startup behavior and logs, with captions and immediate Skip. [Versioned-video workflow](docs/FEATURE-VIDEOS.md).
+- **Feature video:** [Watch or download the 0.7.3 guide](https://github.com/cjboy31/xplane-fsr-vulkan/releases/download/v0.7.3-alpha/XPlane-FSR3-4-0.7.3-alpha-Feature-Guide.mp4). Explains shared renderer selection, retained choices, current status and the required restart, with captions and immediate Skip. [Versioned-video workflow](docs/FEATURE-VIDEOS.md).
 - **Linux:** [Native FSR 3.1 preview downloads](https://github.com/cjboy31/xplane-fsr-vulkan/releases/tag/native-preview-2026.10.29.1) — requires MSAA off and FSR supersampling enabled; real-flight validation is pending.
 - **Mac:** [Universal compatibility-probe download](https://github.com/cjboy31/xplane-fsr-vulkan/releases/tag/native-preview-2026.10.29.1) — diagnostics only; **Mac FSR/Metal rendering is not implemented**.
 - **Combined Linux/Mac RAR:** [Download the native preview package](https://github.com/cjboy31/xplane-fsr-vulkan/releases/download/native-preview-2026.10.29.1/XPlane-FSR-Native-0.6.2-platform-preview.1.rar). Includes installation instructions and validation notes.
