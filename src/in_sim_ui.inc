@@ -90,9 +90,13 @@ static void setupBind(){
     });
     setupPanel.graphicsSupport(setupQueueGraphics);
     setupPanel.modelSupport(setupImportModel);
-    if(!connected){setupPanel.configurationOnly(setupEnvironment(L"DISABLE_XPFSR24").empty()?"Saved settings recovered. The Vulkan renderer was not loaded at startup. Restart X-Plane after enabling in-sim integration; renderer activation cannot be added to an existing graphics device.":"Native comparison was requested for this launch. Rendering is bypassed; your saved choices remain available for the next session.");return;}
+    auto activationError=setupEnvironment(L"XPFSR24_ACTIVATION_ERROR");
+    if(!connected){
+        if(!activationError.empty())setupPanel.configurationOnly("Startup bypass: "+insim::utf8(activationError)+". Saved settings retained; correct the setup and restart X-Plane.",true);
+        else setupPanel.configurationOnly(setupEnvironment(L"DISABLE_XPFSR24").empty()?"Saved settings recovered. The Vulkan renderer was not loaded at startup. Enable in-sim integration for this simulator, then restart X-Plane.":"Native comparison was requested for this launch. Rendering is bypassed; your saved choices remain available for the next session.");
+        return;
+    }
     auto guard=setupEnvironment(L"XPFSR24_FG_GUARD");if(!guard.empty())setupPanel.notice=insim::utf8(guard);
-    auto activationError=setupEnvironment(L"XPFSR24_ACTIVATION_ERROR");if(!activationError.empty())setupPanel.notice="Renderer bypassed: "+insim::utf8(activationError)+". Correct the saved profile here for next launch.";
     auto pending=setupEnvironment(L"XPFSR24_PENDING_GRAPHICS");if(!pending.empty()&&activationError.empty())setupPanel.notice=insim::utf8(pending);
 }
 static void setupPoll(){
@@ -135,8 +139,7 @@ static void setupDraw(XPLMWindowID h,void*) noexcept{try{
     glBegin(GL_QUADS);glVertex2i(left,top);glVertex2i(right,top);glVertex2i(right,bottom);glVertex2i(left,bottom);glEnd();
     for(const auto &item:setupPanel.view(width,height)){
         const auto &r=item.rect;const float x=float(left+r.x),y=float(top-r.y);
-        if(r.y==height-102){setupWrapped(int(x),int(y)-14,r.w,item.text,2);continue;}
-        if(item.widget==insim::Widget::Label&&r.h>20){setupWrapped(int(x),int(y)-14,r.w,item.text,3);continue;}
+        if(item.widget==insim::Widget::Label&&r.h>20){setupWrapped(int(x),int(y)-14,r.w,item.text,std::max(1,r.h/17));continue;}
         if(item.widget==insim::Widget::Toggle){
             const float tx=x+r.w-52,ty=y-(r.h-24)/2;
             glColor4f(item.selected?.025f:.12f,item.selected?.52f:.16f,item.selected?.59f:.22f,1);setupRound(tx,ty,48,24,12);
@@ -155,7 +158,6 @@ static void setupDraw(XPLMWindowID h,void*) noexcept{try{
         }
     }
     if(setupPanel.helpField>=0)setupWrapped(left+24,top-insim::contentTop-62,width-48,setupPanel.help(),std::max(1,(height-insim::contentTop-198)/17));
-    else setupWrapped(left+24,bottom+69,width-48,setupPanel.dropdownOpen?"Choose an option. Scroll to reveal more choices; Back returns without changing the selection.":setupPanel.help(),3);
     if(setupPanel.helpField<0&&(setupPanel.dropdownOpen?setupPanel.maxDropdownScroll(height):setupPanel.maxScroll(height))>0){
         const int track=std::max(1,height-insim::contentTop-insim::footerHeight),maximum=setupPanel.dropdownOpen?setupPanel.maxDropdownScroll(height):setupPanel.maxScroll(height),thumb=std::max(24,track*track/(track+maximum));
         glColor4f(.12f,.65f,.75f,1);int y=insim::contentTop+(track-thumb)*(setupPanel.dropdownOpen?setupPanel.dropdownScroll:setupPanel.scroll)/std::max(1,maximum);

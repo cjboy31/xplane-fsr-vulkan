@@ -40,12 +40,32 @@ remain relevant. The mod does not force private texture-pager controls.
   no FG presenter was requested. An FG session retains shared output/depth/motion
   resources until its existing presentation drain; its work can outlive the
   application's source-frame fence.
-- Without an FG presenter, keep the 12 most recent submitted private frame
-  caches per queue and retire colder completed one-time recordings. This bounds
+- If a successfully rerecorded command buffer no longer uses private FSR work,
+  discard its obsolete frame cache at End. Partial SDK failures and FG sessions
+  are excluded. This handles command buffers reused for unrelated simulator work.
+- Without an FG presenter, adapt the submitted private frame-cache allowance
+  to image size and heap budget: target 1/16 of the heap budget, bounded to
+  128–512 MiB, retaining 3–12 recent frames per queue. At a roughly 150 MiB 4K
+  frame, this retains three eligible caches instead of twelve. It is a target,
+  not a hard bound on in-flight work or all plugin memory. Retire colder completed one-time recordings. This bounds
   historical caches rather than accumulating full-resolution private images
   for every command buffer the simulator keeps. Outstanding work is never
   evicted. An FG session needs its presentation drain before shared output
   buffers can be reclaimed and is deliberately excluded from this cache cap.
+- NR pauses at low runtime texture headroom, releasing its sessions without
+  changing saved choices. It resumes only after the reserve plus the estimated
+  model need fit again, providing hysteresis instead of repeatedly rebuilding
+  at the threshold. The runtime gate is reported separately from the On switch.
+- New private FSR frames and upscaler contexts have their own pre-allocation
+  headroom check. Refusal retains the native simulator pass, retires unused
+  caches and reports the reason. Existing resolution contexts were already
+  bounded to two; this change does not claim their SDK memory is measured by
+  the private-image counter.
+- Preserved scene-depth images have an admission check using their actual
+  allocation requirements. Failures before capture commands are recorded keep
+  the native simulator work valid. Cold completed depth-capture caches are
+  retired alongside frame caches, and diagnostics count their unique allocation
+  bytes separately. NR also releases when the FSR renderer becomes unavailable.
 - Before preparing a model, the adapter queries `VK_EXT_memory_budget` where
   available. A conservative size estimate plus texture reserve must fit the
   largest device-local heap's reported remaining budget. The reserve is 10% of
@@ -57,8 +77,8 @@ remain relevant. The mod does not force private texture-pager controls.
   preference is silently reduced. NR status distinguishes releasing resources
   from model resources released.
 - Periodic renderer diagnostics report driver heap usage/budget and cached
-  private frame image/NR scratch allocations. The image totals explicitly
-  exclude SDK arenas, captured depth and simulator textures.
+  private frame image/NR scratch allocations plus unique preserved-depth images.
+  These image totals explicitly exclude SDK arenas and simulator textures.
 
 CPU tests exercise live owners, delayed destruction, non-overlapping profile
 preparation, Off during construction, stale-result cancellation, rapid edits,
@@ -67,3 +87,9 @@ must still measure memory before NR, after profile changes and after Off, and
 confirm whether the same ground textures recover. These tests alone do not
 establish a visual fix. One pass still costs less than three; model appearance
 changes can soften details even with ample VRAM.
+
+The mod can limit its own allocations and stop requesting expensive processing
+under pressure. It cannot guarantee that the simulator, scenery, other plugins,
+driver or other applications never exhaust memory. Report measured heap usage,
+private cache size, active processing and texture quality together; a selected
+NR option alone does not prove NR was applied.

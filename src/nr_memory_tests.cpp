@@ -21,6 +21,11 @@ int main(){try{
     need(!completedOneTimeRecording(true,true,true,4,5),"New recording reclaimed by an old completion fence");
     need(coldFrameCutoff({60,10,20,50,30,40},3)==40,"Frame cache did not retain its three newest recordings");
     need(coldFrameCutoff({60,10,20},3)==0,"Small frame cache was evicted unnecessarily");
+    need(unusedPrivateFrame(true,false,false,false),"Unused rerecorded frame cache retained");
+    need(!unusedPrivateFrame(false,false,false,false)&&!unusedPrivateFrame(true,true,false,false)&&!unusedPrivateFrame(true,false,true,false)&&!unusedPrivateFrame(true,false,false,true),"Failed/used/FG frame resources discarded");
+    need(frameCacheKeep(32*Gib,150*MiB)==3&&frameCacheKeep(8*Gib,150*MiB)==3,"4K private cache not bounded near three frames");
+    need(frameCacheKeep(8*Gib,40*MiB)==12&&frameCacheKeep(2*Gib,40*MiB)==3,"Cache target did not adapt to frame size and heap budget");
+    need(!profileFits(8*Gib,7*Gib,estimatedFrameBytes(3840,2160,3840,2160)+estimatedUpscalerBytes(3840,2160,3840,2160)),"Low-memory heap admitted a large new FSR allocation");
     need(!profileFits(32*Gib,31*Gib,estimatedProfileBytes(2953,1661,67,3)),"Nearly full heap admitted NR");
     need(profileFits(32*Gib,20*Gib,estimatedProfileBytes(2953,1661,67,3)),"Headroom-rich heap rejected NR");
     need(!profileFits(Gib,2*Gib,MiB),"Over-budget heap underflow");

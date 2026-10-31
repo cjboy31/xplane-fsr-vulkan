@@ -4,11 +4,17 @@
 namespace app {
 inline launcher::Preferences runningProfile(const launcher::Preferences &saved,const graphics::Options &current,bool obsLoaded){
     auto p=automaticCaptureProfile(saved,obsLoaded);
-    // Pending display/AA edits are next-session intent. They must not switch
-    // off reconstruction that can run on this session's actual simulator input.
-    // The saved profile and simulator preferences remain untouched.
+    // X-Plane or another launcher can change input scale independently of our
+    // pending flag. Always match the running mode to the actual source while
+    // preserving the provider family, saved intent and simulator preferences.
     p.manualPending=false;
-    if(p.mode&&saved.manualPending)p.mode=(p.mode>=3?3:1)+(current.scale>0?1:0);
+    if(p.mode>=1&&p.mode<=4)p.mode=(p.mode>=3?3:1)+(current.scale>0?1:0);
     return p;
+}
+inline std::wstring runningGraphicsNotice(const launcher::Preferences &saved,const launcher::Preferences &running){
+    if(saved.mode!=running.mode)return running.mode==1||running.mode==3?
+        L"Running Native AA at X-Plane's current full input scale. Saved upscaling choice retained; use Image quality and Apply after exit to change the input scale.":
+        L"Running FSR upscaling at X-Plane's current reduced input scale. Saved Native AA choice retained; select Full input and Apply after exit for Native AA.";
+    return saved.manualPending?L"FSR follows the current simulator input scale. Your pending graphics choices are retained; use Apply after exit to apply them.":L"";
 }
 } // namespace app

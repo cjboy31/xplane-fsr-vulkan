@@ -17,6 +17,19 @@ int wmain(int argc,wchar_t **argv){try{
     auto running=app::runningProfile(pending,graphics::Options{1,0,2,0,0},false);
     check(running.mode==4&&!running.manualPending&&running.frameGeneration==3&&pending.mode==3&&pending.manualPending,"Pending graphics disabled FSR, reset FG or changed saved intent");
     check(app::runningProfile(pending,graphics::Options{},false).mode==3,"Current full scale did not choose Native AA while graphics are pending");
+    // Regression: a cloud/native-AA choice can outlive the pending flag, or
+    // X-Plane/another launcher can independently change the source scale.
+    for(int mode=0;mode<=4;++mode)for(int scale=0;scale<=4;++scale)for(bool queued:{false,true}){
+        auto saved=p;saved.mode=mode;saved.manualPending=queued;
+        auto before=launcher::serialized(saved);auto actual=app::runningProfile(saved,graphics::Options{1,0,scale,0,0},false);
+        const int expected=mode?(mode>=3?3:1)+(scale>0?1:0):0;
+        check(actual.mode==expected&&!actual.manualPending&&actual.frameGeneration==saved.frameGeneration&&actual.neuralRendering==saved.neuralRendering&&actual.nr.value==saved.nr.value,"Actual input adaptation changed provider family, NR or FG");
+        check(launcher::serialized(saved)==before,"Runtime adaptation mutated saved intent");
+        auto notice=app::runningGraphicsNotice(saved,actual);
+        check(!notice.empty()==(queued||mode!=expected),"Runtime adaptation did not explain its effective mode");
+        check(app::runningProfile(saved,graphics::Options{1,0,scale,0,0},true).frameGeneration==0,"Input adaptation bypassed capture guard");
+    }
+    for(int mode:{-1,5}){auto invalid=p;invalid.mode=mode;rejects([&]{app::validateSessionProfile(app::runningProfile(invalid,graphics::Options{},false));});}
     for(auto name:{L"DISABLE_XPFSR24",L"VK_INSTANCE_LAYERS",L"XPFSR24_RUNTIME",L"XPFSR24_SETTINGS"})SetEnvironmentVariableW(name,nullptr);
     check(!app::automaticHost(root,root/L"sim/X-Plane.exe"),"Activation enabled without opt-in");
     launcher::writeSetting(L"InSim",L"Enabled",L"1",(root/L"settings.ini").c_str());

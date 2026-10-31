@@ -30,4 +30,13 @@ inline uint64_t coldFrameCutoff(std::vector<uint64_t> recordings,size_t keep=12)
     keep=std::max(size_t(1),keep);if(recordings.size()<=keep)return 0;
     auto cutoff=recordings.end()-keep;std::nth_element(recordings.begin(),cutoff,recordings.end());return *cutoff;
 }
+inline bool unusedPrivateFrame(bool ended,bool processed,bool failed,bool frameGeneration){return ended&&!processed&&!failed&&!frameGeneration;}
+inline uint64_t frameCacheTargetBytes(uint64_t budget){return budget?std::max(128*MiB,std::min(512*MiB,budget/16)):256*MiB;}
+inline size_t frameCacheKeep(uint64_t budget,uint64_t largestFrame){return largestFrame?size_t(std::clamp(frameCacheTargetBytes(budget)/largestFrame,uint64_t(3),uint64_t(12))):12;}
+inline uint64_t estimatedFrameBytes(uint32_t rw,uint32_t rh,uint32_t ow,uint32_t oh){
+    return saturatedAdd(4*MiB,saturatedAdd(saturatedMultiply(uint64_t(rw)*rh,32),saturatedMultiply(uint64_t(ow)*oh,16)));
+}
+inline uint64_t estimatedUpscalerBytes(uint32_t rw,uint32_t rh,uint32_t ow,uint32_t oh){
+    return saturatedAdd(384*MiB,saturatedAdd(saturatedMultiply(uint64_t(rw)*rh,16),saturatedMultiply(uint64_t(ow)*oh,8)));
+}
 } // namespace xpfsr::nr

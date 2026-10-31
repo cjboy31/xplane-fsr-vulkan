@@ -29,6 +29,8 @@ inline std::string valueName(const Controls &c,Field f){
 struct Rect {int x{},y{},w{},h{};bool contains(int a,int b)const{return a>=x&&a<x+w&&b>=y&&b<y+h;}};
 enum class Kind {Tab,Processing,Mode,FrameGen,NRField,Budget,Help,Close,Preset,Graphics,ApplyGraphics,OpenChoice,ChooseOption,CloseChoice,FGToggle,FGProvider,ImportModel,CloudPreset};
 inline constexpr int contentTop=160, footerHeight=120, modelSetupHeight=132;
+inline Rect footerNotice(int width,int height){return {24,height-112,width-48,34};}
+inline Rect footerGuidance(int width,int height){return {24,height-62,width-48,51};}
 enum class Widget {Label,Button,Toggle,Slider,Choice};
 struct Action {Kind kind;int field{},delta{};};
 struct Item {Rect rect;std::string text;bool button{},selected{};Action action{Kind::Help,-1,0};Widget widget{Widget::Label};int value{},minimum{},maximum{100};};
@@ -54,7 +56,7 @@ public:
     }
     bool configured()const{return !file.empty();}
     bool rendererLinked()const{return configured()&&rendererConnected;}
-    void configurationOnly(const std::string &reason){rendererConnected=false;liveNR=false;sessionFG=false;activity="RENDERER NOT LOADED - next-session settings available";nrStatus="Not running in this session";notice=reason;}
+    void configurationOnly(const std::string &reason,bool activationBypassed=false){rendererConnected=false;liveNR=false;sessionFG=false;activity=activationBypassed?"RENDERER BYPASSED - see startup reason below":"RENDERER NOT LOADED - next-session settings available";nrStatus="Not running in this session";notice=reason;}
     void graphicsSupport(std::function<void()> callback){queueGraphics=std::move(callback);}
     void modelSupport(std::function<void()> callback){importModel=std::move(callback);}
     void refresh(){if(configured())choices=launcher::load(file);}
@@ -100,7 +102,7 @@ public:
     }
     void observe(const app::Telemetry &s,uint64_t now){
         if(!configured()){activity="SETUP NOT LINKED - renderer not confirmed";return;}
-        if(!rendererConnected){activity="RENDERER NOT LOADED - next-session settings available";return;}
+        if(!rendererConnected)return; // Retain the specific missing/bypassed startup state.
         if(sawStatus&&s.recordings>previousRecords)lastProgress=now;previousRecords=s.recordings;sawStatus=true;telemetry=s;
         if(!choices.enabled)activity="PROCESSING PAUSED";
         else if(lastProgress&&now>=lastProgress&&now-lastProgress<3000)activity=s.active?"FSR ACTIVE - renderer confirmed":"RENDERER CONFIRMED - processing protected / waiting";
@@ -261,7 +263,8 @@ public:
         // Only fully visible controls are clickable. Long labels/help are clipped
         // and wrapped by the XPLM drawing adapter inside the panel's content area.
         out.erase(std::remove_if(out.begin(),out.end(),[&](const Item&i){return i.rect.x<0||i.rect.y<0||i.rect.x+i.rect.w>width||i.rect.y+i.rect.h>height||(i.rect.y>=top&&i.rect.y+i.rect.h>bottom);}),out.end());
-        text(24,height-102,width-48,notice.empty()?"Saved automatically. The desktop app is an optional secondary interface.":notice);
+        out.push_back({footerNotice(width,height),notice.empty()?"Saved automatically. The desktop app is an optional secondary interface.":notice});
+        if(helpField<0)out.push_back({footerGuidance(width,height),dropdownOpen?"Choose an option. Scroll to reveal more choices; Back returns without changing the selection.":help()});
         return out;
     }
 };

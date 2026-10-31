@@ -146,6 +146,18 @@ but must not replace a user's existing VkConfig or loader configuration.
 
 ## Compatibility checks required before shipping
 
+Automatic startup matches Native AA versus upscaling to X-Plane's actual input
+scale, preserving the selected FSR family and saved graphics/NR/FG choices.
+This also covers input changes made outside our panel or after the pending flag
+was cleared. A temporary running-mode adjustment is explained in the panel;
+it does not rewrite simulator resolution or UI size. Select Full input and
+Apply after exit to use a saved Native AA choice with full scene input.
+FXAA and other incompatible renderer combinations still require correction.
+
+If activation is refused, the panel retains the actual startup reason instead
+of reporting every failure as a missing layer. Its wrapped status and guidance
+have separate footer regions, including at the minimum supported window size.
+
 - Launch X-Plane directly, via this launcher and via a supported third-party
   launcher; confirm the same selected installation and fresh renderer session.
 - Test an external drive and a non-default install path, a disconnected drive,

@@ -11,7 +11,7 @@ int wmain(int argc,wchar_t**argv){try{
     insim::Panel disconnected;
     for(auto size:{std::pair{640,480},std::pair{880,740}}){for(const auto &item:disconnected.view(size.first,size.second)){
         check(!item.button||item.action.kind==insim::Kind::Close||item.action.kind==insim::Kind::Tab,"Unlinked panel displayed clickable rendering settings");
-        if(item.widget==insim::Widget::Label&&item.rect.h>20)check(item.rect.y>=insim::contentTop&&item.rect.y+item.rect.h<=size.second-insim::footerHeight,"Connection guidance overlaps the footer");}}
+        if(item.widget==insim::Widget::Label&&item.rect.h>20&&item.rect.y<size.second-insim::footerHeight)check(item.rect.y>=insim::contentTop&&item.rect.y+item.rect.h<=size.second-insim::footerHeight,"Connection guidance overlaps the footer");}}
     auto sim=root/L"selected-sim";std::filesystem::create_directories(sim);graphics::write(sim/L"X-Plane.exe","fixture");
     auto installed=root/L"installed";std::filesystem::create_directories(installed/L"auto");auto installedFile=installed/L"settings.ini",manifest=installed/L"auto/XPFSR24Implicit.json";
     auto installChoices=initial;installChoices.simulator=sim.wstring();launcher::save(installedFile,installChoices);launcher::writeSetting(L"InSim",L"Enabled",L"1",installedFile.c_str());graphics::write(manifest,"fixture");
@@ -23,6 +23,15 @@ int wmain(int argc,wchar_t**argv){try{
     insim::ConfigurationSession only;auto onlyToken=only.open(installed);auto fresh=graphics::read(installed/L"logs/renderer.log");check(graphics::read(installed/L"logs/renderer.log.previous")=="old renderer sentinel"&&fresh.find("plugin-only")!=std::string::npos&&fresh.find(onlyToken)!=std::string::npos,"Plugin-only session retained stale renderer logs");
     insim::ConfigurationSession second;check(second.open(installed)!=onlyToken&&graphics::read(installed/L"logs/renderer.log")==fresh&&only.open(installed)==onlyToken,"A second configuration session or repeated poll erased active diagnostics");
     disconnected.bind(installedFile,nullptr,false,false);disconnected.configurationOnly("Renderer absent; saved settings recovered");app::Telemetry absent{};absent.active=1;absent.recordings=100;disconnected.observe(absent,1000);++absent.recordings;disconnected.observe(absent,1100);check(disconnected.activity.find("NOT LOADED")!=std::string::npos&&!disconnected.rendererLinked(),"Recovered settings falsely confirmed rendering");
+    disconnected.configurationOnly("Startup bypass: actual activation failure",true);disconnected.observe(absent,1200);
+    check(disconnected.activity.find("BYPASSED")!=std::string::npos&&disconnected.notice.find("actual activation failure")!=std::string::npos&&!disconnected.rendererLinked(),"Startup bypass was mislabeled as a missing layer");
+    for(auto size:{std::pair{640,480},std::pair{880,740},std::pair{1280,900}}){
+        auto notice=insim::footerNotice(size.first,size.second),guidance=insim::footerGuidance(size.first,size.second);
+        check(notice.y>=size.second-insim::footerHeight&&notice.y+notice.h+12<=guidance.y&&guidance.y+guidance.h<=size.second-8,"Wrapped footer messages overlap or escape the panel");
+        bool sawNotice=false,sawGuidance=false;
+        for(auto &item:disconnected.view(size.first,size.second)){sawNotice|=item.rect.y==notice.y&&item.rect.h==34&&item.text==disconnected.notice;sawGuidance|=item.rect.y==guidance.y&&item.rect.h==51;}
+        check(sawNotice&&sawGuidance,"Footer drawing bypassed the bounded wrapped layout");
+    }
     std::wstring name=L"Local\\XPFSRPanelTest-"+std::to_wstring(GetCurrentProcessId());xpfsr::nr::ControlChannel writer,reader;
     check(writer.create(name.c_str(),initial.nr)&&reader.open(name.c_str()),"NR IPC attach");int publications=0;
     insim::Panel panel;panel.bind(file,&writer,true,false,[&](const auto&){++publications;});

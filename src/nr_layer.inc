@@ -24,6 +24,7 @@ class NeuralRenderer {
     bool featureSupport{},frameFailed{},processingAllowed=true,interrupted=true,resetHistory=true;
     std::mutex messageLock;
     std::string message="NR requested; waiting for an eligible scene";
+    std::string processingPauseReason="FSR processing disabled";
     xpfsr::nr::ProfileSessions<Job,Session> sessions{
         [this](const Job&job){return prepare(job);},[this](std::string text){note(std::move(text));}};
     uint64_t lastRecord{},lastCamera{},records{},lastReport{};
@@ -70,12 +71,13 @@ public:
         }
         sessions.enable(processingAllowed&&featureSupport&&!frameFailed&&controls[xpfsr::nr::Enabled]&&controls[xpfsr::nr::Intensity]);
         if(!controls[xpfsr::nr::Enabled]||!controls[xpfsr::nr::Intensity])note(sessions.released()?"NR Off: model GPU resources released; original FSR input retained":"NR Off: original FSR input retained; releasing model resources after pending GPU owners finish");
-        else if(!processingAllowed)note(sessions.released()?"NR paused with FSR processing disabled; model GPU resources released":"NR paused with FSR processing disabled; releasing model resources after pending GPU owners finish");
+        else if(!processingAllowed)note("NR paused: "+processingPauseReason+(sessions.released()?"; model GPU resources released":"; releasing model resources after pending GPU owners finish"));
         else if(!featureSupport)note("NR unavailable: required Vulkan features were not enabled");
     }
-    bool enabled(){poll();return controls[xpfsr::nr::Enabled]&&controls[xpfsr::nr::Intensity];}
+    bool enabled(){poll();return processingAllowed&&featureSupport&&!frameFailed&&controls[xpfsr::nr::Enabled]&&controls[xpfsr::nr::Intensity];}
     bool retiring()const{return sessions.retiring();}
-    void processingEnabled(bool enabled){if(processingAllowed!=enabled)interrupted=resetHistory=true;processingAllowed=enabled;poll();}
+    void processingEnabled(bool enabled,const char*why="FSR processing disabled"){if(processingAllowed!=enabled)interrupted=resetHistory=true;processingPauseReason=why;processingAllowed=enabled;poll();}
+    uint64_t memoryEstimate(uint32_t rw,uint32_t rh,uint32_t ow,uint32_t oh)const{return xpfsr::nr::estimatedProfileBytes(controls[xpfsr::nr::Order]?ow:rw,controls[xpfsr::nr::Order]?oh:rh,controls[xpfsr::nr::Scale],controls[xpfsr::nr::Passes]);}
     bool allowFG()const{return controls[xpfsr::nr::AllowFG]!=0;}
     bool fullScene()const{return controls[xpfsr::nr::Scope]!=0;}
     bool afterUpscaling()const{return controls[xpfsr::nr::Order]!=0;}

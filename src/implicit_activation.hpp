@@ -64,11 +64,11 @@ public:
             const bool captureLoaded=GetModuleHandleW(L"graphics-hook64.dll")!=nullptr;
             auto current=saved.mode?graphics::current(saved.simulator):graphics::Options{};
             auto p=runningProfile(saved,current,captureLoaded);validateSessionProfile(p);
-            setEnvironment(L"XPFSR24_PENDING_GRAPHICS",saved.manualPending?L"FSR follows the current simulator input scale. Your pending graphics choices are retained; use Apply after exit to apply them.":L"");
+            setEnvironment(L"XPFSR24_PENDING_GRAPHICS",runningGraphicsNotice(saved,p));
             setEnvironment(L"XPFSR24_FG_GUARD",captureLoaded&&saved.frameGeneration?L"FG paused: OBS capture hook was already loaded. Saved FG choice retained. Use the optional desktop launch path for capture compatibility.":L"");
             if(p.mode){
                 graphics::require(current.fxaa==0,"Set FXAA Off in X-Plane for FSR");
-                graphics::require((p.mode==1||p.mode==3)?current.scale==0:current.scale>0,"X-Plane input scale does not match the saved FSR profile");}
+                graphics::require((p.mode==1||p.mode==3)?current.scale==0:current.scale>0,"X-Plane input scale does not match the running FSR mode");}
             graphics::require(!std::filesystem::exists(std::filesystem::path(p.simulator)/L"vulkan-1.dll"),"Another Vulkan proxy is installed");
             for(auto name:{L"LuminaXP",L"MotionVectors"})graphics::require(!std::filesystem::exists(std::filesystem::path(p.simulator)/L"Resources/plugins"/name),"Another reconstruction plugin is installed");
             verifyRuntime(root/L"runtime",effectiveFrameGeneration(p.frameGeneration)!=0);
