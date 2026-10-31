@@ -21,6 +21,8 @@
 #include "session_logs.hpp"
 #include "startup_readiness.hpp"
 #include "renderer_status_file.hpp"
+#include "panel_presence.hpp"
+#include "implicit_activation.hpp"
 #include "temporal_spv.hpp"
 #include "temporal_msaa_spv.hpp"
 #include <algorithm>
@@ -40,6 +42,19 @@
 #include <vulkan/vulkan.h>
 #include <windows.h>
 namespace {
+bool hostActive(){
+    static app::Activation activation;
+    static std::once_flag initialized;
+    std::call_once(initialized,[&]{
+        HMODULE module{};wchar_t path[32768]{};
+        if(GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS|GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                              reinterpret_cast<LPCWSTR>(&hostActive),&module)){
+            auto n=GetModuleFileNameW(module,path,32768);
+            if(n&&n<32768)activation.initialize(std::filesystem::path(std::wstring(path,n)).parent_path().parent_path(),app::processExecutable());
+        }
+    });
+    return activation.active;
+}
 thread_local unsigned sdkNesting = 0;
 struct SdkScope {
     SdkScope() { ++sdkNesting; }
@@ -53,6 +68,10 @@ struct SwapchainGeneration {
     bool retired{};
 };
 std::string requestedFrameGeneration() {
+    if(app::environment(L"XPFSR24_AUTOMATIC")==L"1"&&GetModuleHandleW(L"graphics-hook64.dll")){
+        SetEnvironmentVariableW(L"XPFSR24_FG_GUARD",L"FG paused: OBS capture hook was loaded during Vulkan startup. Saved FG choice retained. Optional desktop launch supports capture compatibility.");
+        return {};
+    }
     if (!app::frameGenerationAvailable || (requestedNeuralRendering()&&!allowNeuralFrameGeneration()))
         return {};
     wchar_t mode[32]{};
@@ -244,7 +263,8 @@ struct Device {
     std::string fgRequested = requestedFrameGeneration();
     std::string fgPresenter = requestedFGPresenter();
     bool fgSynchronized = synchronizedFGPresentation();
-    bool fgFailed{}, fgLiveEnabled = true;
+    bool fgFailed{}, fgLiveEnabled = true, panelOpen{},fgResumeReset{};
+    app::PanelPresenceChannel panelPresence;
     uint32_t fgQueueBase = UINT32_MAX;
     std::array<VkQueue, 4> fgQueues{};
     std::map<VkImage, std::weak_ptr<SwapchainGeneration>> fgBackbuffers;
@@ -325,6 +345,8 @@ struct Device {
     }
     void readControl() {
         auto now = GetTickCount64();
+        const bool visible=panelPresence.visible(GetCurrentProcessId(),now);
+        if(visible!=panelOpen){panelOpen=visible;fgResumeReset=true;}
         if (now - lastControlRead < 100)
             return;
         lastControlRead = now;
@@ -367,6 +389,7 @@ struct Device {
 std::mutex registryLock;
 std::map<void *, std::shared_ptr<Instance>> instances;
 std::map<void *, std::shared_ptr<Device>> devices;
+std::map<void *, PFN_vkGetDeviceProcAddr> passiveDevices;
 std::shared_ptr<Instance> instanceFor(VkInstance i) {
     std::lock_guard<std::mutex> l(registryLock);
     auto p = instances.find(key(i));
@@ -980,7 +1003,7 @@ void stopGenerator(Device &d) {
 }
 void prepareGeneration(Device &d, VkCommandBuffer cb, Command &command, const xpfsr::Frame &frame,
                        uint32_t rw, uint32_t rh, uint32_t ow, uint32_t oh) {
-    if (d.fgRequested.empty() || d.fgFailed || !d.fgCurrent || !d.fgLiveEnabled)
+    if (d.fgRequested.empty() || d.fgFailed || !d.fgCurrent || !d.fgLiveEnabled || d.panelOpen)
         return;
     if(!d.startup.ready){
         strncpy(d.status.fgReason,"FG waiting for initial scene stabilization; real frames presented",159);
@@ -1046,7 +1069,9 @@ void prepareGeneration(Device &d, VkCommandBuffer cb, Command &command, const xp
         camera.right[0] = 1;
     if (camera.forward[0] == 0 && camera.forward[1] == 0 && camera.forward[2] == 0)
         camera.forward[2] = -1;
-    d.frameGenerator->prepare(target->presentation->handle(), frame.sequence, frame, camera);
+    auto source=frame;source.reset|=d.fgResumeReset;
+    d.frameGenerator->prepare(target->presentation->handle(), frame.sequence, source, camera);
+    d.fgResumeReset=false;
     command.fgFrame = d.fgSequence.prepared = frame.sequence;
     ++d.status.fgPrepared;
     if (!d.status.fgActive)
@@ -1816,8 +1841,8 @@ static VKAPI_ATTR VkResult VKAPI_CALL L_CreateInstance(const VkInstanceCreateInf
         instance->next = next;
         std::lock_guard<std::mutex> lock(registryLock);
         instances[key(*out)] = instance;
-        log("Instance created; explicit FSR layer active");
-        if (ci->pApplicationInfo) {
+        if(hostActive())log("Instance created; selected-host FSR layer active");
+        if (hostActive()&&ci->pApplicationInfo) {
             auto &a = *ci->pApplicationInfo;
             log("Host application=%s app_version=%u engine=%s engine_version=%u vulkan_api=%u",
                 a.pApplicationName ? a.pApplicationName : "unknown", a.applicationVersion,
@@ -1832,7 +1857,7 @@ static VKAPI_ATTR void VKAPI_CALL L_DestroyInstance(VkInstance instance,
     if (!state)
         return;
     auto fn = reinterpret_cast<PFN_vkDestroyInstance>(state->next(instance, "vkDestroyInstance"));
-    log("Instance destroyed: %p (host Vulkan lifecycle; processing bypass is not an unload)",reinterpret_cast<void*>(instance));
+    if(hostActive())log("Instance destroyed: %p (host Vulkan lifecycle; processing bypass is not an unload)",reinterpret_cast<void*>(instance));
     {
         std::lock_guard<std::mutex> l(registryLock);
         instances.erase(key(instance));
@@ -1865,6 +1890,11 @@ static VKAPI_ATTR VkResult VKAPI_CALL L_CreateDevice(VkPhysicalDevice physical,
     link->u.pLayerInfo = link->u.pLayerInfo->pNext;
     auto create =
         reinterpret_cast<PFN_vkCreateDevice>(nextInstance(instance->handle, "vkCreateDevice"));
+    if(!hostActive()){
+        auto result=create(physical,ci,allocator,out);
+        if(result==VK_SUCCESS){std::lock_guard<std::mutex> lock(registryLock);passiveDevices[key(*out)]=next;}
+        return result;
+    }
     std::vector<std::unique_ptr<unsigned char[]>> nodes;
     VkBaseOutStructure *first = nullptr;
     VkBaseOutStructure **tail = &first;
@@ -2094,6 +2124,11 @@ static VKAPI_ATTR VkResult VKAPI_CALL L_CreateDevice(VkPhysicalDevice physical,
     state->featuresReady = cloned;
     state->neural.features(neuralSupported);
     state->mode = selectedMode();
+    auto fgGuard=app::environment(L"XPFSR24_FG_GUARD");
+    if(!fgGuard.empty()&&state->fgRequested.empty()){
+        std::string message(fgGuard.begin(),fgGuard.end());
+        strncpy(state->status.fgReason,message.c_str(),159);log("%s",message.c_str());
+    }
     if (!app::frameGenerationAvailable) {
         strncpy(state->status.fgReason,
                 "Suspended in regular releases; native presentation; FSR AA/upscaling retained",
@@ -2170,6 +2205,12 @@ static VKAPI_ATTR VkResult VKAPI_CALL L_CreateDevice(VkPhysicalDevice physical,
 }
 static VKAPI_ATTR void VKAPI_CALL L_DestroyDevice(VkDevice device,
                                                   const VkAllocationCallbacks *allocator) {
+    if(!hostActive()){
+        PFN_vkGetDeviceProcAddr next{};
+        {std::lock_guard<std::mutex> lock(registryLock);auto p=passiveDevices.find(key(device));if(p!=passiveDevices.end()){next=p->second;passiveDevices.erase(p);}}
+        if(next)reinterpret_cast<PFN_vkDestroyDevice>(next(device,"vkDestroyDevice"))(device,allocator);
+        return;
+    }
     auto d = deviceFor(device);
     if (!d)
         return;
@@ -3764,6 +3805,13 @@ extern "C" __declspec(dllexport) VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL
 XP_GetDeviceProcAddr(VkDevice device, const char *name) {
     if (!name)
         return nullptr;
+    if(!hostActive()){
+        if(!strcmp(name,"vkGetDeviceProcAddr"))return reinterpret_cast<PFN_vkVoidFunction>(XP_GetDeviceProcAddr);
+        if(!strcmp(name,"vkDestroyDevice"))return reinterpret_cast<PFN_vkVoidFunction>(L_DestroyDevice);
+        PFN_vkGetDeviceProcAddr next{};
+        {std::lock_guard<std::mutex> lock(registryLock);auto p=passiveDevices.find(key(device));if(p!=passiveDevices.end())next=p->second;}
+        return next?next(device,name):nullptr;
+    }
     if (!strcmp(name, "vkAllocateCommandBuffers"))
         return reinterpret_cast<PFN_vkVoidFunction>(L_AllocateCommandBuffers);
     if (!strcmp(name, "vkGetDeviceQueue"))
@@ -3875,7 +3923,7 @@ XP_GetInstanceProcAddr(VkInstance instance, const char *name) {
     HOOK("vkCreateDevice", L_CreateDevice);
     // Device entry points can also be obtained through the instance resolver.
     if (instance) {
-        auto d = XP_GetDeviceProcAddr(VK_NULL_HANDLE, name);
+        auto d = hostActive()?XP_GetDeviceProcAddr(VK_NULL_HANDLE, name):nullptr;
         if (d)
             return d;
         auto state = instanceFor(instance);

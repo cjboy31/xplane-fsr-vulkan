@@ -15,7 +15,7 @@ static void graphicsMessage(const std::wstring &text, const wchar_t *compact = n
 }
 static void rememberGraphicsBackup(const fs::path &backup) {
     if (!backup.empty())
-        ensure(WritePrivateProfileStringW(L"Graphics", L"LastBackup", backup.c_str(),
+        ensure(launcher::writeSetting(L"Graphics", L"LastBackup", backup.c_str(),
                                           (appDirectory / L"settings.ini").c_str()) != FALSE,
                "Graphics were applied, but the backup location could not be saved in settings.ini. "
                "The backup remains under graphics-backups.");
@@ -33,6 +33,7 @@ static void showGraphicsOptions(const graphics::Options &o) {
 }
 static graphics::Options readGraphicsOptions() {
     graphics::Options o;
+    o.cloudQuality=preferences.manual.cloudQuality;
     o.msaa = int(SendMessageW(msaaBox, CB_GETCURSEL, 0, 0));
     o.fxaa = SendMessageW(fxaaBox, BM_GETCHECK, 0, 0) == BST_CHECKED;
     o.scale = int(SendMessageW(scaleBox, CB_GETCURSEL, 0, 0));

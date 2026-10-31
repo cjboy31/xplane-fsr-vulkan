@@ -17,13 +17,15 @@ $XPlaneSdk=(Resolve-Path -LiteralPath $XPlaneSdk).Path
 $FsrSdk=(Resolve-Path -LiteralPath $FsrSdk).Path
 $root=$PSScriptRoot
 $source=Join-Path $root 'src'
+$sourceSnapshot=@{}
+Get-ChildItem -LiteralPath $source -File -Recurse | ForEach-Object {$sourceSnapshot[$_.FullName]=(Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash}
 $bin=Join-Path $root 'app'
 if($OutputDirectory){$bin=[IO.Path]::GetFullPath($OutputDirectory)}
 if($NeuralRenderingDevelopment -and -not $FrameGenerationDevelopment){throw 'NR development requires the explicit Experimental build flag as well'}
 $build=Join-Path $root 'build'
 [string[]]$channelFlags = if($FrameGenerationDevelopment){@('-DXPFSR_FG_DEVELOPMENT=1')}else{@()}
 if($NeuralRenderingDevelopment){$channelFlags+='-DXPFSR_NR_DEVELOPMENT=1'}
-New-Item -ItemType Directory -Force -Path $bin,$build,(Join-Path $bin 'layer'),(Join-Path $bin 'plugin\64'),(Join-Path $bin 'runtime'),(Join-Path $build 'generated') | Out-Null
+New-Item -ItemType Directory -Force -Path $bin,$build,(Join-Path $bin 'layer'),(Join-Path $bin 'auto'),(Join-Path $bin 'plugin\64'),(Join-Path $bin 'runtime'),(Join-Path $build 'generated') | Out-Null
 foreach($format in @('16','32')){
  $shaderArgs=@('-V','--target-env','vulkan1.2','-S','comp')
  if($format -eq '32'){$shaderArgs+='-DOUTPUT_RGBA32=1'}
@@ -45,8 +47,10 @@ if($LASTEXITCODE -ne 0){throw 'Header generation failed'}
 $includes=@(('-I'+(Join-Path $build 'generated')),('-I'+(Join-Path $VulkanHeaders 'include')),('-I'+(Join-Path $FsrSdk 'Kits\FidelityFX\api\include')),('-I'+(Join-Path $FsrSdk 'Kits\FidelityFX\upscalers\include')),('-I'+(Join-Path $FsrSdk 'Kits\FidelityFX\framegeneration\include')))
 & $Compiler '-std=c++17' '-O2' '-static' '-shared' '-Wl,--no-insert-timestamp' '-DWIN32_LEAN_AND_MEAN' '-DNOMINMAX' @channelFlags @includes (Join-Path $source 'layer.cpp') (Join-Path $source 'layer.def') '-lbcrypt' '-o' (Join-Path $bin 'layer\XPFSR24Layer.dll')
 if($LASTEXITCODE -ne 0){throw 'Layer build failed'}
-& $Compiler '-std=c++17' '-O2' '-static' '-shared' '-Wl,--no-insert-timestamp' '-DWIN32_LEAN_AND_MEAN' '-DNOMINMAX' ('-I'+(Join-Path $XPlaneSdk 'CHeaders\XPLM')) (Join-Path $source 'plugin.cpp') (Join-Path $XPlaneSdk 'Libraries\Win\XPLM_64.lib') '-o' (Join-Path $bin 'plugin\64\win.xpl')
+& $Compiler '-std=c++17' '-O2' '-static' '-shared' '-Wl,--no-insert-timestamp' '-DWIN32_LEAN_AND_MEAN' '-DNOMINMAX' ('-I'+(Join-Path $XPlaneSdk 'CHeaders\XPLM')) (Join-Path $source 'plugin.cpp') (Join-Path $XPlaneSdk 'Libraries\Win\XPLM_64.lib') '-lopengl32' '-lbcrypt' '-o' (Join-Path $bin 'plugin\64\win.xpl')
 if($LASTEXITCODE -ne 0){throw 'Plugin build failed'}
+& $Compiler '-std=c++17' '-O2' '-static' '-municode' '-Wl,--no-insert-timestamp' '-DWIN32_LEAN_AND_MEAN' '-DNOMINMAX' (Join-Path $source 'integration_setup.cpp') '-lbcrypt' '-ladvapi32' '-lcomdlg32' '-o' (Join-Path $bin 'IntegrationSetup.exe')
+if($LASTEXITCODE -ne 0){throw 'Integration setup build failed'}
 if(Test-Path (Join-Path $source 'launcher.cpp')){
  & $Compiler '-std=c++17' '-O2' '-static' '-municode' '-mwindows' '-Wl,--no-insert-timestamp' '-DWIN32_LEAN_AND_MEAN' '-DNOMINMAX' @channelFlags (Join-Path $source 'launcher.cpp') (Join-Path $build 'app-icon.o') '-lcomctl32' '-lshell32' '-lole32' '-lbcrypt' '-lwinhttp' '-lcomdlg32' '-lgdiplus' '-ldwmapi' '-luxtheme' '-loleacc' '-luuid' '-lmfuuid' '-loleaut32' '-o' (Join-Path $bin 'XPlaneFSR24.exe')
  if($LASTEXITCODE -ne 0){throw 'Launcher build failed'}
@@ -69,6 +73,11 @@ if($LASTEXITCODE -ne 0){throw 'Cockpit check build failed'}
  }
 }
 '@ | Set-Content -LiteralPath (Join-Path $bin 'layer\XPFSR24Layer.json') -Encoding utf8
+$implicit=Get-Content -LiteralPath (Join-Path $bin 'layer\XPFSR24Layer.json') -Raw | ConvertFrom-Json
+$implicit.layer.library_path='..\layer\XPFSR24Layer.dll'
+$implicit.layer | Add-Member -NotePropertyName library_arch -NotePropertyValue '64'
+$implicit.layer | Add-Member -NotePropertyName disable_environment -NotePropertyValue @{DISABLE_XPFSR24='1'}
+$implicit | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $bin 'auto\XPFSR24Implicit.json') -Encoding utf8
 & $Compiler '-std=c++17' '-O2' '-static' '-municode' '-Wl,--no-insert-timestamp' '-DWIN32_LEAN_AND_MEAN' '-DNOMINMAX' @includes (Join-Path $source 'framegen_test.cpp') '-o' (Join-Path $bin 'FrameGenCheck.exe')
 if($LASTEXITCODE -ne 0){throw 'Frame generation check build failed'}
 foreach($name in @('amd_fidelityfx_loader_vk.dll','amd_fidelityfx_upscaler_vk.dll','amd_fidelityfx_framegeneration_vk.dll')){
@@ -81,3 +90,7 @@ Write-Output 'Native layer, camera plugin and runtime package built.'
 Copy-Item -LiteralPath (Join-Path $root 'licenses') -Destination $bin -Recurse -Force
 Copy-Item -LiteralPath (Join-Path $root 'LICENSE') -Destination (Join-Path $bin 'LICENSE.txt') -Force
 Copy-Item -LiteralPath (Join-Path $root 'docs\INSTALLATION.md') -Destination (Join-Path $bin 'INSTALLATION-AND-USE.txt') -Force
+$afterSource=@(Get-ChildItem -LiteralPath $source -File -Recurse)
+if($afterSource.Count -ne $sourceSnapshot.Count){throw 'Source files changed during the build. Rebuild before testing or packaging this candidate.'}
+foreach($file in $afterSource){if(-not $sourceSnapshot.ContainsKey($file.FullName) -or (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash -ne $sourceSnapshot[$file.FullName]){throw 'Source changed during the build. Rebuild before testing or packaging this candidate.'}}
+[ordered]@{scope='Compiler inputs under src; no runtime binaries, user data or model weights';algorithm='SHA256';files=@($afterSource | ForEach-Object {[ordered]@{path=[IO.Path]::GetRelativePath($source,$_.FullName).Replace('\','/');sha256=$sourceSnapshot[$_.FullName].ToLowerInvariant()}})} | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $bin 'BUILD-SOURCE.json') -Encoding utf8

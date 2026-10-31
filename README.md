@@ -20,6 +20,12 @@ product, and is not a complete solution to ghosting or stutter.
 
 ## Downloads and current source
 
+**Interface direction (in development):** the in-simulator Plugins panel will
+become the primary interface. The desktop application will remain available
+here as an **optional secondary interface**, sharing the same saved settings.
+The standalone in-sim workflow is not included in the 0.7.1 downloads below;
+see [implementation progress and remaining checks](docs/IN-SIM-PLUGIN.md).
+
 **Windows 0.7.1: update to Normal for all current features.** Both channels
 include FSR 3/4, independent neural rendering, frame generation and optional
 synchronized FG compatibility modes. Normal is recommended; Experimental is

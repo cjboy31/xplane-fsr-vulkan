@@ -4,6 +4,7 @@
 #define XPLM200 1
 #define XPLM210 1
 #define XPLM300 1
+#define XPLM301 1
 #define IBM 1
 #include "cockpit_mesh.hpp"
 #include "shared.hpp"
@@ -22,6 +23,7 @@
 #include <fstream>
 static HANDLE mapping{};
 static app::Shared *shared{};
+#include "in_sim_ui.inc"
 static XPLMDataRef projection{}, world{}, bodyRef{}, widthRef{}, heightRef{}, viewRef{}, pauseRef{},
     externalRef{}, cameraAglRef{}, onGroundRef{};
 static XPLMMenuID menu{};
@@ -58,6 +60,7 @@ static void loadDisplayProfile() {
     }
 }
 static float update(float elapsed, float, int, void *) {
+    setupPresence.setVisible(setupVisible());setupPoll();
     if (loadScreens)
         loadDisplayProfile();
     if (!projection) {
@@ -209,7 +212,12 @@ static float update(float elapsed, float, int, void *) {
     InterlockedIncrement(&shared->cameraSequence);
     return -1;
 }
-static void command(void *, void *) {
+static void command(void *, void *item) {
+    if(reinterpret_cast<intptr_t>(item)==1){setupShow();return;}
+    try{
+        if(!setupPanel.configured())setupBind();
+        if(setupPanel.configured()){setupPanel.act({insim::Kind::Processing});return;}
+    }catch(const std::exception&e){XPLMDebugString((std::string("XPFSR24: processing change failed: ")+e.what()+"\n").c_str());return;}
     if (shared) {
         bool value = !InterlockedCompareExchange(&shared->enabled, 0, 0);
         InterlockedExchange(&shared->enabled, value);
@@ -219,9 +227,9 @@ static void command(void *, void *) {
     }
 }
 PLUGIN_API int XPluginStart(char *name, char *signature, char *description) {
-    strcpy(name, "X-Plane FSR 2.4 Alpha");
+    strcpy(name, "FSR 3/4 + Frame Gen for X-Plane");
     strcpy(signature, "org.xpfsr24.alpha");
-    strcpy(description, "Experimental FSR Vulkan upscaling camera publisher");
+    strcpy(description, "FSR camera metadata and in-simulator setup panel");
     auto key = app::mappingName(GetCurrentProcessId());
     mapping = CreateFileMappingW(INVALID_HANDLE_VALUE, nullptr, PAGE_READWRITE, 0,
                                  sizeof(app::Shared), key.c_str());
@@ -240,9 +248,12 @@ PLUGIN_API int XPluginStart(char *name, char *signature, char *description) {
         shared->tag = app::magic;
         shared->version = app::abi;
         shared->enabled = 1;
+        try{auto settings=setupEnvironment(L"XPFSR24_SETTINGS");if(!settings.empty())shared->enabled=launcher::load(settings).enabled?1:0;}catch(...){}
     }
-    int item = XPLMAppendMenuItem(XPLMFindPluginsMenu(), "FSR 2.4 Alpha", nullptr, 0);
-    menu = XPLMCreateMenu("FSR 2.4 Alpha", XPLMFindPluginsMenu(), item, command, nullptr);
+    setupPresence.create(GetCurrentProcessId());
+    int item = XPLMAppendMenuItem(XPLMFindPluginsMenu(), "FSR 3/4 + Frame Gen", nullptr, 0);
+    menu = XPLMCreateMenu("FSR 3/4 + Frame Gen", XPLMFindPluginsMenu(), item, command, nullptr);
+    XPLMAppendMenuItem(menu,"Open in-sim setup",reinterpret_cast<void*>(1),0);
     XPLMAppendMenuItem(menu, "Enable / disable temporal upscaling", nullptr, 0);
     XPLMDebugString("XPFSR24: alpha camera publisher loaded; Vulkan layer performs upscaling.\n");
     return 1;
@@ -255,6 +266,7 @@ PLUGIN_API int XPluginEnable() {
     return 1;
 }
 PLUGIN_API void XPluginDisable() {
+    setupHide();
     XPLMUnregisterFlightLoopCallback(update, nullptr);
     if (shared) {
         InterlockedIncrement(&shared->cameraSequence);
@@ -263,6 +275,7 @@ PLUGIN_API void XPluginDisable() {
     }
 }
 PLUGIN_API void XPluginStop() {
+    setupStop();
     if (menu)
         XPLMDestroyMenu(menu);
     if (shared)

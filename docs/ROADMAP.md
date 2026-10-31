@@ -2,14 +2,23 @@
 
 ## Next implementation priorities
 
-1. Build an original LuminaXP-style in-simulator setup workflow: an accessible
-   Plugins menu panel, confirmed renderer activity, supported live controls,
-   persistent settings and early activation for third-party launchers. See
+1. Make an original LuminaXP-style in-simulator setup the primary interface:
+   an accessible Plugins menu panel, presets/graphics, live NR controls,
+   models, diagnostics, guides/updates, persistent settings and early activation
+   for direct and third-party launches. Keep the desktop application on GitHub
+   as a clearly labeled **optional secondary interface**, sharing saved choices.
+   No special desktop launch step should be required after installation. See
    [the integration design and required checks](IN-SIM-PLUGIN.md).
 2. After the panel, investigate multi-GPU operation using Lossless Scaling's
    documented behavior as a reference. Evaluate separate render/processing GPU
    selection, cross-device transfer costs, synchronization and fallback. Require
    actual two-GPU validation before advertising compatibility or speed gains.
+3. After in-sim integration, investigate the owner's higher CPU frame time.
+   Compare one reproducible scene with the mod bypassed, FSR only, NR and FG;
+   separate simulator CPU work, driver/queue waits and source/display timing.
+   Include the [Agility SDK research findings](AGILITY-SDK-REVIEW.md): prioritize
+   measured Vulkan batching, allocation/compilation and NR scratch-memory costs
+   before considering a separate Direct3D compute-graph backend.
 
 Neither feature is included in 0.7.1. Implement independently without copying
 restricted reference-mod internals.

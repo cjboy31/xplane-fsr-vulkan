@@ -1,9 +1,80 @@
 # In-simulator controls and third-party launchers
 
-Investigation: 2026-10-30. This is a proposed Windows integration, not a claim
-that Visual Engine or launcher-independent injection is already supported.
+Development: 2026-10-30. The in-sim interface is becoming the primary workflow.
+The desktop application remains available on GitHub as an **optional secondary
+interface**. Both share saved choices. Current public 0.7.1 downloads still use
+the desktop launch workflow; this development branch is not a released claim
+of Visual Engine compatibility or complete in-sim feature parity.
 
-## What is already a plugin
+## Development progress
+
+- Original XPLM floating panel under Plugins, with Rendering, Neural rendering,
+  Diagnostics and Image quality tabs. Toggles handle binary settings; sliders
+  handle numeric NR adjustments; dropdowns handle modes/presets. The FG provider
+  is remembered while its separate On/Off switch is Off. Model/IPC/layout tests
+  cover all 20 NR fields, numeric limits, dropdown scrolling and persistence.
+- Initial real XPLM drawing, help, scrolling, saved scope and live processing
+  bypass/resume were exercised in the owner's LevelUp 737 session. The first
+  window could overlap the top menu; the current build has an internal Close
+  button and more title-bar clearance. The owner subsequently opened the new
+  in-sim model selector, imported two verified models and enabled NR live.
+  Current-session telemetry confirmed full-scene NR before upscaling while FSR
+  continued. This is a functional check, not certification of NR image quality.
+- A separate panel-presence mapping pauses generated frames while controls are
+  visible, preserving the saved FG selection and resetting history on return.
+  Actual GPU resume/composition still needs live verification.
+- Shared settings transactions serialize cross-process writers, merge individual
+  edits and retain unrelated INI sections. Desktop controls refresh panel edits.
+- Automatic Vulkan activation now has exact selected-executable gating, a native
+  disable switch, shared session setup and an inactive pass-through path. CPU
+  tests cover configuration/registry ownership. Unrelated Vulkan resource/device
+  calls passed two lifecycles through both explicit and real implicit discovery,
+  without creating renderer logs. Direct launch reached live FSR on the owner's
+  machine. Visual Engine itself and installer/update wiring remain unverified.
+- Preset/custom AA/output changes can be queued in-sim. A background component
+  waits for the selected simulator's normal exit, then applies supported graphics
+  changes with a backup. Fixtures verify source PID/path/token, abnormal-exit
+  refusal, provider retention and unchanged display geometry for Keep output.
+- Pending graphics edits no longer need to block compatible current input: the
+  running profile follows the actual simulator scale, and retains the saved
+  future choices. A failed selected-host activation gets current-session bypass
+  diagnostics; another session cannot erase the active session's log.
+- Neural rendering now has a model DLL selector backed by a separate native
+  helper, bounded per-job progress and explicit success/cancel/failure messages.
+  The supported user-supplied DLL is read by the pinned extractor, never loaded.
+  Every extracted model is hash-checked before publication. First-time import
+  may add missing model files during a flight; existing differing models cannot
+  be replaced while running. Turn NR Off/On after success to retry preparation.
+  No DLL/model weights are bundled. Desktop import shares the model writer lock.
+  Local real-model fixtures also cover identical reimport without replacement,
+  invalid second-output refusal and verified backups for offline replacement.
+- Budget buttons highlight their current selection, acknowledge repeated clicks
+  and distinguish saved choices from missing-model, Off and preparation states.
+  Extra header spacing separates activity from tabs and settings.
+- Cloud quality and Ultra Quality / Native AA cloud-clarity setups are being
+  added to Image quality. They queue backed-up preference edits after exit,
+  retain the chosen FSR family/FG/NR and leave the engine rendering table alone.
+  See [findings and live-comparison limits](CLOUD-CLARITY.md).
+- Complete diagnostics/log UI, updates and guide playback still
+  require in-sim parity work before release instructions can remove the desktop
+  requirement for all operations. Windows Vulkan is the first target.
+
+## Capture-hook compatibility
+
+The owner's first direct-launch FG test crashed in OBS's installed
+`graphics-hook64.dll`. The desktop path sets OBS's documented disable variable
+before the loader discovers layers. An implicit layer runs after that decision.
+Changing the variable then cannot retroactively remove an already loaded hook.
+
+Automatic activation therefore retains the saved FG choice but bypasses FG when
+the OBS hook is already loaded, including a second check during device startup.
+It leaves global OBS settings/registration untouched. Direct launch with this
+guard reached live FSR on the R9700; full FG with OBS in the automatic path is
+not certified. The optional desktop path remains available for the early
+capture-compatibility environment. Report the bypass in status instead of
+claiming generated frames. See [OBS's layer manifest](https://github.com/obsproject/obs-studio/blob/master/plugins/win-capture/graphics-hook/obs-vulkan64.json).
+
+## Current released plugin
 
 `Resources/plugins/XPFSR24/64/win.xpl` publishes camera metadata using public
 read-only XPLM datarefs and provides an enable/disable menu. The Vulkan layer
@@ -20,7 +91,7 @@ command-buffer integration for this purpose. Laminar's
 supports OpenGL plugin UI even when the simulator renders using Vulkan/Metal;
 that bridge is not access to the simulator's native Vulkan reconstruction pass.
 
-## Recommended design
+## Integration design
 
 Keep the renderer and XPLM control panel as two cooperating components:
 
@@ -68,8 +139,8 @@ but must not replace a user's existing VkConfig or loader configuration.
   alone is therefore not a reliable universal solution.
 - Verify multi-writer IPC and saved-setting synchronization between the
   desktop app and in-sim panel, process exit, plugin disable/re-enable, resize
-  and device loss. The current NR channel assumes one settings writer; do
-  not add a second writer without serializing and merging changes.
+  and device loss. Serialize NR writers and merge saved-setting changes before
+  publishing them so disk and live controls agree.
 - Visual Engine needs its own actual test. Add-on-specific toggles cannot
   establish rendering compatibility. Test cloud/exposure changes, overlays,
   screen restoration and FSR/NR/FG combinations before advertising support.

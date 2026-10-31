@@ -12,9 +12,9 @@ inline Channel loadChannel(const graphics::fs::path &file) {
 }
 inline void saveChannel(const graphics::fs::path &file, Channel selected) {
     auto name = selected == Channel::Experimental ? L"experimental" : L"normal";
-    graphics::require(WritePrivateProfileStringW(L"Updates", L"Channel", name, file.c_str()) != FALSE,
+    graphics::require(launcher::writeSetting(L"Updates", L"Channel", name, file.c_str()) != FALSE,
                       "Could not save the release channel");
-    WritePrivateProfileStringW(nullptr, nullptr, nullptr, file.c_str());
+    launcher::writeSetting(nullptr, nullptr, nullptr, file.c_str());
     graphics::require(loadChannel(file) == selected,
                       "Saved release channel could not be verified");
 }

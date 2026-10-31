@@ -3,6 +3,7 @@
 #include <array>
 #include <cstdint>
 #include <windows.h>
+#include "named_lock.hpp"
 namespace xpfsr::nr {
 enum Field { Enabled, Intensity, Tone, Structure, Skin, Colour, Detail, Highlight,
              History, Style, Scale, Passes, Transfer, Scaler, Model, Mask, Grade, AllowFG, Scope, Order, Count };
@@ -69,14 +70,14 @@ inline bool readControls(SharedControls*p,Controls&result,LONG*revision=nullptr)
  return false;
 }
 class ControlChannel {
- HANDLE handle{};SharedControls*view{};
+ HANDLE handle{};SharedControls*view{};std::wstring writerName;
  public:
  ControlChannel()=default;ControlChannel(const ControlChannel&)=delete;ControlChannel&operator=(const ControlChannel&)=delete;
  ~ControlChannel(){close();}
- void close(){if(view)UnmapViewOfFile(view);if(handle)CloseHandle(handle);view=nullptr;handle=nullptr;}
- bool create(const wchar_t*name,const Controls&c){close();handle=CreateFileMappingW(INVALID_HANDLE_VALUE,nullptr,PAGE_READWRITE,0,sizeof(SharedControls),name);if(!handle)return false;view=static_cast<SharedControls*>(MapViewOfFile(handle,FILE_MAP_ALL_ACCESS,0,0,sizeof(SharedControls)));if(!view){close();return false;}writeControls(view,c);return true;}
- bool open(const wchar_t*name){close();handle=OpenFileMappingW(FILE_MAP_ALL_ACCESS,FALSE,name);if(!handle)return false;view=static_cast<SharedControls*>(MapViewOfFile(handle,FILE_MAP_ALL_ACCESS,0,0,sizeof(SharedControls)));if(!view){close();return false;}return true;}
+ void close(){if(view)UnmapViewOfFile(view);if(handle)CloseHandle(handle);view=nullptr;handle=nullptr;writerName.clear();}
+ bool create(const wchar_t*name,const Controls&c){close();handle=CreateFileMappingW(INVALID_HANDLE_VALUE,nullptr,PAGE_READWRITE,0,sizeof(SharedControls),name);if(!handle)return false;view=static_cast<SharedControls*>(MapViewOfFile(handle,FILE_MAP_ALL_ACCESS,0,0,sizeof(SharedControls)));if(!view){close();return false;}writerName=std::wstring(name)+L"-writers";write(c);return true;}
+ bool open(const wchar_t*name){close();handle=OpenFileMappingW(FILE_MAP_ALL_ACCESS,FALSE,name);if(!handle)return false;view=static_cast<SharedControls*>(MapViewOfFile(handle,FILE_MAP_ALL_ACCESS,0,0,sizeof(SharedControls)));if(!view){close();return false;}writerName=std::wstring(name)+L"-writers";return true;}
  bool read(Controls&c,LONG*rev=nullptr){if(view&&rev&&*rev>=0&&InterlockedCompareExchange(&view->sequence,0,0)==*rev)return false;return readControls(view,c,rev);}
- void write(const Controls&c){writeControls(view,c);}
+ void write(const Controls&c){if(view){app::NamedLock guard(writerName);writeControls(view,c);}}
 };
 }

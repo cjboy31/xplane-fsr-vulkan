@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 // Models are local user assets. The selected NVIDIA DLL is read, never loaded.
-#include "nr_models.hpp"
+#include "nr_model_import.hpp"
 static HWND nrWindow{}, nrText{}, nrImportButton{}, nrCheckButton{};
 static HANDLE nrJob{};
 static bool nrImporting{}, nrModelsKnown{}, nrModelsValid{};
@@ -142,37 +142,8 @@ static void nrFinishJob() {
     std::wstring result;
     try {
         if (nrImporting && code == 0) {
-            bool found = false;
-            const auto data = appDirectory / L"nr/dlssnr-amd";
-            fs::create_directories(data);
-            for (auto name : {L"dlssnr-small.bin", L"dlssnr.bin"}) {
-                const auto source = nrStaging / name, target = data / name;
-                if (!fs::is_regular_file(source))
-                    continue;
-                const auto digest = hash(source);
-                ensure(xpfsr::nr::acceptedModel(!wcscmp(name, L"dlssnr-small.bin"),
-                                                fs::file_size(source), digest),
-                       "Extracted model does not match the pinned model hash");
-                found = true;
-                if (fs::exists(target) && hash(target) != digest) {
-                    const auto backup = data / (std::wstring(name) + L".previous-" +
-                                                wide(hash(target).c_str()) + L".bin");
-                    if (!fs::exists(backup))
-                        fs::copy_file(target, backup);
-                    ensure(hash(backup) == hash(target),
-                           "Previous NR model backup verification failed");
-                }
-                ensure(MoveFileExW(source.c_str(), target.c_str(),
-                                   MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) != FALSE,
-                       "Cannot install the validated local model");
-                ensure(WritePrivateProfileStringW(L"Models", name, wide(digest.c_str()).c_str(),
-                                                  (appDirectory / L"nr/USER-MODELS.ini").c_str()) !=
-                           FALSE,
-                       "Cannot record local model verification");
-            }
-            ensure(found, "The importer did not produce a supported model");
-            if (fs::is_empty(nrStaging))
-                fs::remove(nrStaging);
+            xpfsr::nr::installExtractedModels(appDirectory, nrStaging, true);
+            if (fs::is_empty(nrStaging)) fs::remove(nrStaging);
             nrModelsKnown = false;
             result = nrSetupText();
         } else {

@@ -241,6 +241,7 @@ static void designFocus(HWND h, HWND control) {
 }
 static void createMainControls(HWND hwnd) {
     window = hwnd;
+    lastSubmittedChoices=preferences;submittedChoicesReady=true;
     theme::initialize(hwnd);
     font = theme::fonts[0];
     titleFont = theme::fonts[1];
