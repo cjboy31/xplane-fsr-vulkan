@@ -8,7 +8,7 @@ Laminar Research product.
 
 ## Download and setup
 
-[Windows Normal — recommended](https://github.com/cjboy31/xplane-fsr-vulkan/releases/tag/v0.7.4-alpha)
+[Windows Normal — recommended](https://github.com/cjboy31/xplane-fsr-vulkan/releases/tag/v0.7.5-alpha)
 · [All releases](https://github.com/cjboy31/xplane-fsr-vulkan/releases)
 · [Join Discord](https://discord.gg/yh396QNgHZ)
 
@@ -35,13 +35,14 @@ always clearer. Visual results vary by aircraft, view, graphics card and display
 
 ## Updates and help
 
-Version 0.7.4 replaces the desktop rendering dashboard with a **Plugin Updater**
-for FSR and Native AA. Rendering settings stay in X-Plane. Open **Changelog**
+Version 0.7.5 adds grouped in-sim controls, section timing labels and animated
+tab and switch transitions. The panel follows the Windows Animation effects setting.
+The separate **Plugin Updater** handles updates for FSR and Native AA. Open **Changelog**
 inside the simulator to read changes; startup videos are retired. An optional
 [shadow script](extras/shadows/README.txt) is included separately and starts Off.
 Read the instructions included with your download.
 
-[Setup instructions](docs/INSTALLATION-0.7.4.txt) ·
+[Setup instructions](docs/INSTALLATION.md) ·
 [Report a problem](https://github.com/cjboy31/xplane-fsr-vulkan/issues) ·
 [Discord support](https://discord.gg/yh396QNgHZ)
 

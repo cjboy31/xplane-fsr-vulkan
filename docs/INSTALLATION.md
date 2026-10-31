@@ -1,4 +1,4 @@
-FSR 3/4 + FRAME GEN FOR X-PLANE 12 — 0.7.4-alpha
+FSR 3/4 + FRAME GEN FOR X-PLANE 12 — 0.7.5-alpha
 
 INSTALL OR UPDATE
 1. Close X-Plane normally. Close any plugin updater or test windows.
@@ -18,6 +18,8 @@ Native AA updates also refuse downgrades. Your saved image settings are kept.
 
 Open Changelog in the panel to read changes. No startup video is needed.
 Select ? beside a setting for a short explanation and a starting point.
+Group headings show when changes apply. The Windows Animation effects setting controls
+the opening, tab and switch transitions. Diagnostics opens the FSR log folder.
 
 FIRST SETUP
 - Keep X-Plane FXAA Off when using FSR Native AA or upscaling.

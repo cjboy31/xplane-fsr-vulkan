@@ -1,5 +1,11 @@
 # Changes
 
+## 0.7.5-alpha
+
+- The in-sim panel groups image processing, frame generation, and neural controls. Section headers show when changes apply. Each setting has its own help.
+- Tabs and switches now ease into place. Turn off Windows animation effects for instant changes.
+- Diagnostics opens the installation log folder and remains usable at the minimum window size. Frame counts and session status stay separate from saved choices.
+
 ## 0.7.4-alpha
 
 - Rendering controls stay inside X-Plane. The desktop app is now a plugin updater for FSR and independent Native AA.
