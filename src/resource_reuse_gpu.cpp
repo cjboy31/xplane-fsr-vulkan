@@ -38,6 +38,7 @@ int wmain(){try{
     ReuseFixture f;f.vk.open();auto &vk=f.vk;
     f.device=std::make_unique<Device>();auto &d=*f.device;d.handle=vk.device;d.physical=vk.physical;fixtureNativeDpa=vk.gdpa;d.next=fixtureDpa;d.memory=vk.memory;d.graphicsFamily=vk.family;
     d.instance=std::make_shared<Instance>();d.instance->handle=vk.instance;d.instance->next=vk.gipa;setupPack(d);
+    xpfsr::require(applicationPhysical(d)==vk.physical&&applicationPhysical(d)==vk.physical,"Loader-visible physical UUID mapping/caching failed");
     VkCommandPoolCreateInfo pool{VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO};pool.flags=VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;pool.queueFamilyIndex=vk.family;
     check(vk.dev<PFN_vkCreateCommandPool>("vkCreateCommandPool")(vk.device,&pool,nullptr,&f.pool),"Fixture pool");
     VkCommandBufferAllocateInfo alloc{VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};alloc.commandPool=f.pool;alloc.level=VK_COMMAND_BUFFER_LEVEL_PRIMARY;alloc.commandBufferCount=1;
