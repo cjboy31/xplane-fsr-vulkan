@@ -4,6 +4,7 @@
 #include "frame_sequence.hpp"
 #include "framegen_callback_state.hpp"
 #include "startup_readiness.hpp"
+#include "frame_diagnostics.hpp"
 #include <atomic>
 #include <iostream>
 #include <stdexcept>
@@ -14,6 +15,26 @@ static void expect(bool value, const char *name) {
 }
 int main() {
     try {
+        xpfsr::FrameDiagnostics resetLog;
+        uint64_t detailed{}, resetCount{}, suppressedCount{};
+        for (uint64_t i=1;i<=60000;++i) {
+            if (resetLog.record(i,true,i*16)) {
+                ++detailed;
+                resetCount += resetLog.reportedResets;
+                suppressedCount += resetLog.reportedSuppressed;
+            }
+        }
+        expect(detailed<550,"Reset diagnostics wrote at frame rate");
+        expect(resetCount+resetLog.resets==60000,"Rate-limited diagnostics lost reset counts");
+        expect(suppressedCount+resetLog.suppressed==60000-detailed,"Suppressed reset detail count is wrong");
+        xpfsr::FrameDiagnostics ordinary;
+        expect(ordinary.record(1,false,0)&&!ordinary.record(5,false,1),"Normal diagnostic cadence changed");
+        expect(ordinary.record(1000,false,2),"Periodic diagnostics were suppressed");
+        expect(!ordinary.record(1001,true,3)&&ordinary.record(1002,true,2002),"Reset detail interval is wrong");
+        expect(ordinary.reportedResets==2&&ordinary.reportedSuppressed==1,"Reset summary is incomplete");
+        expect(ordinary.record(1003,true,1),"A clock discontinuity suppressed diagnostics forever");
+        xpfsr::FrameDiagnostics otherDevice;
+        expect(otherDevice.record(7,true,3),"Another device inherited the diagnostic throttle");
         double p[16] = {2, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, -1, 0, 0, .1, 0};
         app::Camera before{}, after{};
         app::StartupReadiness startup;

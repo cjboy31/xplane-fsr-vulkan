@@ -12,6 +12,7 @@
 #include "nr_memory_budget.hpp"
 #include "completed_resource_cache.hpp"
 #include "scene_capture_extent.hpp"
+#include "frame_diagnostics.hpp"
 #include <chrono>
 #include "nr_features.hpp"
 #include <thread>
@@ -253,6 +254,7 @@ struct Device {
     uint64_t retiredImageBytes{},retiredNROwners{};
     xpfsr::SceneCaptureExtents captureExtents;
     uint64_t rejectedCaptureExtents{};
+    xpfsr::FrameDiagnostics frameDiagnostics;
     std::map<VkImage, Depth> depths;
     std::map<VkImage, VkImageLayout> layouts;
     std::map<std::array<uint32_t, 6>, std::unique_ptr<xpfsr::Context>> contexts;
@@ -1569,7 +1571,9 @@ bool replace(Device &d, VkCommandBuffer cb, Command &command) {
                              found->second.create.extent.height == rh &&
                              (depth.colors.count(inView->second.create.image) ||
                               command.depthOrigins[inView->second.create.image].count(image));
-        if(d.fgRequested.empty()&&d.captureExtents.observe(rw,rh,belongs&&depth.cameraCoherent&&depth.epoch==d.camera.frame))d.camera.reset=1;
+        // FG consumes this same validated reconstruction depth. Learning its
+        // dimensions does not change presentation ownership or cache reuse.
+        if(d.captureExtents.observe(rw,rh,belongs&&depth.cameraCoherent&&depth.epoch==d.camera.frame))d.camera.reset=1;
         if (belongs && (!depth.cameraCoherent || depth.epoch != d.camera.frame)) {
             mismatchedScene = true;
             rejectedDepthFrame = depth.epoch;
@@ -1794,8 +1798,10 @@ bool replace(Device &d, VkCommandBuffer cb, Command &command) {
         frame.farPlane = d.camera.farPlane;
         frame.verticalFovRadians = d.camera.verticalFov;
         frame.sequence = d.camera.frame;
-        frame.reset = d.camera.reset || !d.pathReady || d.lastDepth != depth.image ||
-                      d.lastDepthGeneration != d.images.at(depth.image).generation;
+        uint32_t resetSources=(d.camera.reset?1u:0u)|(!d.pathReady?2u:0u)|
+            (d.lastDepth!=depth.image?4u:0u)|
+            (d.lastDepthGeneration!=d.images.at(depth.image).generation?8u:0u);
+        frame.reset = resetSources != 0;
         if (!findProbe(d, depth.image)) {
             if (d.probes.size() >= 16)
                 throw std::runtime_error("Depth probe resize limit reached; restart X-Plane");
@@ -1836,7 +1842,7 @@ bool replace(Device &d, VkCommandBuffer cb, Command &command) {
                 neuralAfter?"after":"before",neuralAfter?ow:rw,neuralAfter?oh:rh);
             d.lastNeuralOrder=int(neuralAfter);
         }
-        frame.reset |= d.neural.consumeReset();
+        if(d.neural.consumeReset()){frame.reset=true;resetSources|=16u;}
         auto applyNeural = [&](OwnedImage &source, OwnedImage &scratch,
                                uint32_t width, uint32_t height, VkFormat format) {
             if (!neuralEnabled) return false;
@@ -1879,7 +1885,7 @@ bool replace(Device &d, VkCommandBuffer cb, Command &command) {
         if(neuralSessionCapable()){
             // FSR must never carry an unenhanced frame's history across NR's
             // activation, a cockpit pause, or an error/resize bypass.
-            if(neuralApplied!=d.previousNeuralApplied)frame.reset=true;
+            if(neuralApplied!=d.previousNeuralApplied){frame.reset=true;resetSources|=32u;}
             d.previousNeuralApplied=neuralApplied;
         }
         context->record(frame);
@@ -1964,18 +1970,20 @@ bool replace(Device &d, VkCommandBuffer cb, Command &command) {
         d.status.outputWidth = ow;
         d.status.outputHeight = oh;
         ++d.status.recordings;
-        if (d.status.recordings <= 4 || frame.reset || d.status.recordings % 1000 == 0)
+        if (d.frameDiagnostics.record(d.status.recordings, frame.reset != 0, GetTickCount64()))
             log("Recorded frame=%llu depth=%p jitter=(%g,%g) trackedStaticViewports=%zu "
                 "candidates=%zu viewports=%llu secondary=%llu multi=%llu body=%u internal=%u "
                 "reset=%u near=%g far=%g reverse=%u infinite=%u camera_agl=%g aircraft_ground=%g "
-                "ground_metadata=%u",
+                "ground_metadata=%u reset-sources=%u resets-since-detail=%llu suppressed-reset-details=%llu",
                 (unsigned long long)d.camera.frame, reinterpret_cast<void *>(depth.image),
                 depth.jitterX, depth.jitterY, d.graphicsViewports.size(), depthCandidateCount,
                 (unsigned long long)d.viewportCalls, (unsigned long long)d.secondaryViewportCalls,
                 (unsigned long long)d.multiViewportCalls, d.camera.bodyValid, d.camera.internal,
                 frame.reset, d.camera.nearPlane, d.camera.farPlane, d.camera.reverseZ,
                 d.camera.infiniteZ, d.camera.ownSphere[0], d.camera.ownSphere[1],
-                d.camera.ownSphere[3] == app::groundCameraMarker);
+                d.camera.ownSphere[3] == app::groundCameraMarker,resetSources,
+                (unsigned long long)d.frameDiagnostics.reportedResets,
+                (unsigned long long)d.frameDiagnostics.reportedSuppressed);
         d.publish(d.mode == Mode::NativeAA
                       ? "Native AA recorded; experimental camera-derived motion"
                       : "Temporal upscaling recorded; experimental camera-derived motion");
@@ -3501,7 +3509,7 @@ static VKAPI_ATTR void VKAPI_CALL L_CmdBeginRendering(VkCommandBuffer cb,
                     std::abs(double(source->second.create.extent.width) /
                                  source->second.create.extent.height -
                              double(d->camera.width) / d->camera.height) < .02) {
-                    if(d->fgRequested.empty()&&!d->captureExtents.accepts(source->second.create.extent.width,source->second.create.extent.height))++d->rejectedCaptureExtents;
+                    if(!d->captureExtents.accepts(source->second.create.extent.width,source->second.create.extent.height))++d->rejectedCaptureExtents;
                     else{
                         command.activeCaptureEligible = true;
                         storedDepth = *c->pDepthAttachment;

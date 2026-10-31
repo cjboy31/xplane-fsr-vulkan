@@ -3,6 +3,7 @@
 #include "settings_transaction.hpp"
 #include "shared.hpp"
 #include "changelog.hpp"
+#include "product_names.hpp"
 #include "framegen_policy.hpp"
 #include "renderer_selection.hpp"
 #include <algorithm>
@@ -13,8 +14,8 @@
 namespace insim {
 using namespace xpfsr::nr;
 inline std::string utf8(const std::wstring&s){int n=WideCharToMultiByte(CP_UTF8,0,s.data(),int(s.size()),nullptr,0,nullptr,nullptr);std::string out(n,0);if(n)WideCharToMultiByte(CP_UTF8,0,s.data(),int(s.size()),out.data(),n,nullptr,nullptr);return out;}
-inline constexpr const char *fsrNames[]={"Off - original image","FSR 3 Native AA","FSR 3 Upscaling","FSR 4 Native AA","FSR 4 Upscaling"};
-inline constexpr const char *fgNames[]={"Off","FSR 3","FSR 4","FSR 4 synchronized","FSR 3 synchronized"};
+inline constexpr auto &fsrNames=product::fsrModes;
+inline constexpr auto &fgNames=product::fgModes;
 inline std::string valueName(const Controls &c,Field f){
     int value=c[f];
     if(f==Enabled||f==Mask||f==Grade||f==AllowFG)return value?"On":"Off";
@@ -222,7 +223,7 @@ public:
         std::vector<Item> out;
         auto text=[&](int x,int y,int w,const std::string &s){out.push_back({{x,y,w,20},s});};
         auto button=[&](Rect r,const std::string&s,Action action,bool selected=false){out.push_back({r,s,true,selected,action,Widget::Button});};
-        text(24,20,width-360,"FSR 3/4 + FRAME GEN");text(24,48,width-48,activity);
+        text(24,20,width-360,product::heading);text(24,48,width-48,activity);
         text(24,64,width-48,"NR: "+nrStatus);
         button({width-320,12,96,30},"Changelog",{Kind::Changelog});
         if(configured())button({width-216,12,96,30},"Updates",{Kind::Updates});

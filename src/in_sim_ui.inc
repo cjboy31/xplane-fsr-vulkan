@@ -223,7 +223,7 @@ static void setupShow() noexcept{try{
     if(!setupWindow){SetupMonitor m;XPLMGetMouseLocationGlobal(&m.mouseX,&m.mouseY);XPLMGetAllMonitorBoundsGlobal(setupMonitor,&m);if(!m.found)XPLMGetScreenBoundsGlobal(&m.left,&m.top,&m.right,&m.bottom);
         int width=std::min(880,std::max(1,m.right-m.left-40)),height=std::min(740,std::max(1,m.top-m.bottom-120));
         XPLMCreateWindow_t p{};p.structSize=sizeof(p);p.left=m.left+(m.right-m.left-width)/2;p.right=p.left+width;p.top=m.top-76;p.bottom=p.top-height;p.visible=1;p.drawWindowFunc=setupDraw;p.handleMouseClickFunc=setupMouse;p.handleRightClickFunc=setupRightMouse;p.handleKeyFunc=setupKey;p.handleCursorFunc=setupCursor;p.handleMouseWheelFunc=setupWheel;p.decorateAsFloatingWindow=xplm_WindowDecorationRoundRectangle;p.layer=xplm_WindowLayerFloatingWindows;
-        setupWindow=XPLMCreateWindowEx(&p);if(!setupWindow)throw std::runtime_error("Cannot create the in-sim setup panel");XPLMSetWindowTitle(setupWindow,"FSR 3/4 + Frame Gen - In-sim setup");XPLMSetWindowResizingLimits(setupWindow,std::min(640,width),std::min(480,height),1280,1100);
+        setupWindow=XPLMCreateWindowEx(&p);if(!setupWindow)throw std::runtime_error("Cannot create the in-sim setup panel");XPLMSetWindowTitle(setupWindow,product::panelTitle);XPLMSetWindowResizingLimits(setupWindow,std::min(640,width),std::min(480,height),1280,1100);
     }else XPLMSetWindowIsVisible(setupWindow,1);
     setupPresence.setVisible(true);setupLastPoll=0;setupPoll();XPLMBringWindowToFront(setupWindow);
 }catch(const std::exception&e){std::string text="XPFSR24: setup panel: ";text+=e.what();text+='\n';XPLMDebugString(text.c_str());}catch(...){}}

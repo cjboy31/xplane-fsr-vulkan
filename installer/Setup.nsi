@@ -2,12 +2,12 @@
 Unicode true
 RequestExecutionLevel user
 SetCompressor zlib
-Name "FSR 3/4 + Frame Gen for X-Plane 12 (Experimental)"
+Name "FSR 3.1 / 4.1 + Frame Gen for X-Plane 12 (Experimental)"
 OutFile "${PACKAGE}\XPlane-FSR24-Setup.exe"
 InstallDir "$LOCALAPPDATA\Programs\XPlaneFSR24"
 BrandingText "Community graphics preview - SDK 2.4.0"
 VIProductVersion "${WINDOWS_VERSION}"
-VIAddVersionKey /LANG=1033 "ProductName" "FSR 3/4 + Frame Gen for X-Plane 12 (Experimental)"
+VIAddVersionKey /LANG=1033 "ProductName" "FSR 3.1 / 4.1 + Frame Gen for X-Plane 12 (Experimental)"
 VIAddVersionKey /LANG=1033 "FileDescription" "Per-user setup for the experimental FSR mod"
 VIAddVersionKey /LANG=1033 "FileVersion" "${PACKAGE_VERSION}"
 VIAddVersionKey /LANG=1033 "LegalCopyright" "2026 XPlane FSR24 prototype contributors; NSIS Contributors"
@@ -39,7 +39,7 @@ Var PreviousGuideVersion
 Var PreviousGuideSHA256
 
 !define MUI_ABORTWARNING
-!define MUI_WELCOMEPAGE_TITLE "FSR 3/4 + Frame Gen for X-Plane 12"
+!define MUI_WELCOMEPAGE_TITLE "FSR 3.1 / 4.1 + Frame Gen for X-Plane 12"
 !ifdef NR_DEVELOPMENT
 !define MUI_WELCOMEPAGE_TEXT "Install FSR AA/upscaling with optional independent neural rendering, frame generation and compatibility pacing. NR and FG are Off by default. Import your own supported NR model locally; NVIDIA DLLs and model weights are not included.$\r$\n$\r$\nNR On/Off, appearance, order and scene scope adjust live. Model budgets prepare in the background. NR + FG requires explicit opt-in. This project remains a preview.$\r$\n$\r$\nClose X-Plane and the updater before continuing."
 !else ifdef FG_DEVELOPMENT
@@ -54,7 +54,7 @@ Page custom SimulatorPage SimulatorLeave
 !insertmacro MUI_PAGE_DIRECTORY
 !insertmacro MUI_PAGE_INSTFILES
 !define MUI_FINISHPAGE_TITLE "Installation complete"
-!define MUI_FINISHPAGE_TEXT "If you enabled in-sim integration, start X-Plane normally and open Plugins > FSR 3/4 + Frame Gen. Open Changelog inside the panel to read changes. The separate desktop program is only a plugin updater.$\r$\n$\r$\nRead the included instructions for first setup. NR and frame generation start Off."
+!define MUI_FINISHPAGE_TEXT "If you enabled in-sim integration, start X-Plane normally and open Plugins > FSR 3.1 / 4.1 + Frame Gen. Open Changelog inside the panel to read changes. The separate desktop program is only a plugin updater.$\r$\n$\r$\nRead the included instructions for first setup. NR and frame generation start Off."
 !define MUI_FINISHPAGE_RUN "$INSTDIR\XPlaneFSR24.exe"
 !define MUI_FINISHPAGE_RUN_TEXT "Open plugin updater"
 !define MUI_FINISHPAGE_RUN_NOTCHECKED
@@ -403,7 +403,7 @@ Section "Application"
       Delete "$DESKTOP\FSR 3-4 + Frame Gen for X-Plane.lnk"
       CreateShortcut "$DESKTOP\X-Plane Plugin Updater.lnk" "$INSTDIR\XPlaneFSR24.exe"
     ${EndIf}
-    WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\XPFSR24CommunityAlpha" "DisplayName" "FSR 3/4 + Frame Gen for X-Plane 12 (Experimental)"
+    WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\XPFSR24CommunityAlpha" "DisplayName" "FSR 3.1 / 4.1 + Frame Gen for X-Plane 12 (Experimental)"
     WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\XPFSR24CommunityAlpha" "DisplayVersion" "${PACKAGE_VERSION}"
     WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\XPFSR24CommunityAlpha" "UninstallString" '$\"$INSTDIR\Uninstall.exe$\"'
     WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\XPFSR24CommunityAlpha" "QuietUninstallString" '$\"$INSTDIR\Uninstall.exe$\" /S'

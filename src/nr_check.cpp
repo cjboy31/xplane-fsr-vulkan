@@ -39,8 +39,9 @@ int wmain(int argc, wchar_t **argv) {
     void *context{};
     xpfsr::nr::Destroy destroy{};
     try {
-        need(argc >= 3, "NRCheck.exe NR_ROOT OUTPUT_DIRECTORY [--features-only | --rgba16f-720p | --benchmark-1440p | --pass-study] [model_percent] [study_passes]");
-        const bool benchmark=argc>3&&std::wstring(argv[3])==L"--benchmark-1440p";
+        need(argc >= 3, "NRCheck.exe NR_ROOT OUTPUT_DIRECTORY [--features-only | --rgba16f-720p | --benchmark-1440p | --benchmark-4k | --pass-study] [model_percent] [study_passes]");
+        const bool benchmark4k=argc>3&&std::wstring(argv[3])==L"--benchmark-4k";
+        const bool benchmark=benchmark4k||(argc>3&&std::wstring(argv[3])==L"--benchmark-1440p");
         const bool study32=argc>3&&std::wstring(argv[3])==L"--pass-study-rgba32f";
         const bool passStudy=study32||(argc>3&&std::wstring(argv[3])==L"--pass-study");
         const int studyPasses=passStudy&&argc>5?std::stoi(argv[5]):1;
@@ -183,7 +184,7 @@ int wmain(int argc, wchar_t **argv) {
         host.queue = queue;
         host.queueFamily = family;
         host.log = [](const char *line) { std::cout << line << '\n'; };
-        const uint32_t W = passStudy?512:benchmark?2560:fp16 ? 1280 : 256, H = passStudy?288:benchmark?1440:fp16 ? 720 : 144;
+        const uint32_t W = passStudy?512:benchmark4k?3840:benchmark?2560:fp16 ? 1280 : 256, H = passStudy?288:benchmark4k?2160:benchmark?1440:fp16 ? 720 : 144;
         auto path = root.wstring();
         xpfsr::nr::Config config{};
         config.root = path.c_str();
