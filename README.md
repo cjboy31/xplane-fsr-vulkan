@@ -2,6 +2,13 @@
 
 # FSR 3/4 + Frame Gen for X-Plane 12
 
+**Experimental GPU development branch:** this source adds offscreen multi-device
+FG and Intel XeSS Vulkan fixtures, plus a Linux FSR 4/NR preflight pipeline. These
+are development foundations; the published 0.7.2 installer does not contain
+multi-GPU offload, an Intel provider selector or new Linux rendering features.
+See [multi-GPU evidence](docs/MULTI-GPU-DESIGN.md), [Intel work](docs/INTEL-VULKAN.md)
+and [Linux pipeline](docs/LINUX-FSR4-NR-PIPELINE.md).
+
 **Community:** [Join our Discord](https://discord.gg/yh396QNgHZ) · [Release updates](https://discord.com/channels/1565487749832777830/1565816821523681290)
 
 Get setup help, report problems, share feedback and follow new releases.

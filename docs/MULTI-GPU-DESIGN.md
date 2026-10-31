@@ -1,8 +1,10 @@
 # Multi-GPU processing design
 
-Experimental development direction; no cross-GPU rendering is implemented in
-the Windows release or this in-sim test build. The owner's priority is to begin
-this work after the current NR memory correction is tested.
+Experimental branch `experimental/multi-gpu`, based on the released 0.7.2 source.
+The installed release still has no multi-GPU offload. This branch now includes
+bounded frame ownership, saved UUID selection policies, portable adapter/transport
+probes and a real offscreen compute-only FG worker. It does not yet connect that
+worker to X-Plane's live capture/presentation path or expose an active selector.
 
 Lossless Scaling exposes a preferred processing GPU while the game keeps its
 own rendering adapter. Its [publisher announcements](https://steamcommunity.com/app/993090/allnews/?l=english)
@@ -64,3 +66,41 @@ Extra memory on a second GPU does not pool the simulator's VRAM.
    automatic fallback. Test separate vendor and integrated/discrete cases.
 5. Enable user-facing selectors only for paths with actual device/flight tests.
    Publish first as an experimental feature with measured limits.
+
+## First implementation and evidence (2026-10-31)
+
+- `gpu_frame_queue.hpp` bounds pending frames and refuses uncompleted/wrong-frame
+  results. Capture, processing and consumption acknowledgements follow their GPU
+  fences; reset cancels work without recycling an in-flight slot. CPU tests cover
+  stale tokens, mismatched sizes/layouts, a full queue and concurrent cancellation.
+- `gpu_selection.hpp` preserves NR/FG UUID choices and native fallback. A requested
+  worker requires matching device/driver/session transport AND backend proof;
+  buffer transfer or a same-physical fixture cannot certify offload.
+- The layer's loader-visible physical-device lookup now uses unique device and
+  driver UUIDs. Matching vendor/device/pipeline-cache IDs could choose the wrong
+  member of an identical-card pair. Missing/ambiguous UUIDs fail safely.
+- `MultiGpuTransportCheck` performs bounded fenced buffer round trips and a GPU
+  marker on separate logical devices. `MultiGpuFrameGenCheck` additionally copies
+  HDR images between independently owned devices, executes actual FSR 3.1.6
+  interpolation using the SDK's NO_SWAPCHAIN_CONTEXT_NOTIFY mode, and copies the
+  generated result back to the render device. No image handle crosses devices.
+- The R9700 passed a **single-physical-card / two-logical-device** FG fixture:
+  ten generated frames, seven checked non-black/finite HDR readbacks, a history
+  reset and foreign/undersized-resource rejection at 384x216. Timings include
+  host copies, fences and CPU pixel validation; they are not FG-only costs and
+  predict neither 4K throughput nor simulator FPS.
+- The Intel XeSS Vulkan offscreen adapter also passed cross-vendor readbacks on
+  that R9700. See [Intel scope and pending gates](INTEL-VULKAN.md).
+
+Only one physical Vulkan GPU is currently exposed on the test machine. Actual
+cross-card transfers, Intel hardware, asynchronous scheduling, late-frame pacing,
+UI composition and live X-Plane presentation remain unverified. Fixture depth and
+motion are synthetic, not live scene capture. The synchronous
+fixture is a correctness baseline, not the intended live implementation. The
+simulator's original real frame must remain available until a matching generated
+output and its return transfer have completed.
+
+Next: a nonblocking bounded worker queue, measured two-physical-GPU transfers,
+submission identity and memory accounting, then presentation/latency integration.
+Do not enable a release selector until these gates pass. Existing Normal rendering,
+its color-encoding fix and its completion/VRAM safeguards remain the baseline.

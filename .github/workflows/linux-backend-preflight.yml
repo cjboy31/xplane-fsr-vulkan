@@ -1,0 +1,43 @@
+name: Linux backend preflight
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  linux-capability-build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install portable Vulkan build dependencies
+        run: sudo apt-get update && sudo apt-get install -y g++ libvulkan-dev mesa-vulkan-drivers
+      - name: Fetch pinned Vulkan headers
+        run: |
+          git init "$RUNNER_TEMP/vulkan-headers"
+          git -C "$RUNNER_TEMP/vulkan-headers" remote add origin https://github.com/KhronosGroup/Vulkan-Headers.git
+          git -C "$RUNNER_TEMP/vulkan-headers" fetch --depth 1 origin cde2207d8bc426cfd201ffd67031e7b135a01df7
+          git -C "$RUNNER_TEMP/vulkan-headers" checkout --detach FETCH_HEAD
+      - name: Compile portable queue, identity and adapter probes
+        run: |
+          mkdir -p build/linux-preflight
+          for test in gpu_frame_queue gpu_selection gpu_identity; do
+            g++ -std=c++17 -O2 -pthread -I src "src/${test}_tests.cpp" -o "build/linux-preflight/$test"
+            "build/linux-preflight/$test"
+          done
+          g++ -std=c++17 -O2 -I "$RUNNER_TEMP/vulkan-headers/include" -I src tools/gpu_inventory.cpp -lvulkan -o build/linux-preflight/GpuInventory
+          g++ -std=c++17 -O2 -pthread -I "$RUNNER_TEMP/vulkan-headers/include" -I src tools/multi_gpu_transport.cpp -lvulkan -o build/linux-preflight/MultiGpuTransportCheck
+      - name: Record runner capability evidence
+        run: |
+          build/linux-preflight/GpuInventory > build/linux-preflight/capabilities.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          report=json.loads(Path('build/linux-preflight/capabilities.json').read_text())
+          assert isinstance(report['adapters'], list)
+          print('Linux probe build/CPU tests passed. Runner inventory is not hardware or simulator certification.')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-capability-preflight
+          path: build/linux-preflight/capabilities.json

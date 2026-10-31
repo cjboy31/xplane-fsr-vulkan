@@ -23,8 +23,20 @@
    measured Vulkan batching, allocation/compilation and NR scratch-memory costs
    before considering a separate Direct3D compute-graph backend.
 
-Neither feature is included in 0.7.1. Implement independently without copying
-restricted reference-mod internals.
+The Windows 0.7.2 release includes the in-sim preview and measured CPU/memory
+corrections. Full panel parity remains in progress. The new multi-GPU/Intel
+worker fixtures are on `experimental/multi-gpu`; they are not installed features.
+Implement independently without copying restricted reference-mod internals.
+
+4. Bring Intel graphics into the backend pipeline: use the official XeSS Vulkan
+   interface for SR, then assess FSR 3 FG on Intel and the separate DirectX 12 /
+   XeLL requirements for native XeSS FG. Require real Intel GPU and simulator
+   tests; see [implementation](INTEL-VULKAN.md).
+5. Add Linux FSR 4 AA/upscaling and NR independently of FG. Run portable preflight
+   CI, identify a supported native FSR 4 runtime, and port the NR adapter/IPC onto
+   the pinned Linux Vulkan core. See [pipeline and dependency gates](LINUX-FSR4-NR-PIPELINE.md)
+   and [tracking issue #3](https://github.com/cjboy31/xplane-fsr-vulkan/issues/3).
+   These tracks add no new Linux download or release date yet.
 
 ## Proposed improvements and how to evaluate them
 

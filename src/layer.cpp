@@ -1,3 +1,4 @@
+#include "gpu_identity.hpp"
 // SPDX-License-Identifier: MIT
 // Explicit Vulkan layer for X-Plane 12.4.4. New implementation.
 #define VK_NO_PROTOTYPES
@@ -1102,36 +1103,38 @@ void setupPack(Device &d) {
 VkPhysicalDevice applicationPhysical(Device &d) {
     if (d.applicationPhysical)
         return d.applicationPhysical;
-    // vkCreateDevice's layer-chain physical handle is not necessarily the
-    // application-visible loader wrapper. AMD's signed runtime also performs
-    // global physical-device queries, so it needs the loader-visible handle.
     wchar_t system[MAX_PATH]{};
     GetSystemDirectoryW(system, MAX_PATH);
     auto path = std::filesystem::path(system) / L"vulkan-1.dll";
     static HMODULE loader = LoadLibraryExW(path.c_str(), nullptr, LOAD_LIBRARY_SEARCH_SYSTEM32);
     xpfsr::require(loader != nullptr, "System Vulkan loader unavailable");
-    auto enumerate = reinterpret_cast<PFN_vkEnumeratePhysicalDevices>(
-        GetProcAddress(loader, "vkEnumeratePhysicalDevices"));
-    auto properties = reinterpret_cast<PFN_vkGetPhysicalDeviceProperties>(
-        GetProcAddress(loader, "vkGetPhysicalDeviceProperties"));
-    VkPhysicalDeviceProperties wanted{};
-    d.inst<PFN_vkGetPhysicalDeviceProperties>("vkGetPhysicalDeviceProperties")(d.physical, &wanted);
+    auto enumerate = reinterpret_cast<PFN_vkEnumeratePhysicalDevices>(GetProcAddress(loader, "vkEnumeratePhysicalDevices"));
+    auto properties = reinterpret_cast<PFN_vkGetPhysicalDeviceProperties2>(GetProcAddress(loader, "vkGetPhysicalDeviceProperties2"));
+    xpfsr::require(enumerate && properties, "Vulkan physical-device identity queries unavailable");
+    VkPhysicalDeviceIDProperties wantedID{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ID_PROPERTIES};
+    VkPhysicalDeviceProperties2 wanted{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2};
+    wanted.pNext = &wantedID;
+    d.inst<PFN_vkGetPhysicalDeviceProperties2>("vkGetPhysicalDeviceProperties2")(d.physical, &wanted);
+    auto identity = [](const VkPhysicalDeviceIDProperties &id) {
+        xpfsr::gpu::Identity value;
+        std::copy_n(id.deviceUUID, VK_UUID_SIZE, value.device.begin());
+        std::copy_n(id.driverUUID, VK_UUID_SIZE, value.driver.begin());
+        return value;
+    };
     uint32_t count{};
     check(enumerate(d.instance->handle, &count, nullptr), "Enumerate application physical devices");
     std::vector<VkPhysicalDevice> physicals(count);
-    check(enumerate(d.instance->handle, &count, physicals.data()),
-          "Enumerate application physical devices");
+    check(enumerate(d.instance->handle, &count, physicals.data()), "Enumerate application physical devices");
+    physicals.resize(count);
+    std::vector<xpfsr::gpu::Identity> identities;
     for (auto physical : physicals) {
-        VkPhysicalDeviceProperties p{};
-        properties(physical, &p);
-        if (p.vendorID == wanted.vendorID && p.deviceID == wanted.deviceID &&
-            !memcmp(p.pipelineCacheUUID, wanted.pipelineCacheUUID, VK_UUID_SIZE)) {
-            d.applicationPhysical = physical;
-            log("Matched loader-visible physical device %s", p.deviceName);
-            return physical;
-        }
+        VkPhysicalDeviceIDProperties id{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ID_PROPERTIES};
+        VkPhysicalDeviceProperties2 p{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2};
+        p.pNext = &id; properties(physical, &p); identities.push_back(identity(id));
     }
-    throw std::runtime_error("Cannot match the loader-visible physical device");
+    d.applicationPhysical = physicals.at(xpfsr::gpu::uniqueIdentity(identity(wantedID), identities));
+    log("Matched loader-visible physical device by device/driver UUID: %s", wanted.properties.deviceName);
+    return d.applicationPhysical;
 }
 
 void ensureRuntime(Device &d) {
