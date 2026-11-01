@@ -10,11 +10,11 @@
 #include <vector>
 namespace updates {
 #ifdef XPFSR_NR_DEVELOPMENT
-inline constexpr char currentVersion[] = "0.7.7-experimental.1";
+inline constexpr char currentVersion[] = "0.7.8-beta.windows.1";
 #elif defined(XPFSR_FG_DEVELOPMENT)
-inline constexpr char currentVersion[] = "0.7.7-experimental.1";
+inline constexpr char currentVersion[] = "0.7.8-beta.windows.1";
 #else
-inline constexpr char currentVersion[] = "0.7.7-alpha";
+inline constexpr char currentVersion[] = "0.7.8";
 #endif
 inline constexpr char repository[] = "https://github.com/cjboy31/xplane-fsr-vulkan";
 inline void require(bool ok, const char *why) {
@@ -220,7 +220,7 @@ class Parser {
 };
 struct Version {
     int major{}, minor{}, patch{}, stage{3}, revision{};
-    bool experimental{};
+    bool beta{};
     auto key() const { return std::make_tuple(major, minor, patch, stage, revision); }
 };
 inline Version version(std::string s) {
@@ -248,25 +248,31 @@ inline Version version(std::string s) {
         while (i < s.size() && s[i] != '.')
             ++i;
         auto stage = s.substr(b, i - b);
-        v.experimental = stage == "experimental";
-        v.stage = stage == "alpha" || v.experimental ? 0 : stage == "beta" ? 1 : stage == "rc" ? 2 : -1;
+        v.beta = stage == "experimental" || stage == "beta";
+        v.stage = stage == "alpha" || stage == "experimental" ? 0 : stage == "beta" ? 1 : stage == "rc" ? 2 : -1;
         require(v.stage >= 0, "Unsupported update channel");
         if (i < s.size()) {
             ++i;
+            // Namespaced Beta tags are invisible to pre-0.7.8 updaters that
+            // treated ordinary beta.N tags as Normal updates. Keep those users
+            // on Release while they migrate; reject other platform namespaces.
+            if (stage == "beta" && s.compare(i, 8, "windows.") == 0) i += 8;
             v.revision = num();
         }
     }
     require(i == s.size(), "Invalid update version");
     return v;
 }
-enum class Channel { Normal, Experimental };
+enum class Channel { Release, Beta };
 inline Channel channel(const Version &v) {
-    return v.experimental ? Channel::Experimental : Channel::Normal;
+    return v.beta ? Channel::Beta : Channel::Release;
 }
 inline Channel installedChannel() { return channel(version(currentVersion)); }
 inline const wchar_t *channelName(Channel c) {
-    return c == Channel::Experimental ? L"Experimental" : L"Normal";
+    return c == Channel::Beta ? L"Beta" : L"Release";
 }
+inline constexpr const wchar_t *channelChoices[] = {
+    L"Release - all current features (recommended)", L"Beta - preview upcoming changes"};
 struct Release {
     std::string tag, name, notes, url, assetURL, digest;
     uint64_t bytes{};

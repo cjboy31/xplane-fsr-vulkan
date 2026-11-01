@@ -2,7 +2,10 @@
 Unicode true
 RequestExecutionLevel user
 SetCompressor zlib
-Name "FSR 3.1 / 4.1 + Frame Gen for X-Plane 12 (Experimental)"
+!ifndef CHANNEL_LABEL
+!define CHANNEL_LABEL "Release"
+!endif
+Name "FSR 3.1 / 4.1 + Frame Gen for X-Plane 12 (${CHANNEL_LABEL})"
 OutFile "${PACKAGE}\XPlane-FSR24-Setup.exe"
 InstallDir "$LOCALAPPDATA\Programs\XPlaneFSR24"
 ; NSIS resolves this before .onInit and lets an explicit /D= override it.
@@ -10,8 +13,8 @@ InstallDir "$LOCALAPPDATA\Programs\XPlaneFSR24"
 InstallDirRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\XPFSR24CommunityAlpha" "InstallLocation"
 BrandingText "Community graphics preview - SDK 2.4.0"
 VIProductVersion "${WINDOWS_VERSION}"
-VIAddVersionKey /LANG=1033 "ProductName" "FSR 3.1 / 4.1 + Frame Gen for X-Plane 12 (Experimental)"
-VIAddVersionKey /LANG=1033 "FileDescription" "Per-user setup for the experimental FSR mod"
+VIAddVersionKey /LANG=1033 "ProductName" "FSR 3.1 / 4.1 + Frame Gen for X-Plane 12 (${CHANNEL_LABEL})"
+VIAddVersionKey /LANG=1033 "FileDescription" "Per-user setup for the FSR mod (${CHANNEL_LABEL})"
 VIAddVersionKey /LANG=1033 "FileVersion" "${PACKAGE_VERSION}"
 VIAddVersionKey /LANG=1033 "LegalCopyright" "2026 XPlane FSR24 prototype contributors; NSIS Contributors"
 
@@ -412,7 +415,7 @@ Section "Application"
       Delete "$DESKTOP\FSR 3-4 + Frame Gen for X-Plane.lnk"
       CreateShortcut "$DESKTOP\X-Plane Plugin Updater.lnk" "$INSTDIR\XPlaneFSR24.exe"
     ${EndIf}
-    WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\XPFSR24CommunityAlpha" "DisplayName" "FSR 3.1 / 4.1 + Frame Gen for X-Plane 12 (Experimental)"
+    WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\XPFSR24CommunityAlpha" "DisplayName" "FSR 3.1 / 4.1 + Frame Gen for X-Plane 12 (${CHANNEL_LABEL})"
     WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\XPFSR24CommunityAlpha" "DisplayVersion" "${PACKAGE_VERSION}"
     WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\XPFSR24CommunityAlpha" "UninstallString" '$\"$INSTDIR\Uninstall.exe$\"'
     WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\XPFSR24CommunityAlpha" "QuietUninstallString" '$\"$INSTDIR\Uninstall.exe$\" /S'

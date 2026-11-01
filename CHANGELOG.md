@@ -1,5 +1,17 @@
 # Changes
 
+## 0.7.8
+
+- Release includes the current NR, frame-generation and compatibility updates from Experimental.
+- The updater now has only Release and Beta. Previous Normal and Experimental choices map to the matching new channel.
+- Keep your saved image settings and local models when switching channels.
+- Download one clearly named setup executable. The old Ghosting-Fix-named compatibility copy is no longer generated.
+- Keep the installer ownership repair from 0.7.7 and the rendering/startup fixes from 0.7.6. No new rendering algorithm is added.
+
+## 0.7.8-beta.windows.1
+
+- The same current feature set and channel migration as 0.7.8, packaged on the Beta track for future testing. Release is recommended.
+
 ## 0.7.7-alpha
 
 - Fix setup rejecting a verified previous plugin when the new installer uses a different app folder for the same simulator.

@@ -52,10 +52,9 @@ if ($SetupInstaller) {
     if ($result.setupSha256 -ne $setupHash -or $result.setupBytes -ne (Get-Item -LiteralPath $SetupInstaller).Length -or $result.automaticUpdate -ne 'PASS') {
         throw 'Standalone setup must match the installer tested through automatic-update mode'
     }
-    foreach ($setupName in @("XPlane-FSR3-4-FrameGen-$Version-Setup.exe", "XPlane-FSR-Ghosting-Fix-$Version-Setup.exe")) {
-        Copy-Item -LiteralPath $SetupInstaller -Destination (Join-Path $output $setupName)
-        [IO.File]::AppendAllText((Join-Path $output 'SHA256SUMS.txt'), "$setupHash  $setupName`n", $utf8)
-    }
+    $setupName = "XPlane-FSR3-4-FrameGen-$Version-Setup.exe"
+    Copy-Item -LiteralPath $SetupInstaller -Destination (Join-Path $output $setupName)
+    [IO.File]::AppendAllText((Join-Path $output 'SHA256SUMS.txt'), "$setupHash  $setupName`n", $utf8)
 }
 if ($FeatureVideo) {
     $videoName = "XPlane-FSR3-4-$Version-Feature-Guide.mp4"
@@ -64,8 +63,8 @@ if ($FeatureVideo) {
     [IO.File]::AppendAllText((Join-Path $output 'SHA256SUMS.txt'), "$videoHash  $videoName`n", $utf8)
 }
 $channelSummary = if([version](($Version -split '-')[0]) -ge [version]'0.7.1' -and $result.nrModelsExcluded -eq 'PASS'){
-    $channel=if($Version -match '-experimental\.'){'Experimental: future development track.'}else{'Normal: recommended current feature release.'}
-    "$channel Both channels include FSR AA/upscaling, independent NR, frame generation and synchronized compatibility options. Update to Normal for all current features. NR and FG start Off; NR needs compatible Windows RDNA4 FP8 hardware and your own supported local model. NR + FG requires explicit opt-in and retains visual/pacing limits. No NVIDIA DLL or model weights are included."
+    $channel=if($Version -match '-(?:experimental|beta)\.'){ 'Beta: preview upcoming changes.' }else{ 'Release: recommended current feature release.' }
+    "$channel Release includes FSR AA/upscaling, independent NR, frame generation and synchronized compatibility options. Beta is for testing upcoming changes. NR and FG start Off; NR needs compatible Windows RDNA4 FP8 hardware and your own supported local model. NR + FG requires explicit opt-in and retains visual/pacing limits. No NVIDIA DLL or model weights are included."
 }elseif($result.nrModelsExcluded -eq 'PASS'){
     'Experimental NR channel: optional independent neural rendering for compatible Windows RDNA4 FP8 hardware. NR starts Off; import your own supported model locally. This is not official NVIDIA DLSS 5 support. NR + FG requires explicit experimental opt-in and remains subject to visual/pacing limitations.'
 }elseif($Version -match '-experimental\.'){
@@ -95,7 +94,7 @@ $guideSection=if([version](($Version -split '-')[0]) -ge [version]'0.7.4'){'Read
 $notes = @"
 ## FSR 3/4 + Frame Gen for X-Plane $Version
 
-Experimental Windows Vulkan community preview. Original project code is MIT
+Windows Vulkan community project. Original project code is MIT
 licensed; packaged third-party runtimes retain their separate notices.
 
 $channelSummary
@@ -115,9 +114,8 @@ The standalone Setup.exe asset is also used by the in-app updater. Users with
 built-in Updates can select Check now. Users on older versions install this
 version once. No archive extractor is needed for in-app installation.
 
-Choose XPlane-FSR3-4-FrameGen-$Version-Setup.exe for a direct download. The
-Ghosting-Fix-named setup is an identical compatibility copy for the 0.5.4 updater;
-use the FSR3-4-FrameGen-named setup for a new installation.
+Choose XPlane-FSR3-4-FrameGen-$Version-Setup.exe for a direct download. This is
+the only setup executable in this release; the RAR contains the same installer.
 
 ### Validation and limits
 

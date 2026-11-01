@@ -8,7 +8,8 @@ Laminar Research product.
 
 ## Download and setup
 
-[Windows Normal — recommended](https://github.com/cjboy31/xplane-fsr-vulkan/releases/tag/v0.7.7-alpha)
+[Windows Release — recommended](https://github.com/cjboy31/xplane-fsr-vulkan/releases/tag/v0.7.8)
+· [Windows Beta](https://github.com/cjboy31/xplane-fsr-vulkan/releases/tag/v0.7.8-beta.windows.1)
 · [All releases](https://github.com/cjboy31/xplane-fsr-vulkan/releases)
 · [Join Discord](https://discord.gg/yh396QNgHZ)
 
@@ -35,8 +36,10 @@ always clearer. Visual results vary by aircraft, view, graphics card and display
 
 ## Updates and help
 
-Version 0.7.7 fixes setup ownership checks and shows the actual error when setup
-cannot finish. It keeps the buffer-reuse and startup fixes from 0.7.6.
+Choose **Release** for all current features or **Beta** to try upcoming changes.
+The previous Experimental updates are included in Release. Your saved Normal
+choice maps to Release; Experimental maps to Beta. Version 0.7.8 keeps the
+installer, buffer-reuse and startup corrections from 0.7.7 and 0.7.6.
 Diagnostics provides easy access to fresh session logs. The grouped controls,
 help and transitions from 0.7.5 are retained.
 The separate **Plugin Updater** handles updates for FSR and Native AA. Open **Changelog**

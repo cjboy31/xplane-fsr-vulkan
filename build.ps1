@@ -5,7 +5,7 @@ param(
  [Parameter(Mandatory)][string]$VulkanHeaders,
  [Parameter(Mandatory)][string]$XPlaneSdk,
  [Parameter(Mandatory)][string]$FsrSdk,
- [switch]$FrameGenerationDevelopment,
+ [Alias('FrameGenerationDevelopment')][switch]$Beta,
  [switch]$NeuralRenderingDevelopment,
  [string]$OutputDirectory=''
 )
@@ -21,9 +21,9 @@ $sourceSnapshot=@{}
 Get-ChildItem -LiteralPath $source -File -Recurse | ForEach-Object {$sourceSnapshot[$_.FullName]=(Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash}
 $bin=Join-Path $root 'app'
 if($OutputDirectory){$bin=[IO.Path]::GetFullPath($OutputDirectory)}
-if($NeuralRenderingDevelopment -and -not $FrameGenerationDevelopment){throw 'NR development requires the explicit Experimental build flag as well'}
+if($NeuralRenderingDevelopment -and -not $Beta){throw 'NR development metadata requires the Beta build flag as well'}
 $build=Join-Path $root 'build'
-[string[]]$channelFlags = if($FrameGenerationDevelopment){@('-DXPFSR_FG_DEVELOPMENT=1')}else{@()}
+[string[]]$channelFlags = if($Beta){@('-DXPFSR_FG_DEVELOPMENT=1')}else{@()}
 if($NeuralRenderingDevelopment){$channelFlags+='-DXPFSR_NR_DEVELOPMENT=1'}
 New-Item -ItemType Directory -Force -Path $bin,$build,(Join-Path $bin 'layer'),(Join-Path $bin 'auto'),(Join-Path $bin 'plugin\64'),(Join-Path $bin 'runtime'),(Join-Path $build 'generated') | Out-Null
 foreach($format in @('16','32')){

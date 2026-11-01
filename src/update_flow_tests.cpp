@@ -33,7 +33,7 @@ static void waitPhase() {
 }
 static updates::Release fakeRelease(updates::Channel requested) {
     std::string tag =
-        requested == updates::Channel::Experimental ? "v99.0.0-experimental.1" : "v99.0.0-alpha";
+        requested == updates::Channel::Beta ? "v99.0.0-beta.windows.1" : "v99.0.0-alpha";
     return {tag,
             "Fixture release",
             "Fixture notes",
@@ -92,8 +92,8 @@ static void dialog() {
         scaledControl(L"BUTTON", L"Automatic", BS_AUTOCHECKBOX, 20, 20, 200, 28, 150, updateWindow);
     channelBox =
         scaledControl(L"COMBOBOX", L"", CBS_DROPDOWNLIST, 155, 54, 510, 150, 151, updateWindow);
-    SendMessageW(channelBox, CB_ADDSTRING, 0, LPARAM(L"Normal"));
-    SendMessageW(channelBox, CB_ADDSTRING, 0, LPARAM(L"Experimental"));
+    SendMessageW(channelBox, CB_ADDSTRING, 0, LPARAM(L"Release"));
+    SendMessageW(channelBox, CB_ADDSTRING, 0, LPARAM(L"Beta"));
     checkUpdateButton =
         scaledControl(L"BUTTON", L"Check now", BS_PUSHBUTTON, 20, 408, 145, 36, 152, updateWindow);
     releaseNotesButton = scaledControl(L"BUTTON", L"Open release", BS_PUSHBUTTON, 180, 408, 145, 36,
@@ -156,7 +156,7 @@ int wmain(int argc, wchar_t **argv) {
         runUpdateInstaller = fakeLaunch;
         updateStagingRoot = [] { return fixtureRoot; };
         dialog();
-        for (auto selected : {updates::Channel::Normal, updates::Channel::Experimental}) {
+        for (auto selected : {updates::Channel::Release, updates::Channel::Beta}) {
             for (auto marker : {L"", L"unrelated-product", L"XPFSR24-community-alpha"}) {
                 ownership(marker);
                 available(selected);
@@ -179,8 +179,8 @@ int wmain(int argc, wchar_t **argv) {
             }
         }
         std::cout << "PASS: install-action/ownership/state matrix in both channel directions\n";
-        available(updates::Channel::Normal);
-        releaseChannel = updates::Channel::Experimental;
+        available(updates::Channel::Release);
+        releaseChannel = updates::Channel::Beta;
         refreshUpdateUI();
         ensure(!IsWindowEnabled(installUpdateButton) && !IsWindowEnabled(releaseNotesButton),
                "A stale result offers the wrong channel");
@@ -189,19 +189,19 @@ int wmain(int argc, wchar_t **argv) {
         queryCalls = 0;
         releaseOldQuery = false;
         updateJob = std::make_shared<UpdateJob>();
-        releaseChannel = updates::Channel::Normal;
+        releaseChannel = updates::Channel::Release;
         startUpdateCheck();
         until([] { return queryCalls == 1; }, "First query did not start");
         auto oldQuery = updateJob;
         SendMessageW(channelBox, CB_SETCURSEL, 1, 0);
         SendMessageW(updateWindow, WM_COMMAND, MAKEWPARAM(151, CBN_SELCHANGE), LPARAM(channelBox));
         waitPhase();
-        ensure(oldQuery->cancel && updateJob->channel == updates::Channel::Experimental &&
+        ensure(oldQuery->cancel && updateJob->channel == updates::Channel::Beta &&
                    IsWindowEnabled(installUpdateButton),
                "Rapid channel switch failed");
         releaseOldQuery = true;
         until([] { return activeQueries == 0; }, "Query worker did not finish");
-        ensure(updateJob->channel == updates::Channel::Experimental &&
+        ensure(updateJob->channel == updates::Channel::Beta &&
                    updates::loadChannel(appDirectory / L"settings.ini") == releaseChannel,
                "An old query overwrote the selected channel");
         oldQuery.reset();
@@ -221,7 +221,7 @@ int wmain(int argc, wchar_t **argv) {
         std::cout << "PASS: rapid selection, stale completion, connection failure and "
                      "current-version status\n";
         ownership(L"");
-        available(updates::Channel::Experimental);
+        available(updates::Channel::Beta);
         downloadMode = 3;
         downloadStarted = false;
         beginUpdateInstall();
@@ -285,7 +285,7 @@ int wmain(int argc, wchar_t **argv) {
                "Portable switch did not hand off to the interactive setup wizard");
         dialog();
         ownership(L"XPFSR24-community-alpha");
-        available(updates::Channel::Normal);
+        available(updates::Channel::Release);
         beginUpdateInstall();
         waitPhase();
         ownership(L"changed-marker");
