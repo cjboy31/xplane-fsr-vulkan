@@ -5,6 +5,9 @@ SetCompressor zlib
 Name "FSR 3.1 / 4.1 + Frame Gen for X-Plane 12 (Experimental)"
 OutFile "${PACKAGE}\XPlane-FSR24-Setup.exe"
 InstallDir "$LOCALAPPDATA\Programs\XPlaneFSR24"
+; NSIS resolves this before .onInit and lets an explicit /D= override it.
+; ValidateDestination still refuses an unrecognized nonempty folder.
+InstallDirRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\XPFSR24CommunityAlpha" "InstallLocation"
 BrandingText "Community graphics preview - SDK 2.4.0"
 VIProductVersion "${WINDOWS_VERSION}"
 VIAddVersionKey /LANG=1033 "ProductName" "FSR 3.1 / 4.1 + Frame Gen for X-Plane 12 (Experimental)"
@@ -37,6 +40,7 @@ Var IntegrationWanted
 Var IntegrationWasEnabled
 Var PreviousGuideVersion
 Var PreviousGuideSHA256
+Var IntegrationFailure
 
 !define MUI_ABORTWARNING
 !define MUI_WELCOMEPAGE_TITLE "FSR 3.1 / 4.1 + Frame Gen for X-Plane 12"
@@ -377,8 +381,16 @@ Section "Application"
       StrCpy $0 0
     ${EndIf}
     ${If} $0 != 0
+      StrCpy $IntegrationFailure "The setup helper could not complete."
+      ClearErrors
+      FileOpen $1 "$INSTDIR\logs\integration-setup.txt" r
+      ${IfNot} ${Errors}
+        FileRead $1 $IntegrationFailure
+        FileClose $1
+      ${EndIf}
+      DetailPrint "$IntegrationFailure"
       SetErrorLevel 9
-      Abort "In-sim setup could not finish. Close X-Plane, check logs/integration-setup.txt and rerun setup into this same folder. Existing choices and models are retained."
+      Abort "In-sim setup could not finish: $IntegrationFailure$\r$\nDetails: $INSTDIR\logs\integration-setup.txt$\r$\nRerun setup into this same folder after correcting this issue. Existing choices and models are retained."
     ${EndIf}
   ${EndIf}
   ${If} $TestMode != 1

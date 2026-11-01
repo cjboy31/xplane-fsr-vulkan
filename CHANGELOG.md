@@ -1,5 +1,17 @@
 # Changes
 
+## 0.7.7-alpha
+
+- Fix setup rejecting a verified previous plugin when the new installer uses a different app folder for the same simulator.
+- Reuse the recognized installed application folder by default. An explicit destination is kept.
+- Check activation ownership before changing simulator files. Edited, unrelated and different-simulator installations remain protected.
+- Show the actual setup error and full log location instead of always telling users to close X-Plane.
+- Keep the rendering, startup recovery and buffer-reuse improvements from 0.7.6. No new AA, NR or frame-generation algorithm is added.
+
+## 0.7.7-experimental.1
+
+- The same installer ownership and error-message corrections as 0.7.7-alpha, on the Experimental channel. Normal remains recommended.
+
 ## 0.7.6-alpha
 
 - Reduce repeated image-buffer setup that could cause CPU spikes, including when frame generation was switched Off after launch.

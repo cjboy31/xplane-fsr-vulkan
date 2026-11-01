@@ -25,6 +25,33 @@ inline InstallationLink parseInstallationLink(const std::filesystem::path& file)
     graphics::require(root.is_absolute(),"The installed setup link must name an absolute installation");
     return {root,plugin};
 }
+// Setup may move a known installation. Ownership is proved by the simulator's
+// link, its exact executable, the old saved digest and the old packaged plugin.
+// During the final registration step only, the installed file may already be
+// the separately verified replacement. No unknown plugin is admitted.
+inline std::filesystem::path verifiedPluginOwner(const std::filesystem::path& simulator,const std::string& replacement={}){
+    const auto link=parseInstallationLink(installationLinkFile(simulator));if(link.root.empty())return {};
+    const auto file=link.root/L"settings.ini";
+    graphics::require(std::filesystem::is_regular_file(file)&&exactSimulator(simulator/L"X-Plane.exe",launcher::load(file)),"The previous setup link belongs to another simulator");
+    const auto recorded=launcher::readSetting(file,L"InSim",L"PluginSHA256");
+    graphics::require(std::string(recorded.begin(),recorded.end())==link.plugin&&fileHash(link.root/L"plugin/64/win.xpl")==link.plugin,"The previous installation cannot verify its plugin ownership");
+    const auto target=simulator/L"Resources/plugins/XPFSR24/64/win.xpl";
+    if(std::filesystem::exists(target)){
+        const auto installed=fileHash(target);
+        graphics::require(installed==link.plugin||(!replacement.empty()&&installed==replacement),"The installed plugin has changed; setup kept it untouched");
+    } // A removed plugin has no unrelated file to overwrite. Panel binding is stricter.
+    return std::filesystem::weakly_canonical(link.root);
+}
+inline bool verifiedPreviousPlugin(const std::filesystem::path& root,const std::filesystem::path& simulator,const std::string& replacement={}){
+    if(!root.is_absolute())return false;
+    const auto file=root/L"settings.ini";
+    if(!std::filesystem::is_regular_file(file)||!exactSimulator(simulator/L"X-Plane.exe",launcher::load(file)))return false;
+    const auto recorded=launcher::readSetting(file,L"InSim",L"PluginSHA256");const std::string digest(recorded.begin(),recorded.end());
+    if(digest.size()!=64||digest.find_first_not_of("0123456789abcdef")!=std::string::npos||!std::filesystem::is_regular_file(root/L"plugin/64/win.xpl")||fileHash(root/L"plugin/64/win.xpl")!=digest)return false;
+    const auto target=simulator/L"Resources/plugins/XPFSR24/64/win.xpl";
+    if(!std::filesystem::exists(target))return true; // No unrelated file can be replaced.
+    const auto installed=fileHash(target);return installed==digest||(!replacement.empty()&&installed==replacement);
+}
 inline std::filesystem::path linkedSettings(const std::filesystem::path& executable){
     if(!executable.is_absolute())return {};
     const auto link=parseInstallationLink(installationLinkFile(executable.parent_path()));if(link.root.empty())return {};

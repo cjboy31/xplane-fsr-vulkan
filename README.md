@@ -8,7 +8,7 @@ Laminar Research product.
 
 ## Download and setup
 
-[Windows Normal — recommended](https://github.com/cjboy31/xplane-fsr-vulkan/releases/tag/v0.7.6-alpha)
+[Windows Normal — recommended](https://github.com/cjboy31/xplane-fsr-vulkan/releases/tag/v0.7.7-alpha)
 · [All releases](https://github.com/cjboy31/xplane-fsr-vulkan/releases)
 · [Join Discord](https://discord.gg/yh396QNgHZ)
 
@@ -35,7 +35,8 @@ always clearer. Visual results vary by aircraft, view, graphics card and display
 
 ## Updates and help
 
-Version 0.7.6 reduces repeated image-buffer setup and improves startup recovery.
+Version 0.7.7 fixes setup ownership checks and shows the actual error when setup
+cannot finish. It keeps the buffer-reuse and startup fixes from 0.7.6.
 Diagnostics provides easy access to fresh session logs. The grouped controls,
 help and transitions from 0.7.5 are retained.
 The separate **Plugin Updater** handles updates for FSR and Native AA. Open **Changelog**
