@@ -34,6 +34,23 @@ NVIDIA DLLs and model weights are not included. Use one NR pass to begin; extra
 passes can blur textures and cost more graphics time. More smoothing is not
 always clearer. Visual results vary by aircraft, view, graphics card and display.
 
+## Recommended hardware and settings
+
+For a comfortable starting point, we suggest Windows 11, a recent CPU with
+strong performance per core, 32 GB RAM, an SSD, and a graphics card with
+12 GB VRAM for 1440p or 16 GB for 4K. These are project setup suggestions,
+not tested minimums or a guarantee of FPS. Heavy aircraft and scenery need more.
+Our main Windows test GPU is the Radeon AI PRO R9700; other GPUs need their own checks.
+
+Start with **Quality upscaling**, **FXAA Off**, **MSAA Off**, **NR Off** and
+**frame generation Off**. For Native AA, use **Full** input instead. NR changes
+the picture and can lower FPS; it is optional. If you add it, start with the
+Small model, one pass and Balanced 50%, before upscaling.
+
+Read the [hardware, GPU compatibility and low-FPS guide](docs/HARDWARE-AND-SETTINGS.md)
+for FSR 3.1 versus 4.1, frame-generation requirements, resolution examples and
+how to find what is slowing your sim down. Linux and Mac limits are listed too.
+
 ## Updates and help
 
 Choose **Release** for all current features or **Beta** to try upcoming changes.
