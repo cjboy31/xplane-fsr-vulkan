@@ -56,6 +56,35 @@ an older export cannot replace a newer session. Unrecognized files and redirecte
 log targets are kept. Models and settings are not copied. No automatic upload
 or Explorer popup occurs on exit.
 
+## Installed setup link and repair
+
+A desktop-launched simulator was found reading a stale disabled registration
+while the tool execution context saw the enabled replacement. A diagnostic
+launched from File Explorer reproduced the simulator's view; a direct tool or
+Shell.Application launch did not. File hashes agreed. Therefore testing only a
+helper launched by the tools did not prove that the usual desktop launch path
+was repaired.
+
+Setup now writes a bounded installation link beside the installed plugin. It
+contains the installation path and plugin hash, never models or rendering
+settings. Recovery validates the exact simulator, enabled profile, ownership
+record, installed plugin and packaged plugin hash. An existing explicit session
+remains authoritative. Missing/stale registry discovery can recover the panel;
+it does not hot-load a renderer or claim active frames.
+
+The recovered panel offers Repair startup link. The separate helper runs in the
+simulator's user context and reports completion. It can replace an old owner only
+when that owner's known installation is disabled and targets the same simulator.
+Enabled owners, different simulators, unknown/edited links and opt-outs remain
+protected. A normal restart is required. Owned link files are removed during
+plugin uninstall; unrelated files are retained.
+
+CPU regression covers absent and stale registrations, current-session precedence,
+disabled profiles, changed plugin hashes, unknown link preservation, owned removal,
+repair-button reachability/feedback, same-simulator stale-owner adoption and refusal
+to switch a different simulator or enabled owner. Desktop repair must additionally
+be verified using the same Explorer launch context as the simulator.
+
 ## Validation
 
 The Windows regression suite passed before the final bounded Diagnostics

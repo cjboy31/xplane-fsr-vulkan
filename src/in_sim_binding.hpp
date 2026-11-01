@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 #include "session_profile.hpp"
+#include "installation_link.hpp"
 namespace insim {
 class ConfigurationSession {
     HANDLE owner{};std::string token;
@@ -32,7 +33,13 @@ inline SettingsBinding resolveSettings(const std::filesystem::path &executable,
     // their own profile from the process-local runtime path, never a disk scan.
     if(runtime.is_absolute()&&valid(runtime.parent_path()/L"settings.ini"))
         return {std::filesystem::weakly_canonical(runtime.parent_path()/L"settings.ini"),true};
-    if(registeredManifest.empty())return {{},false,"No installation registration is visible to this simulator session"};
+    // The current session's explicit environment stays authoritative. A local
+    // installation receipt can recover configuration when registry discovery
+    // is missing/stale, without enabling a renderer on an existing device.
+    std::string linkError;
+    try{auto linked=app::linkedSettings(executable);if(!linked.empty())return {linked,true,"Saved setup recovered from the installed plugin link"};}
+    catch(const std::exception& e){linkError=e.what();}
+    if(registeredManifest.empty())return {{},false,linkError.empty()?"No installation registration is visible to this simulator session":linkError};
     if(registeredManifest.is_absolute()&&registeredManifest.filename()==L"XPFSR24Implicit.json"&&
         registeredManifest.parent_path().filename()==L"auto"){
         auto root=registeredManifest.parent_path().parent_path(),file=root/L"settings.ini";

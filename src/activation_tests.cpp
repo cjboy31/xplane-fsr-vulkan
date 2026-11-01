@@ -138,6 +138,12 @@ int wmain(int argc,wchar_t **argv){try{
     check(racingRepair.get().find("disabled")!=std::string::npos&&launcher::readSetting(root/L"settings.ini",L"InSim",L"Enabled")==L"0","Racing registration repair reversed an opt-out");registration.enable(root);
     launcher::writeSetting(L"InSim",L"Enabled",L"1",(root/L"second/settings.ini").c_str());rejects([&]{registration.repair(root/L"second");});
     rejects([&]{registration.enable(root/L"second");});registration.disable(root/L"second");check(!_wcsicmp(app::registryString(HKEY_CURRENT_USER,owner.c_str(),L"Manifest").c_str(),app::LayerRegistration::manifest(root).c_str()),"Another installation removed owner");
+    launcher::writeSetting(L"InSim",L"Enabled",L"0",(root/L"settings.ini").c_str());launcher::writeSetting(L"InSim",L"Enabled",L"1",(root/L"second/settings.ini").c_str());
+    auto foreign=p;foreign.simulator=(root/L"foreign-sim").wstring();std::filesystem::create_directories(root/L"foreign-sim");graphics::write(root/L"foreign-sim/X-Plane.exe","fixture");launcher::save(root/L"settings.ini",foreign);
+    rejects([&]{registration.repair(root/L"second");});check(!_wcsicmp(app::registryString(HKEY_CURRENT_USER,owner.c_str(),L"Manifest").c_str(),app::LayerRegistration::manifest(root).c_str()),"Repair adopted a disabled owner for another simulator");launcher::save(root/L"settings.ini",p);
+    registration.repair(root/L"second");check(!_wcsicmp(app::registryString(HKEY_CURRENT_USER,owner.c_str(),L"Manifest").c_str(),app::LayerRegistration::manifest(root/L"second").c_str())&&launcher::readSetting(root/L"settings.ini",L"InSim",L"Enabled")==L"0","Repair did not replace the stale disabled same-simulator owner safely");
+    bytes=sizeof(enabled);check(RegGetValueW(HKEY_CURRENT_USER,layers.c_str(),app::LayerRegistration::manifest(root).c_str(),RRF_RT_REG_DWORD,nullptr,&enabled,&bytes)==ERROR_FILE_NOT_FOUND,"Repair kept the stale implicit layer registered");
+    registration.disable(root/L"second");registration.enable(root);
     // Removal works without a connected simulator and leaves unrelated layers.
     std::filesystem::remove(root/L"sim/X-Plane.exe");registration.disable(root);bytes=sizeof(value);check(RegGetValueW(HKEY_CURRENT_USER,layers.c_str(),L"Other-layer.json",RRF_RT_REG_DWORD,nullptr,&value,&bytes)==ERROR_SUCCESS&&value==7,"Unrelated Vulkan layer changed");
     check(app::registryString(HKEY_CURRENT_USER,owner.c_str(),L"Manifest").empty()&&launcher::readSetting(root/L"settings.ini",L"InSim",L"Enabled")==L"0","Disable left activation owned/enabled");

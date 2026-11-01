@@ -30,7 +30,7 @@ inline std::string valueName(const Controls &c,Field f){
     return std::to_string(value)+"%";
 }
 struct Rect {int x{},y{},w{},h{};bool contains(int a,int b)const{return a>=x&&a<x+w&&b>=y&&b<y+h;}};
-enum class Kind {Tab,Processing,Mode,FrameGen,NRField,Budget,Help,Close,Preset,Graphics,ApplyGraphics,OpenChoice,ChooseOption,CloseChoice,FGToggle,FGProvider,ImportModel,CloudPreset,Renderer,Changelog,Updates,Logs};
+enum class Kind {Tab,Processing,Mode,FrameGen,NRField,Budget,Help,Close,Preset,Graphics,ApplyGraphics,OpenChoice,ChooseOption,CloseChoice,FGToggle,FGProvider,ImportModel,CloudPreset,Renderer,Changelog,Updates,Logs,RepairStartup};
 inline constexpr int contentTop=188, footerHeight=120, modelSetupHeight=132;
 inline Rect footerNotice(int width,int height){return {24,height-112,width-48,34};}
 inline Rect footerGuidance(int width,int height){return {24,height-62,width-48,51};}
@@ -45,6 +45,7 @@ class Panel {
     std::function<void()> importModel;
     std::function<void()> openUpdater;
     std::function<void()> openLogs;
+    std::function<void()> repairStartup;
     bool liveNR{},sessionFG{},rendererConnected{true};
     std::vector<const graphics::Preset*> displayPresets;
     uint64_t previousRecords{},lastProgress{};bool sawStatus{};
@@ -79,6 +80,8 @@ public:
     void graphicsSupport(std::function<void()> callback){queueGraphics=std::move(callback);}
     void updateSupport(std::function<void()> callback){openUpdater=std::move(callback);}
     void logSupport(std::function<void()> callback){openLogs=std::move(callback);}
+    void repairSupport(std::function<void()> callback){repairStartup=std::move(callback);}
+    bool needsStartupRepair()const{return configured()&&!rendererConnected&&bool(repairStartup);}
     void modelSupport(std::function<void()> callback){importModel=std::move(callback);}
     void refresh(){if(configured()){choices=launcher::load(file);if(!choices.simulator.empty())try{rendererChoice=xp_renderer::visibleChoice(choices.simulator);}catch(const std::exception& e){rendererChoice=xp_renderer::Choice::off;notice=std::string(e.what())+". Choose Renderer again to repair it, then restart.";}}}
     std::vector<std::string> choiceOptions(Action a)const{
@@ -139,6 +142,7 @@ public:
         notice=liveNR?"Saved. NR/processing controls are live; FSR and FG providers apply next session.":"Saved for the next session. This session has no live NR renderer; correct/queue graphics and restart using your usual launcher.";
     }
     void act(Action action,bool refreshFirst=true){
+        if(action.kind==Kind::RepairStartup){if(!needsStartupRepair())throw std::runtime_error("Startup repair is unavailable for this session.");repairStartup();notice="Repairing the startup link. Your flight keeps running; your image settings are kept.";return;}
         if(action.kind==Kind::Logs){if(!openLogs)throw std::runtime_error("Log support is unavailable. Reinstall the complete package.");openLogs();notice="Opened Output / FSR-Logs in your X-Plane folder. A fresh copy is also saved when X-Plane exits.";return;}
         if(action.kind==Kind::Changelog){helpField=300;helpScroll=0;dropdownOpen=false;return;}
         if(action.kind==Kind::Updates){if(!openUpdater)throw std::runtime_error("The updater is missing. Reinstall the complete package.");openUpdater();notice="Updater opened. You can check now; close X-Plane before installing.";return;}
@@ -211,7 +215,7 @@ public:
         if(action.kind==Kind::CloudPreset)notice="Cloud clarity setup saved: Maximum clouds with "+std::string(action.delta==1?"Ultra Quality input.":"full input and Native AA.")+" Select Apply graphics after exit, then restart. Higher source resolution costs GPU time; distant cloud detail remains limited by X-Plane's cloud pass.";
         if(action.kind==Kind::Graphics&&action.field==8)notice="Cloud quality saved for next session. Select Apply graphics after exit. This controls X-Plane's cloud quality; FSR/FG/NR choices are retained.";
     }
-    int maxScroll(int height)const{return !configured()?0:std::max(0,(tab==1?Count*64+modelSetupHeight:tab==2?360:tab==3?642:566)-std::max(1,height-contentTop-footerHeight));}
+    int maxScroll(int height)const{return !configured()?0:std::max(0,(tab==1?Count*64+modelSetupHeight:tab==2?360:tab==3?642:566+(needsStartupRepair()?48:0))-std::max(1,height-contentTop-footerHeight));}
     int maxDropdownScroll(int height)const{return std::max(0,int(choiceOptions(dropdown).size())*36-std::max(1,height-contentTop-footerHeight-68));}
     bool wheel(int amount,int height){auto &position=dropdownOpen?dropdownScroll:scroll;int next=std::clamp(position+amount,0,dropdownOpen?maxDropdownScroll(height):maxScroll(height));if(next==position)return false;position=next;return true;}
     std::string help()const{
@@ -233,6 +237,7 @@ public:
         if(helpField==203)return "Select your own supported nvngx_dlssnr.dll, version 310.9.16 or 310.8.0. The importer reads the model without running the DLL. Models are not included in this download. Wait for the import result, then turn NR Off and On if needed.";
         if(helpField==204)return "These cloud presets raise input detail and choose Maximum cloud quality. Higher detail can reduce blockiness but costs graphics time. Native AA is the most demanding choice. Your weather and other effects stay selected. Apply after exit and restart.";
         if(helpField==205)return "Choose Native AA, the separate FSR mod, or the original simulator for your next launch. Only one mod processes the scene. Close and reopen X-Plane after changing this. Both mods keep your choices. The input scale is prepared after a normal exit; Native AA uses Full.";
+        if(helpField==208)return "Repair startup fixes the Windows link used to load this mod. Your image settings stay saved. Close X-Plane normally and reopen it after repair. It does not turn on an installation you disabled or switch away from another enabled installation. Use the installation package if files are missing.";
         if(helpField==206)return "Turn FSR image processing on or off during your flight. Off shows the current simulator picture without FSR processing. The FSR and frame-generation methods still need a restart when changed.";
         if(helpField==207)return "Choose a quick NR speed and detail setting. Performance uses a smaller model picture. Quality uses a larger one. Each uses one pass. Your lighting and color choices stay saved. Wait for the NR status to confirm the change.";
         return tab==3?"Choose your graphics settings, then select Apply after exit. Close X-Plane normally; the background component applies only these settings with a backup. Restart using your usual launcher. FSR/FG choices are retained for custom edits. FXAA is native-only; MSAA + FSR is experimental.":"Live NR and processing controls save automatically. Presets/graphics and FSR/FG providers need a new session. Queue changed graphics on the Image quality tab before exiting. FG pauses while this panel is visible. Open Changelog for changes, or Updates for the separate updater.";
@@ -268,6 +273,10 @@ public:
         }else if(helpField>=0){
             text(24,top,width-140,helpField==300?"Changelog":helpField<Count?utf8(settings[helpField].label):"Setting help");button({width-112,top-4,88,30},"Back",{Kind::Help,-1});
         }else if(tab==0){
+            if(needsStartupRepair()){
+                if(origin>=top&&origin+34<=bottom){button({24,origin,width-104,34},"Repair startup link",{Kind::RepairStartup});button({width-66,origin,36,30},"?",{Kind::Help,208});}
+                origin+=48;
+            }
             row(origin,"Image processor - after restart",xp_renderer::label(rendererChoice),Kind::Renderer,0);
             origin+=56;
             row(origin,"Resolution preset - after restart",choices.presetId.empty()?"Custom":utf8(graphics::presetById(choices.presetId).label),Kind::Preset,0);

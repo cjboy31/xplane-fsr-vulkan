@@ -32,7 +32,21 @@ public:
         NamedLock lock(lockName(ownerKey));
         if(repairOnly)graphics::require(launcher::readSetting(root/L"settings.ini",L"InSim",L"Enabled",L"0")==L"1","Automatic integration is disabled. Use the installation package to enable it first");
         auto previous=registryString(hive,ownerKey.c_str(),L"Manifest");
-        graphics::require(previous.empty()||!_wcsicmp(previous.c_str(),m.c_str()),"Another app installation owns automatic activation. Disable it there before switching installations");
+        if(!previous.empty()&&_wcsicmp(previous.c_str(),m.c_str())){
+            // An interrupted move/update can leave discovery pointing at an
+            // installation whose inner gate is already Off. Adopt only that
+            // recognizable disabled installation for the SAME simulator.
+            // Never switch away from an enabled or unverified owner.
+            const std::filesystem::path oldManifest=previous;
+            const auto oldRoot=oldManifest.parent_path().parent_path();
+            const auto current=launcher::load(root/L"settings.ini");
+            graphics::require(oldManifest.is_absolute()&&oldManifest.filename()==L"XPFSR24Implicit.json"&&oldManifest.parent_path().filename()==L"auto"&&
+                std::filesystem::is_regular_file(oldManifest)&&std::filesystem::is_regular_file(oldRoot/L"settings.ini")&&
+                launcher::readSetting(oldRoot/L"settings.ini",L"InSim",L"Enabled",L"unknown")==L"0"&&
+                exactSimulator(std::filesystem::path(current.simulator)/L"X-Plane.exe",launcher::load(oldRoot/L"settings.ini")),
+                "Another enabled or unverified installation owns activation. Disable it there before switching installations");
+            disable(oldRoot); // Same recursive per-user mutex; removes only its owned values.
+        }
         LoaderOrderRegistration(hive,layerKey==implicitKey?L"SOFTWARE\\Khronos\\Vulkan\\LoaderSettings":layerKey+L"\\LoaderSettings",ownerKey).enable(root,std::filesystem::path(launcher::load(root/L"settings.ini").simulator)/L"X-Plane.exe");
         HKEY key{};checked(RegCreateKeyExW(hive,ownerKey.c_str(),0,nullptr,0,KEY_SET_VALUE,nullptr,&key,nullptr));
         auto rc=RegSetValueExW(key,L"Manifest",0,REG_SZ,reinterpret_cast<const BYTE*>(m.c_str()),DWORD((m.wstring().size()+1)*sizeof(wchar_t)));RegCloseKey(key);checked(rc);

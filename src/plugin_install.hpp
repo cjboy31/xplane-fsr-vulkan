@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 #include "runtime_integrity.hpp"
+#include "installation_link.hpp"
 #include "settings_transaction.hpp"
 #include <algorithm>
 namespace app {
@@ -45,6 +46,7 @@ inline bool removeOwnedPlugin(const std::filesystem::path &app,const std::filesy
     const bool current=std::filesystem::is_regular_file(source)&&old==fileHash(source);
     if(!current&&!publishedPlugin(old)&&old!=std::string(recorded.begin(),recorded.end()))return false;
     graphics::require(std::filesystem::remove(target),"Close X-Plane before removing its plugin");
+    removeInstallationLink(app,sim);
     std::error_code ec;std::filesystem::remove(target.parent_path(),ec);
     std::filesystem::remove(target.parent_path().parent_path(),ec);
     return true;

@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Recover saved settings from a verified link beside the installed plugin when Windows points at an old installation.
+- Add Repair startup link to the in-sim panel when the enabled installation needs startup repair. Restart is still required to load the renderer.
+- Allow repair to replace a stale disabled registration for the same simulator; keep enabled or different-simulator installations protected.
+
 - Start fresh setup with a blank simulator path; keep existing user installations.
 - Remove Automatic from the image-processor menu. Choose Native AA, FSR or Original simulator.
 - Prepare compatible input scale and FXAA settings with X-Plane closed, without changing MSAA, output size or UI size.

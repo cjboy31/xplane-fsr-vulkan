@@ -28,6 +28,20 @@ int wmain(int argc,wchar_t**argv){try{
     launcher::writeSetting(L"InSim",L"Enabled",L"1",installedFile.c_str());
     auto missingManifest=installed/L"gone/auto/XPFSR24Implicit.json";
     check(insim::resolveSettings(sim/L"X-Plane.exe",{},{},missingManifest).reason.find("manifest is missing")!=std::string::npos,"Missing manifest lost its diagnostic reason");
+    std::filesystem::create_directories(installed/L"plugin/64");std::filesystem::create_directories(sim/L"Resources/plugins/XPFSR24/64");
+    graphics::write(installed/L"plugin/64/win.xpl","owned plugin fixture");graphics::write(sim/L"Resources/plugins/XPFSR24/64/win.xpl","owned plugin fixture");
+    auto pluginHash=app::fileHash(installed/L"plugin/64/win.xpl");std::wstring pluginWide(pluginHash.begin(),pluginHash.end());
+    launcher::writeSetting(L"InSim",L"PluginSHA256",pluginWide.c_str(),installedFile.c_str());
+    app::writeInstallationLink(installed,sim);
+    check(insim::resolveSettings(sim/L"X-Plane.exe",{},{},{}).file==std::filesystem::weakly_canonical(installedFile),"Missing registry did not recover the verified installed link");
+    const auto staleRoot=root/L"stale",staleManifest=staleRoot/L"auto/XPFSR24Implicit.json",staleFile=staleRoot/L"settings.ini";
+    std::filesystem::create_directories(staleManifest.parent_path());graphics::write(staleManifest,"fixture");launcher::save(staleFile,installChoices);launcher::writeSetting(L"InSim",L"Enabled",L"0",staleFile.c_str());
+    check(insim::resolveSettings(sim/L"X-Plane.exe",{},{},staleManifest).file==std::filesystem::weakly_canonical(installedFile),"Stale disabled registration hid the installed profile");
+    check(insim::resolveSettings(sim/L"X-Plane.exe",staleFile,{},manifest).file==std::filesystem::weakly_canonical(staleFile),"Recovery redirected an existing explicit session");
+    launcher::writeSetting(L"InSim",L"Enabled",L"0",installedFile.c_str());check(insim::resolveSettings(sim/L"X-Plane.exe",{},{},{}).file.empty(),"Installed link re-enabled an opted-out profile");launcher::writeSetting(L"InSim",L"Enabled",L"1",installedFile.c_str());
+    graphics::write(sim/L"Resources/plugins/XPFSR24/64/win.xpl","changed plugin");check(insim::resolveSettings(sim/L"X-Plane.exe",{},{},{}).file.empty(),"Setup recovery accepted a different installed plugin");graphics::write(sim/L"Resources/plugins/XPFSR24/64/win.xpl","owned plugin fixture");
+    const auto link=app::installationLinkFile(sim);graphics::write(link,"keep this unknown link");bool unknownKept=false;try{app::writeInstallationLink(installed,sim);}catch(...){unknownKept=true;}app::removeInstallationLink(installed,sim);check(unknownKept&&graphics::read(link)=="keep this unknown link","Unknown setup link was overwritten or removed");
+    graphics::write(link,app::installationLinkContents(installed,pluginHash));app::removeInstallationLink(installed,sim);check(!std::filesystem::exists(link),"Owned setup link was not removed");
     std::filesystem::create_directories(installed/L"logs");graphics::write(installed/L"logs/renderer.log","old renderer sentinel");
     insim::ConfigurationSession only;auto onlyToken=only.open(installed);auto fresh=graphics::read(installed/L"logs/renderer.log");check(graphics::read(installed/L"logs/renderer.log.previous")=="old renderer sentinel"&&fresh.find("plugin-only")!=std::string::npos&&fresh.find(onlyToken)!=std::string::npos,"Plugin-only session retained stale renderer logs");
     insim::ConfigurationSession second;check(second.open(installed)!=onlyToken&&graphics::read(installed/L"logs/renderer.log")==fresh&&only.open(installed)==onlyToken,"A second configuration session or repeated poll erased active diagnostics");
@@ -38,6 +52,9 @@ int wmain(int argc,wchar_t**argv){try{
     check(launcher::serialized(launcher::load(installedFile))==beforeRenderer,"Renderer switch reset FSR, NR, FG or graphics choices");
     insim::Panel reopenedRenderer;reopenedRenderer.bind(installedFile,nullptr,false,false);
     check(reopenedRenderer.choiceCurrent({insim::Kind::Renderer})==1,"Renderer dropdown did not restore selection");
+    int repairs=0;disconnected.repairSupport([&]{++repairs;});
+    for(auto size:{std::pair{640,480},std::pair{880,740}}){disconnected.act({insim::Kind::Tab,0});bool repairButton=false;for(const auto& item:disconnected.view(size.first,size.second))repairButton|=item.button&&item.action.kind==insim::Kind::RepairStartup;check(repairButton,"Repair startup is hidden in a supported viewport");}
+    disconnected.act({insim::Kind::RepairStartup});check(repairs==1&&launcher::serialized(launcher::load(installedFile))==beforeRenderer&&disconnected.notice.find("Repairing")!=std::string::npos,"Repair has no click feedback or changed saved choices");disconnected.repairSupport({});
     insim::ConfigurationSession aaSession;auto aaToken=aaSession.open(root/L"aa-session","Native AA owns this session. FSR intentionally inactive.");
     check(graphics::read(root/L"aa-session/logs/renderer.log").find("intentionally inactive")!=std::string::npos&&graphics::read(root/L"aa-session/logs/renderer.log").find("Restart is required")==std::string::npos&&!aaToken.empty(),"Intentional renderer selection was logged as a startup fault");
     disconnected.configurationOnly("Startup bypass: actual activation failure",true);disconnected.observe(absent,1200);
