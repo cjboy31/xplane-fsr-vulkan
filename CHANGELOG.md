@@ -6,7 +6,7 @@
 - **Frame pacing:** new choice under Frame generation: Smooth (AMD default), Recover after heavy scenes (AMD tuning set B) or Power saver. Applies after restart. The session log explains when AMD's driver-assisted pacing (RX 9000 + Adrenalin 26.10.1+) can take over.
 - **Easier install:** setup finds X-Plane 12 automatically and uses plain step-by-step wording.
 - **Clearer channels:** Release Candidates (tested and verified) and Betas (still being tested). Your saved channel is kept.
-- **Project renamed** to `xplane12-fsr-framegen`. Old links keep working.
+- **Project renamed** to `xplane12-fsr-framegen`. Web links to the old name still open. The 0.7.x updater cannot follow the rename, so install 2.0 manually once; from 2.0 on, the updater accepts both names.
 - Repository clean-up: retired feature-video tooling and old per-version install notes removed; developer notes moved to `docs/developer/`.
 - Includes the 0.7.10 scene-copy and background file-worker performance corrections.
 - Not yet verified in live flights; this is why it is a Beta.

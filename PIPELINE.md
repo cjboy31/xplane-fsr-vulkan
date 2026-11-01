@@ -75,7 +75,11 @@ then Linux, then Mac).
 
 ### Bugs
 
-None open in this file. Live bugs are tracked in [GitHub issues](https://github.com/cjboy31/xplane12-fsr-framegen/issues?q=label%3A%22pipeline%3A+bug%22).
+| P | Item | Notes |
+| --- | --- | --- |
+| P0 | 0.5.4-0.7.10 updaters can't find updates after the rename | They reject GitHub's API redirect and check the old name. v2 updater fixed (follows the redirect, accepts both names). Existing users need one manual v2 install; say so in README, release notes and the Discord post. Optional: a 0.7.11 hotfix cannot help, since those users can't reach it either. |
+
+Other live bugs: Live bugs are tracked in [GitHub issues](https://github.com/cjboy31/xplane12-fsr-framegen/issues?q=label%3A%22pipeline%3A+bug%22).
 
 ## Research notes that shaped this list
 

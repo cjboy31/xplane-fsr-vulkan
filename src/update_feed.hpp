@@ -17,8 +17,8 @@ inline constexpr char currentVersion[] = "2.0.0-beta.windows.1";
 // A Release Candidate tag is published only after the v2 verification checklist passes.
 inline constexpr char currentVersion[] = "2.0.0-rc.1";
 #endif
-// Renamed from xplane-fsr-vulkan in v2. GitHub redirects the old name, so
-// older updaters keep working after the rename.
+// Renamed from xplane-fsr-vulkan in v2. Web links redirect, but 0.5.4-0.7.10
+// updaters reject the API redirect, so those users install v2 manually once.
 inline constexpr char repository[] = "https://github.com/cjboy31/xplane12-fsr-framegen";
 // The pre-v2 name. Accepted so the updater keeps working whichever name the
 // repository has (renames can be reverted; GitHub may report either).

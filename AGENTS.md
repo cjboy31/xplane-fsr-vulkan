@@ -116,5 +116,7 @@ The owner replaced the feature-video workflow: new versions use a viewable in-si
 - Help in the in-sim panels is a hover card on "?" (click pins); do not
   reintroduce help pages that replace the settings view.
 - The FSR repository is renamed `xplane12-fsr-framegen` (no "vulkan" in the
-  name). GitHub redirects the old URL; keep the updater's repository constant
+  name). Web links redirect, but 0.5.4-0.7.10 updaters reject the API
+  redirect: those users need one manual v2 install, and every v2 release
+  announcement must say so. Keep the updater's repository constant
   in sync with the actual name.

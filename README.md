@@ -17,6 +17,10 @@ AMD frame generation, and optional neural rendering.
 
 Windows is the main platform. See [Linux and Mac](#linux-and-mac) below.
 
+**Updating from 0.7.x?** This project was renamed, and the 0.7.x updater can't
+follow the new name. Download and run the new Setup.exe once; your saved settings
+are kept. From 2.0 on, updates work from the updater again.
+
 ## Install in 3 steps (Windows)
 
 1. **Close X-Plane.** Download the file ending in **`-Setup.exe`** and run it.
