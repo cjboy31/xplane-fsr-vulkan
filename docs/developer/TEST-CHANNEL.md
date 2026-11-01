@@ -25,6 +25,24 @@ test branch ──► draft release test-<version>.<n> ──► live test ─�
    It numbers the build (`test-2.0.0.1`, `.2`, ...), uploads the files with
    `SHA256SUMS.txt` and a note telling the tester what to focus on.
 
+## GPU fixture identity
+
+Run `Test-FrameGeneration.ps1` with the freshly built `-AppDirectory`. It
+isolates implicit-layer discovery for its child processes, verifies the loaded
+renderer path and SHA-256 inside the presentation fixture, and exercises all
+three pacing profiles on both SDK presenters. Pass an older installed renderer
+as `-RejectedLayer <DLL>` to prove the guard rejects it without changing any
+registration. A deliberately wrong digest must fail too.
+
+The script restores inherited Vulkan/renderer environment variables even after
+failure. `DISABLE_XPFSR24=1` cannot isolate the FSR candidate: it disables explicit
+candidate processing as well. The fixture clears it while isolating implicit
+discovery with `VK_IMPLICIT_LAYER_PATH` and `VK_LOADER_LAYERS_DISABLE=~implicit~`.
+
+SDK generated-image readback, layer swapchain lifecycle and live simulator
+generation are separate results. An accepted pacing profile or lifecycle pass
+does not establish generated frames, scanout quality or stutter-free flight.
+
 ## Testing a build (ChatGPT or another tester)
 
 You need to be signed in to GitHub as the owner (or with a token that has
