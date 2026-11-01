@@ -98,3 +98,23 @@ source/display frame timing before proposing an optimization.
 ## Owner update: 2026-10-31
 
 The owner replaced the feature-video workflow: new versions use a viewable in-sim changelog, with no startup video or video approval step. The desktop dashboard is retired; build it only as a plugin updater. Rendering options belong in the in-sim panel. Preserve saved choices. Use plain, short setting labels and help at an eighth-grade reading level. Main-page descriptions must cover delivered features only; keep developer details in developer docs. Remove aircraft-specific screen branding while retaining honest screen-layout limits. Optional shadow Lua is separate, opt-in, and must probe writable controls and restore owned values. Shimmer reduction is the next rendering priority.
+
+
+## Owner update: 2026-11-01 (v2)
+
+- Two public channels only: **Release Candidates** (tested and verified
+  features, `main`) and **Betas** (in development/testing, `beta`). Saved
+  updater keys stay `release`/`beta`. See docs/developer/RELEASING.md (FSR) and
+  docs/developer/TEST-CHANNEL.md (both).
+- A private **Test** channel comes first: `test` branch plus DRAFT releases
+  tagged `test-<version>.<n>` via `Publish-TestBuild.ps1`. Claude prepares
+  changes; ChatGPT live-tests drafts on the owner's PC with the checklist in
+  docs/developer/TEST-CHANNEL.md and reports PROMOTE TO BETAS or NEEDS FIX.
+- PIPELINE.md is the shared work queue: type (Feature / QoL / Optimization /
+  Bug) and priority (P0 regression, P1 extends the last update, P2 researched,
+  P3 exploratory). Add incoming ideas and bugs there; keep "Shipped" honest.
+- Help in the in-sim panels is a hover card on "?" (click pins); do not
+  reintroduce help pages that replace the settings view.
+- The FSR repository is renamed `xplane12-fsr-framegen` (no "vulkan" in the
+  name). GitHub redirects the old URL; keep the updater's repository constant
+  in sync with the actual name.
