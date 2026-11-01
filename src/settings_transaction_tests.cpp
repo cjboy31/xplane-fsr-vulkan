@@ -13,13 +13,13 @@ int wmain(int argc,wchar_t **argv){try{
     }
     require(!graphics::fs::exists(root),"Do not reuse a fixture");graphics::fs::create_directories(root);
     launcher::Preferences base;launcher::save(file,base);WritePrivateProfileStringW(L"Unrelated",L"Keep",L"yes",file.c_str());
-    auto panel=base,desktop=base;panel.nr[xpfsr::nr::Intensity]=42;
+    auto panel=base,desktop=base;panel.nr[xpfsr::nr::Intensity]=42;panel.fgPacing=1;
     launcher::transactChoices(file,base,panel);
     desktop.frameGeneration=3;launcher::Preferences published;
     launcher::transactChoices(file,base,desktop,[&](const auto&p){published=p;});
-    require(published.nr[xpfsr::nr::Intensity]==42&&published.frameGeneration==3,"Stale desktop overwrote panel or publication snapshot");
+    require(published.nr[xpfsr::nr::Intensity]==42&&published.frameGeneration==3&&published.fgPacing==1,"Stale desktop overwrote panel pacing/NR choices or publication snapshot");
     auto old=desktop;desktop.enabled=false;launcher::transactChoices(file,old,desktop);
-    require(launcher::load(file).nr[xpfsr::nr::Intensity]==42,"Second unrelated desktop save overwrote panel");
+    require(launcher::load(file).nr[xpfsr::nr::Intensity]==42&&launcher::load(file).fgPacing==1,"Second unrelated desktop save overwrote panel pacing/NR choices");
     require(launcher::readSetting(file,L"Unrelated",L"Keep")==L"yes","Unrelated section lost");
     auto current=launcher::load(file),bad=current;bad.arguments=L"bad\nargument";
     bool rejected=false;try{launcher::transactChoices(file,current,bad);}catch(...){rejected=true;}
@@ -31,7 +31,7 @@ int wmain(int argc,wchar_t **argv){try{
         require(CreateProcessW(executable,command.data(),nullptr,nullptr,FALSE,CREATE_NO_WINDOW,nullptr,nullptr,&startup,&children[i])!=FALSE,"Concurrent writer process");CloseHandle(children[i].hThread);}
     SetEvent(start);
     for(auto &child:children){require(WaitForSingleObject(child.hProcess,20000)==WAIT_OBJECT_0,"Writer completion");DWORD code=1;GetExitCodeProcess(child.hProcess,&code);CloseHandle(child.hProcess);require(code==0,"Concurrent writer failed");}CloseHandle(start);
-    auto after=launcher::load(file);require(after.nr[xpfsr::nr::Intensity]==69&&after.nr[xpfsr::nr::Scope]==1&&after.frameGeneration==3&&!after.enabled,"Cross-process edits were lost");
+    auto after=launcher::load(file);require(after.nr[xpfsr::nr::Intensity]==69&&after.nr[xpfsr::nr::Scope]==1&&after.frameGeneration==3&&after.fgPacing==1&&!after.enabled,"Cross-process edits were lost");
     for(const auto &p:graphics::fs::directory_iterator(root))require(p.path().extension()==L".ini","Transaction staging file remains");
     std::cout<<"PASS: stale-editor merge, publish snapshot, unrelated sections, rollback and 100 cross-process NR edits preserve settings.\n";return 0;
 }catch(const std::exception&e){std::cerr<<"FAIL: "<<e.what()<<'\n';return 1;}}

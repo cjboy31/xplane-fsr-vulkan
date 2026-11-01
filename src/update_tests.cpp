@@ -40,7 +40,8 @@ int wmain(int argc, wchar_t **argv) {
             // v2 private Test channel: draft releases and test-* tags are never
             // offered to users, even if a test release is published by mistake.
             auto draft = release("v9.0.0-rc.1", true);
-            draft.replace(draft.find("\"draft\":false"), 14, "\"draft\":true");
+            const std::string draftMarker = "\"draft\":false";
+            draft.replace(draft.find(draftMarker), draftMarker.size(), "\"draft\":true");
             std::string testTag = release("v2.0.0-beta.windows.9");
             for (std::size_t at; (at = testTag.find("v2.0.0-beta.windows.9")) != std::string::npos;)
                 testTag.replace(at, 21, "test-2.0.0.9");
