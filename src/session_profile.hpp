@@ -59,6 +59,7 @@ inline std::string prepareSessionProfile(const std::filesystem::path &root,const
     const bool sync=synchronizedFrameGeneration(fg);
     setEnvironment(L"XPFSR24_FG_PRESENTER",sync?L"3.1.7":L"");
     setEnvironment(L"XPFSR24_FG_SYNCHRONIZED",sync?L"1":L"");
+    setEnvironment(L"XPFSR24_FG_PACING",provider?std::to_wstring(std::clamp(p.fgPacing,0,2)):L"");
     setEnvironment(L"XPFSR24_MODE",mode==1||mode==3?L"native-aa":mode==2||mode==4?L"upscale":L"observe");
     setEnvironment(L"XPFSR24_PROVIDER",mode>=3?L"4.1.2":L"3.1.6");
     setEnvironment(L"XPFSR24_RUNTIME",(root/L"runtime").wstring());

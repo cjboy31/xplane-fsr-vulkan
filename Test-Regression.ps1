@@ -14,7 +14,7 @@ $checks.Add('Camera/frame continuity, startup readiness and FG callback state')
 & (Join-Path $PSScriptRoot 'Test-BackgroundFiles.ps1') -Compiler $cc
 if(-not $?){throw 'Background file bridge regression failed'}
 $checks.Add('Background status/control files: stalled I/O, live controls and bounded shutdown')
-foreach($script in @('Test-Launcher.ps1','Test-SettingsTransaction.ps1','Test-InSimPanel.ps1','Test-Reports.ps1','Test-NRModelImport.ps1','Test-NRPassPolicy.ps1','Test-NRMemory.ps1','Test-ResourceCache.ps1','Test-Activation.ps1','Test-DeferredGraphics.ps1','Test-SessionExport.ps1','Test-Updater.ps1','Test-UpdateUI.ps1','Test-UpdateFlow.ps1','Test-LauncherUI.ps1','Test-PluginUpdater.ps1')){
+foreach($script in @('Test-FramePacing.ps1','Test-Launcher.ps1','Test-SettingsTransaction.ps1','Test-InSimPanel.ps1','Test-Reports.ps1','Test-NRModelImport.ps1','Test-NRPassPolicy.ps1','Test-NRMemory.ps1','Test-ResourceCache.ps1','Test-Activation.ps1','Test-DeferredGraphics.ps1','Test-SessionExport.ps1','Test-Updater.ps1','Test-UpdateUI.ps1','Test-UpdateFlow.ps1','Test-LauncherUI.ps1','Test-PluginUpdater.ps1')){
  & (Join-Path $PSScriptRoot $script) -Compiler $cc
  if(-not $?){throw "Regression failed: $script"}
  $checks.Add($script)

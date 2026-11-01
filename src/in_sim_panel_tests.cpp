@@ -122,6 +122,10 @@ int wmain(int argc,wchar_t**argv){try{
     int queued=0;panel.graphicsSupport([&]{++queued;});panel.act({insim::Kind::ApplyGraphics});check(queued==1,"Deferred graphics callback not invoked");
     panel.act({insim::Kind::FGToggle,0,-1});check(!panel.choices.frameGeneration&&panel.choices.lastFrameGeneration==1,"FG Off lost the selected provider");
     panel.act({insim::Kind::FGProvider,0,1});check(!panel.choices.frameGeneration&&panel.choices.lastFrameGeneration==2,"Choosing a provider enabled FG while Off");
+    // v2 pacing profile: saved, clamped, reloaded, and never toggles FG itself.
+    {const int fgBefore=panel.choices.frameGeneration;panel.act({insim::Kind::FGPacing,0,1});check(panel.choices.fgPacing==1&&panel.choices.frameGeneration==fgBefore,"Pacing choice changed FG or was not saved");
+     panel.act({insim::Kind::FGPacing,0,5});check(panel.choices.fgPacing==2,"Pacing choice not clamped");check(launcher::load(file).fgPacing==2,"Pacing choice not persisted");
+     panel.act({insim::Kind::FGPacing,0,-2});check(panel.choices.fgPacing==0,"Pacing choice could not return to Smooth");}
     insim::Panel fgReopened;fgReopened.bind(file,&writer,true,false);check(fgReopened.choices.lastFrameGeneration==2,"Reopening lost the last FG provider");fgReopened.act({insim::Kind::FGToggle,0,1});check(fgReopened.choices.frameGeneration==2,"FG On did not restore the remembered provider");
     panel.act({insim::Kind::Tab,1});widgets=panel.view(640,480);bool importVisible=false;int firstTabY=0;
     for(const auto &item:widgets){importVisible|=item.action.kind==insim::Kind::ImportModel; if(item.action.kind==insim::Kind::Tab)firstTabY=item.rect.y;}

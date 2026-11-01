@@ -97,6 +97,15 @@ static VKAPI_ATTR VkResult VKAPI_CALL L_CreateSwapchainKHR(VkDevice device,
             auto presentation = std::make_shared<xpfsr::Presentation>(d->runtime->api);
             presentation->create({d->handle, applicationPhysical(*d), d->next}, *info, d->fgQueues,
                                  d->graphicsFamily,d->fgPresenter);
+            {
+                // v2 pacing profile. Failure is non-fatal: the SDK keeps its defaults.
+                wchar_t pacingValue[8]{};int pacingChoice=0;
+                if(GetEnvironmentVariableW(L"XPFSR24_FG_PACING",pacingValue,8))pacingChoice=_wtoi(pacingValue);
+                const auto profile=xpfsr::pacing::clampProfile(pacingChoice);
+                const bool tuned=profile==xpfsr::pacing::Profile::Smooth||presentation->tunePacing(xpfsr::pacing::tuning(profile));
+                log("FG pacing profile: %s (%s). Driver-assisted pacing on RDNA 4 needs FG swapchain 4.0+, Adrenalin 26.10.1+, fullscreen/borderless covering the display, VSync Off and VRR; base FPS slightly below half refresh is recommended.",
+                    xpfsr::pacing::profileNames[int(profile)],tuned?"applied":"provider kept AMD defaults");
+            }
             auto generation = std::make_shared<SwapchainGeneration>();
             generation->presentation = std::move(presentation);
             generation->width = info->imageExtent.width;

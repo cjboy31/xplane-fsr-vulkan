@@ -5,6 +5,7 @@
 #include <atomic>
 #include <ffx_framegeneration.h>
 #include <vk/ffx_api_framegeneration_vk.h>
+#include "frame_pacing.hpp"
 #include "framegen_pixel_probe.hpp"
 #include "framegen_encoded_color.hpp"
 
@@ -114,6 +115,21 @@ class Presentation {
                 "Incomplete FG presentation function table");
     }
     VkSwapchainKHR handle() const { return swapchain_; }
+    // v2: pass a pacing profile to the SDK's own pacer. Returns false (and
+    // keeps AMD defaults) when the provider does not accept the key.
+    bool tunePacing(const pacing::Tuning &t) {
+        if (!context_)
+            return false;
+        static_assert(sizeof(pacing::Tuning) == sizeof(FfxApiSwapchainFramePacingTuning),
+                      "Pacing tuning must match the SDK structure");
+        FfxApiSwapchainFramePacingTuning tuning{t.safetyMarginInMs, t.varianceFactor, t.allowHybridSpin,
+                                                t.hybridSpinTime, t.allowWaitForSingleObjectOnFence};
+        ffxConfigureDescFrameGenerationSwapChainKeyValueVK key{};
+        key.header.type = FFX_API_CONFIGURE_DESC_TYPE_FRAMEGENERATIONSWAPCHAIN_KEYVALUE_VK;
+        key.key = FFX_API_CONFIGURE_FG_SWAPCHAIN_KEY_FRAMEPACINGTUNING;
+        key.ptr = &tuning;
+        return api_.configure(&context_, &key.header) == FFX_API_RETURN_OK;
+    }
     std::string provider() {
         ffxQueryGetProviderVersion q{};
         q.header.type = FFX_API_QUERY_DESC_TYPE_GET_PROVIDER_VERSION;

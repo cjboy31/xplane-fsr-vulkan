@@ -10,6 +10,7 @@ struct Preferences {
     std::string presetId;
     int mode{}, frameGeneration{}, neuralRendering{};
     int lastFrameGeneration{2};
+    int fgPacing{0}; // v2: 0 Smooth (AMD default), 1 Recover after heavy scenes, 2 Power saver.
     xpfsr::nr::Controls nr;
     bool keepSimUISize{true};
     bool enabled{true}, ghostReduction{true}, cockpitRestore{true}, alignmentTint{};
@@ -90,6 +91,7 @@ inline Preferences load(const graphics::fs::path &file) {
     p.frameGeneration = integer(file, L"FrameGeneration", 0, 4);
     p.lastFrameGeneration=integer(file,L"LastFrameGeneration",p.frameGeneration?p.frameGeneration:2,4);
     if(!p.lastFrameGeneration)p.lastFrameGeneration=2;
+    p.fgPacing=integer(file,L"FramePacing",0,2);
     // Older Normal releases replace their Launcher section on save. Keep NR
     // independently, migrating the unreleased prototype's keys on first save.
     const bool separateNR=readSetting(file,L"NeuralRendering",L"Schema")==L"1";
@@ -142,6 +144,7 @@ inline std::wstring serialized(const Preferences &p) {
     add(L"Mode", std::to_wstring(p.mode));
     add(L"FrameGeneration", std::to_wstring(p.frameGeneration));
     add(L"LastFrameGeneration",std::to_wstring(p.lastFrameGeneration));
+    add(L"FramePacing",std::to_wstring(p.fgPacing));
     add(L"NeuralRendering",std::to_wstring(p.neuralRendering));
     add(L"KeepSimUISize",std::to_wstring(p.keepSimUISize));
     for(int i=0;i<xpfsr::nr::Count;++i)add(xpfsr::nr::settings[i].key,std::to_wstring(i==xpfsr::nr::Enabled?int(p.neuralRendering!=0):p.nr.value[i]));

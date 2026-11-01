@@ -13,6 +13,8 @@ jobs:
         with:
           python-version: '3.12'
       - run: python tools/audit_source.py
+      - name: Portable frame-pacing policy tests
+        run: g++ -std=c++17 -Wall -Wextra -Werror src/frame_pacing_tests.cpp -o frame-pacing-tests && ./frame-pacing-tests
   windows-regressions:
     needs: source-policy
     runs-on: windows-2025
