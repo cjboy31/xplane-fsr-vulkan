@@ -1,0 +1,30 @@
+REDISTRIBUTION REVIEW - 0.7.6
+
+Original in-sim plugin, Vulkan adapter, plugin updater, checks, optional shadow
+script, instructions and artwork: project MIT license, included as LICENSE.txt.
+
+AMD FidelityFX SDK 2.4.0 Vulkan loader, upscaler and frame-generation DLLs are
+included under the binary redistribution permission in AMD-SDK-license.md.
+The complete AMD copyright, permission, disclaimers and third-party notices
+are supplied unchanged. Packaging checks the reviewed SHA-256 identities and
+AMD digital signatures. Development SDK archives and sample assets are excluded.
+
+The independent NR component uses pinned MIT source from
+mochizuki0323/DLSSNR-AMD, commit 960038fd1cb892742548f408355e0f3b2fd30d6f.
+Its compiled Vulkan core, model importer and generated SPIR-V shaders retain
+DLSSNR-AMD-MIT.txt, DLSSNR-AMD-UPSTREAM-NOTICES.md and FidelityFX-FSR1-MIT.txt.
+NR-BUILD.json records the exact allowed files, sizes and SHA-256 hashes.
+NVIDIA DLLs, extracted model weights and ACO machine code are excluded.
+
+Vulkan API/header, XPLM SDK, LLVM/MinGW runtime and NSIS notices are supplied
+for the compiled components. Their source SDKs and build tools are not shipped.
+
+No reference-mod packages, ReShade, OptiScaler, NGX, DXVK, D3D or MinHook
+binaries are included. No simulator, aircraft, scenery, comparison screenshots,
+user settings, logs, caches, private models or credentials are included.
+Startup videos and speech assets are not part of this release.
+
+The installer uses an explicit code/shader/documentation/license allow-list
+and rejects unexpected staging files. User model import happens locally after
+installation. Keep the full supplied notices when redistributing. No vendor
+endorsement is claimed.

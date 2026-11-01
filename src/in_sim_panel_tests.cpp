@@ -47,6 +47,8 @@ int wmain(int argc,wchar_t**argv){try{
     insim::ConfigurationSession second;check(second.open(installed)!=onlyToken&&graphics::read(installed/L"logs/renderer.log")==fresh&&only.open(installed)==onlyToken,"A second configuration session or repeated poll erased active diagnostics");
     disconnected.bind(installedFile,nullptr,false,false);disconnected.configurationOnly("Renderer absent; saved settings recovered");app::Telemetry absent{};absent.active=1;absent.recordings=100;disconnected.observe(absent,1000);++absent.recordings;disconnected.observe(absent,1100);check(disconnected.activity.find("NOT LOADED")!=std::string::npos&&!disconnected.rendererLinked(),"Recovered settings falsely confirmed rendering");
     const auto beforeRenderer=launcher::serialized(launcher::load(installedFile));
+    check(disconnected.choiceOptions({insim::Kind::Renderer}).size()==3,"Unexpected Automatic renderer control");
+    check(disconnected.choiceCurrent({insim::Kind::Renderer})==1&&xp_renderer::read(sim)==xp_renderer::Choice::automatic,"Opening the panel changed the legacy choice");
     disconnected.act({insim::Kind::OpenChoice,int(insim::Kind::Renderer),0});disconnected.act({insim::Kind::ChooseOption,1});
     check(xp_renderer::read(sim)==xp_renderer::Choice::fsr&&disconnected.notice.find("restart")!=std::string::npos,"Renderer choice was not saved with restart feedback");
     check(launcher::serialized(launcher::load(installedFile))==beforeRenderer,"Renderer switch reset FSR, NR, FG or graphics choices");
@@ -61,9 +63,9 @@ int wmain(int argc,wchar_t**argv){try{
     check(disconnected.activity.find("BYPASSED")!=std::string::npos&&disconnected.notice.find("actual activation failure")!=std::string::npos&&!disconnected.rendererLinked(),"Startup bypass was mislabeled as a missing layer");
     for(auto size:{std::pair{640,480},std::pair{880,740},std::pair{1280,900}}){
         auto notice=insim::footerNotice(size.first,size.second),guidance=insim::footerGuidance(size.first,size.second);
-        check(notice.y>=size.second-insim::footerHeight&&notice.y+notice.h+12<=guidance.y&&guidance.y+guidance.h<=size.second-8,"Wrapped footer messages overlap or escape the panel");
+        check(notice.y>=size.second-insim::footerHeight&&notice.y+notice.h+4<=guidance.y&&guidance.y+guidance.h<=size.second-6,"Wrapped footer messages overlap or escape the panel");
         bool sawNotice=false,sawGuidance=false;
-        for(auto &item:disconnected.view(size.first,size.second)){sawNotice|=item.rect.y==notice.y&&item.rect.h==34&&item.text==disconnected.notice;sawGuidance|=item.rect.y==guidance.y&&item.rect.h==51;}
+        for(auto &item:disconnected.view(size.first,size.second)){sawNotice|=item.rect.y==notice.y&&item.rect.h==notice.h&&item.text==disconnected.notice;sawGuidance|=item.rect.y==guidance.y&&item.rect.h==guidance.h;}
         check(sawNotice&&sawGuidance,"Footer drawing bypassed the bounded wrapped layout");
     }
     std::wstring name=L"Local\\XPFSRPanelTest-"+std::to_wstring(GetCurrentProcessId());xpfsr::nr::ControlChannel writer,reader;
@@ -95,7 +97,7 @@ int wmain(int argc,wchar_t**argv){try{
         check(reached.size()==xpfsr::nr::Count,"NR field unreachable by scrolling");
         panel.scroll=panel.maxScroll(size.second);check(!panel.wheel(10000,size.second),"Bottom overscroll changed layout");panel.scroll=0;check(!panel.wheel(-10000,size.second),"Top overscroll changed layout");
         panel.act({insim::Kind::Help,xpfsr::nr::Order});auto help=panel.view(size.first,size.second);for(const auto&i:help)check(!i.button||i.action.kind!=insim::Kind::NRField,"Help overlay left editable background controls");
-        panel.act({insim::Kind::Help,-1});panel.act({insim::Kind::Tab,0});for(int y=0;y<=panel.maxScroll(size.second);++y){panel.scroll=y;for(const auto&i:panel.view(size.first,size.second))check(i.rect.y<132||i.rect.y+i.rect.h<=size.second-120||!i.button,"Flight control overlaps footer");}
+        panel.act({insim::Kind::Help,-1});panel.act({insim::Kind::Tab,0});for(int y=0;y<=panel.maxScroll(size.second);++y){panel.scroll=y;for(const auto&i:panel.view(size.first,size.second))check(i.rect.y<insim::contentTop||i.rect.y+i.rect.h<=size.second-insim::footerHeight||!i.button,"Flight control overlaps footer");}
     }
     panel.act({insim::Kind::Tab,1});panel.scroll=0;
     auto widgets=panel.view(880,740);bool toggle=false,slider=false,close=false;
@@ -125,7 +127,7 @@ int wmain(int argc,wchar_t**argv){try{
     panel.nrStatus="NR bypassed: NR model missing";panel.act({insim::Kind::Budget,2});check(panel.selectedBudget()==2&&panel.notice.find("Waiting for a model")!=std::string::npos,"Budget selection falsely implied missing NR was active");
     before=publications;panel.act({insim::Kind::Budget,2});check(publications==before&&panel.notice.find("Selected: Quality 67%")!=std::string::npos,"Selecting the current budget gave no feedback or restarted NR");
     panel.act({insim::Kind::Tab,0});panel.scroll=panel.maxScroll(740);int highlights=0;
-    for(const auto&item:panel.view(880,740))if(item.action.kind==insim::Kind::Budget&&item.selected){++highlights;check(item.action.field==2&&item.text.find("Selected")!=std::string::npos,"Wrong budget highlighted");}
+    for(const auto&item:panel.view(880,740))if(item.action.kind==insim::Kind::Budget&&item.selected){++highlights;check(item.action.field==2&&item.text.find("Quality 67%")!=std::string::npos,"Wrong budget highlighted");}
     check(highlights==1,"Selected budget lacks a visible cue");
     panel.act({insim::Kind::NRField,xpfsr::nr::Enabled,-1});panel.nrStatus="NR Off";panel.act({insim::Kind::Budget,0});check(panel.notice.find("NR is Off")!=std::string::npos,"Budget feedback ignored NR Off");
     auto beforeCloud=launcher::load(file);panel.act({insim::Kind::CloudPreset,0,1});
@@ -156,6 +158,15 @@ int wmain(int argc,wchar_t**argv){try{
     fgStatus.fgActive=1;fgLive.observe(fgStatus,5000);check(fgLive.frameGenerationStatus().find("Waiting")!=std::string::npos,"Stale FG counters stayed running");
     fgLive.act({insim::Kind::FGToggle,0,-1});check(!liveFG&&fgLive.frameGenerationStatus().find("Off")==0&&fgLive.notice.find("live")!=std::string::npos,"FG Off was only saved or kept reporting active");
     fgReopened.act({insim::Kind::FGToggle,0,1});check(fgReopened.frameGenerationStatus().find("Restart needed")==0&&fgReopened.notice.find("not running yet")!=std::string::npos,"Session started without FG falsely advertised live enable");
+    insim::Panel fgPanel;fgPanel.bind(file,&writer,true,true);
+    app::Telemetry fgSample{};fgSample.active=1;fgSample.fgActive=1;fgSample.recordings=1;
+    fgPanel.observe(fgSample,1000);++fgSample.recordings;fgPanel.observe(fgSample,1020);
+    check(fgPanel.frameGenerationStatus().find("Starting")==0,"FG active flag alone implied completed frames");
+    fgSample.fgGenerated=3;fgSample.displayedPresents=6;++fgSample.recordings;fgPanel.observe(fgSample,1040);
+    check(fgPanel.frameGenerationStatus().find("Running")==0,"Confirmed current FG counters were hidden");
+    fgSample.fgActive=0;strcpy(fgSample.fgReason,"FG paused while in-sim setup is visible");++fgSample.recordings;fgPanel.observe(fgSample,1060);
+    check(fgPanel.frameGenerationStatus().find("Paused")==0,"An open panel with paused FG showed running");
+    fgPanel.observe(fgSample,5000);check(fgPanel.frameGenerationStatus().find("Waiting")==0,"Stale frame telemetry stayed active");
     app::PanelPresenceChannel owner,observer;check(owner.create(GetCurrentProcessId()),"Presence owner");check(!observer.visible(GetCurrentProcessId(),1000),"Hidden panel paused FG");owner.setVisible(true);check(observer.visible(GetCurrentProcessId(),1010),"Visible panel was not observed");owner.close();check(!observer.visible(GetCurrentProcessId(),1020),"Plugin shutdown left FG paused");
     std::cout<<"PASS: live NR/processing persistence, stale desktop edits, opt-in/no-op safety, viewport/scroll/help coverage, activity proof and panel-presence lifetime.\n";return 0;
 }catch(const std::exception&e){std::cerr<<"FAIL: "<<e.what()<<'\n';return 1;}}

@@ -1,6 +1,10 @@
 # Changes
 
-## Unreleased
+## 0.7.6-alpha
+
+- Reduce repeated image-buffer setup that could cause CPU spikes, including when frame generation was switched Off after launch.
+- Reuse buffers only after the simulator and frame-generation presenter finish using them. Keep the memory safeguards and existing flicker/freeze corrections.
+- Keep the grouped controls, transitions, timing labels and per-setting help from 0.7.5.
 
 - Recover saved settings from a verified link beside the installed plugin when Windows points at an old installation.
 - Add Repair startup link to the in-sim panel when the enabled installation needs startup repair. Restart is still required to load the renderer.
@@ -11,7 +15,18 @@
 - Prepare compatible input scale and FXAA settings with X-Plane closed, without changing MSAA, output size or UI size.
 - Add Open log folder to Diagnostics and copy session logs to X-Plane / Output / FSR-Logs after exit.
 - Delay repeated memory-allocation retries and retire completed old FG resources safely. Native rendering continues while memory is low.
-- Delay first-use FSR setup until the initial scene stabilizes. Live stutter validation is still in progress.
+- Wait for the initial scene to settle before preparing FSR. Frame generation and NR still have their own processing cost; this is not a guarantee that every hitch is gone.
+
+## 0.7.6-experimental.1
+
+- Includes the same buffer-reuse, startup recovery, input setup and accessible-log corrections as 0.7.6-alpha.
+- Keeps the Experimental update channel. Normal remains recommended and includes all current FSR, NR and frame-generation features.
+
+## 0.7.5-alpha
+
+- The in-sim panel groups image processing, frame generation, and neural controls. Section headers show when changes apply. Each setting has its own help.
+- Tabs and switches now ease into place. Turn off Windows animation effects for instant changes.
+- Diagnostics opens the installation log folder and remains usable at the minimum window size. Frame counts and session status stay separate from saved choices.
 
 ## 0.7.4-alpha
 

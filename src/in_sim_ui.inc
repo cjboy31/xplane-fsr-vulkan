@@ -11,6 +11,7 @@
 #include <XPLMGraphics.h>
 #include <GL/gl.h>
 #include <cmath>
+#include <map>
 static XPLMWindowID setupWindow{};
 static insim::Panel setupPanel;
 static xpfsr::nr::ControlChannel setupNR;
@@ -179,69 +180,240 @@ static void setupPoll(){
         }
     }catch(const std::exception&e){setupPanel.notice=e.what();}catch(...){setupPanel.notice="In-sim status could not be refreshed";}
 }
-static void setupRound(float x,float y,float w,float h,float radius){
-    radius=std::min(radius,std::min(w,h)/2);glBegin(GL_TRIANGLE_FAN);glVertex2f(x+w/2,y-h/2);
-    for(int corner=0;corner<4;++corner){float cx=x+(corner<2?w-radius:radius),cy=y-(corner==0||corner==3?radius:h-radius);for(int i=0;i<=8;++i){float angle=float((-90+corner*90+i*90.0/8)*3.141592653589793/180);glVertex2f(cx+std::cos(angle)*radius,cy-std::sin(angle)*radius);}}
+// The visual state is local to the window. It never changes renderer settings or input geometry.
+namespace setup_deck {
+struct Ink {float r,g,b;};
+constexpr Ink canvas{.066f,.079f,.093f}, deck{.088f,.104f,.121f}, field{.119f,.143f,.162f},
+    border{.198f,.233f,.257f}, rule{.145f,.169f,.186f}, white{.927f,.945f,.948f},
+    dim{.650f,.704f,.730f}, ice{.454f,.925f,.845f}, tint{.113f,.225f,.218f},
+    amber{.925f,.749f,.465f};
+static Ink mix(Ink a,Ink b,float t){return {a.r+(b.r-a.r)*t,a.g+(b.g-a.g)*t,a.b+(b.b-a.b)*t};}
+static void ink(Ink c){glColor4f(c.r,c.g,c.b,1);}
+static void solid(float x,float y,float w,float h,Ink color){
+    if(w<=0||h<=0)return;
+    ink(color);glBegin(GL_QUADS);glVertex2f(x,y);glVertex2f(x+w,y);glVertex2f(x+w,y-h);glVertex2f(x,y-h);glEnd();
+}
+static void line(float x1,float y1,float x2,float y2,float stroke,Ink color){
+    const float dx=x2-x1,dy=y2-y1,length=std::sqrt(dx*dx+dy*dy);
+    if(!length)return;
+    const float nx=-dy*stroke/(2*length),ny=dx*stroke/(2*length);
+    ink(color);glBegin(GL_QUADS);glVertex2f(x1+nx,y1+ny);glVertex2f(x2+nx,y2+ny);
+    glVertex2f(x2-nx,y2-ny);glVertex2f(x1-nx,y1-ny);glEnd();
+}
+// Unit arc vertices are computed once, not on each draw call.
+struct Corners{
+    float x[4][7],y[4][7];
+    Corners(){for(int c=0;c<4;++c)for(int i=0;i<=6;++i){
+        const float angle=float((-90+c*90+i*15)*3.141592653589793/180);
+        x[c][i]=std::cos(angle);y[c][i]=std::sin(angle);
+    }}
+};
+static void rounded(float x,float y,float w,float h,float radius,Ink color){
+    if(w<=0||h<=0)return;
+    static const Corners arc{};
+    radius=std::min(radius,std::min(w,h)*.5f);
+    ink(color);glBegin(GL_TRIANGLE_FAN);glVertex2f(x+w/2,y-h/2);
+    for(int c=0;c<4;++c){
+        const float cx=x+(c<2?w-radius:radius),cy=y-(c==0||c==3?radius:h-radius);
+        for(int i=0;i<=6;++i)glVertex2f(cx+arc.x[c][i]*radius,cy-arc.y[c][i]*radius);
+    }
     glVertex2f(x+w-radius,y);glEnd();
 }
-static void setupBox(float left,float top,const insim::Rect&r,bool selected){
-    if(selected)glColor4f(.045f,.28f,.34f,1);else glColor4f(.075f,.105f,.15f,1);
-    setupRound(left+r.x,top-r.y,float(r.w),float(r.h),6);
+static float measure(const std::string& s){return XPLMMeasureString(xplmFont_Proportional,s.data(),int(s.size()));}
+static void text(int x,int y,int width,const std::string &value,Ink color=white){
+    if(width<=0||value.empty())return;
+    std::string s=value;
+    if(measure(s)>width){
+        const std::string dots="...";
+        int bytes=int(s.size()),lo=0,hi=bytes;
+        const float available=width-measure(dots);
+        if(available<=0)return;
+        while(lo<hi){
+            int mid=lo+(hi-lo+1)/2;
+            if(XPLMMeasureString(xplmFont_Proportional,s.data(),mid)<=available)lo=mid;else hi=mid-1;
+        }
+        while(lo>0&&lo<bytes&&(static_cast<unsigned char>(s[lo])&0xc0)==0x80)--lo;
+        s.resize(lo);s+=dots;
+    }
+    float rgb[]={color.r,color.g,color.b};
+    XPLMDrawString(rgb,x,y,s.data(),nullptr,xplmFont_Proportional);
 }
-static void setupText(int x,int y,int width,const std::string &value,bool accent=false){
-    std::string clipped=value;while(!clipped.empty()&&XPLMMeasureString(xplmFont_Proportional,clipped.data(),int(clipped.size()))>width)clipped.pop_back();
-    float color[3]={accent?.27f:.9f,accent?.87f:.94f,accent?.93f:.98f};XPLMDrawString(color,x,y,clipped.data(),nullptr,xplmFont_Proportional);
-}
-static std::vector<std::string> setupWrapLines(int width,const std::string &value){
+static std::vector<std::string> wrap(int width,const std::string& value){
     std::vector<std::string> lines;std::istringstream paragraphs(value);std::string paragraph;
     while(std::getline(paragraphs,paragraph)){
         std::istringstream input(paragraph);std::string word,line;
-        while(input>>word){auto next=line.empty()?word:line+" "+word;if(!line.empty()&&XPLMMeasureString(xplmFont_Proportional,next.data(),int(next.size()))>width){lines.push_back(line);line=word;}else line=next;}
-        lines.push_back(line);
-    }return lines;
-}
-static void setupWrapped(int x,int y,int width,const std::string &value,int lines,int skip=0){
-    const auto wrapped=setupWrapLines(width,value);
-    for(int row=0;row<lines&&row+skip<int(wrapped.size());++row)setupText(x,y-row*17,width,wrapped[row+skip]);
-}
-static void setupDraw(XPLMWindowID h,void*) noexcept{try{
-    if(!XPLMGetWindowIsVisible(h))return;
-    int left,top,right,bottom;XPLMGetWindowGeometry(h,&left,&top,&right,&bottom);int width=right-left,height=top-bottom;
-    XPLMSetGraphicsState(0,0,0,0,1,0,0);glBlendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);glColor4f(.018f,.026f,.043f,1);
-    glBegin(GL_QUADS);glVertex2i(left,top);glVertex2i(right,top);glVertex2i(right,bottom);glVertex2i(left,bottom);glEnd();
-    for(const auto &item:setupPanel.view(width,height)){
-        const auto &r=item.rect;const float x=float(left+r.x),y=float(top-r.y);
-        if(item.widget==insim::Widget::Label&&r.h>20){setupWrapped(int(x),int(y)-14,r.w,item.text,std::max(1,r.h/17));continue;}
-        if(item.widget==insim::Widget::Toggle){
-            const float tx=x+r.w-52,ty=y-(r.h-24)/2;
-            glColor4f(item.selected?.025f:.12f,item.selected?.52f:.16f,item.selected?.59f:.22f,1);setupRound(tx,ty,48,24,12);
-            glColor4f(.88f,.96f,1,1);setupRound(tx+(item.selected?26:4),ty-4,16,16,8);
-            setupText(int(x)+8,int(y)-22,r.w-68,item.text,item.selected);
-        }else if(item.widget==insim::Widget::Slider){
-            int value=setupDragField==item.action.field?setupDragPreview:item.value;
-            float span=float(std::max(1,r.w-16)),fraction=float(value-item.minimum)/std::max(1,item.maximum-item.minimum),cy=y-r.h/2;
-            glColor4f(.10f,.15f,.22f,1);setupRound(x+8,cy+3,span,6,3);
-            glColor4f(.07f,.65f,.76f,1);if(fraction>0)setupRound(x+8,cy+3,span*fraction,6,3);
-            glColor4f(.73f,.95f,1,1);setupRound(x+8+span*fraction-6,cy+6,12,12,6);
-        }else{
-            if(item.button)setupBox(float(left),float(top),r,item.selected);
-            setupText(int(x)+(item.button?12:0),int(y)-(item.button?21:14),r.w-(item.button?24:0),item.text,item.selected||r.y==20);
-            if(item.widget==insim::Widget::Choice)setupText(int(x)+r.w-25,int(y)-20,18,"v",true);
+        while(input>>word){
+            auto next=line.empty()?word:line+" "+word;
+            if(!line.empty()&&measure(next)>width){lines.push_back(line);line=word;}else line=next;
         }
+        lines.push_back(line);
+    }
+    return lines;
+}
+static void wrapped(int x,int y,int width,const std::string& value,int rows,Ink color,int skip=0){
+    const auto lines=wrap(width,value);
+    for(int i=0;i<rows&&i+skip<int(lines.size());++i)text(x,y-i*17,width,lines[i+skip],color);
+}
+static float ease(float t){t=std::clamp(t,0.f,1.f);return 1-(1-t)*(1-t)*(1-t);}
+struct Sweep{
+    float from{},to{};
+    ULONGLONG start{};
+    bool initialized{};
+    float value(ULONGLONG now)const{
+        return from+(to-from)*ease(float(now-start)/210.f);
+    }
+    float sample(float target,ULONGLONG now,bool motion){
+        if(!initialized||!motion){initialized=true;from=to=target;start=now;return target;}
+        if(target!=to){from=value(now);to=target;start=now;}
+        return value(now);
+    }
+};
+static Sweep nav;
+static std::map<std::pair<int,int>,Sweep> switches;
+static bool motion=true;
+static ULONGLONG opened{},pageChanged{};
+static int page=-1;
+static void begin(){
+    BOOL animated=TRUE;
+    if(SystemParametersInfoW(SPI_GETCLIENTAREAANIMATION,0,&animated,0))motion=animated!=FALSE;
+    opened=GetTickCount64();page=-1;nav={};switches.clear();
+}
+static void brand(int left,int top,float opening){
+    // Three receding image planes are an original mark for the reconstruction controls.
+    const int x=left+24,y=top-18;
+    for(int i=2;i>=0;--i){
+        const float d=i*(4+4*(1-opening));
+        Ink c=mix(ice,border,i*.38f);
+        line(x,y-12-d,x+14,y-3-d,2,c);line(x+14,y-3-d,x+28,y-12-d,2,c);
+        line(x+28,y-12-d,x+14,y-21-d,2,c);line(x+14,y-21-d,x,y-12-d,2,c);
+    }
+    // A chamfered wordmark gives the panel a display face independent of the host UI font.
+    const int gx=x+42,gy=top-21;
+    auto bar=[&](float a,float b,float c,float d){line(gx+a,gy-b,gx+c,gy-d,3.8f,white);};
+    bar(1,0,1,22);bar(0,1,17,1);bar(1,10,14,10); // F
+    bar(25,1,40,1);bar(25,1,22,4);bar(22,3,22,10);bar(21,10,37,10);
+    bar(36,10,39,13);bar(39,12,39,18);bar(39,18,36,21);bar(36,21,21,21); // S
+    bar(47,0,47,22);bar(46,1,60,1);bar(60,1,63,4);bar(63,3,63,8);
+    bar(63,8,60,11);bar(60,11,47,11);bar(53,12,64,22); // R
+    solid(gx+79,top-18,1,30,border);
+    text(gx+92,top-28,225,"Upscaling   /   3.1 + 4.1",white);
+    text(gx+92,top-45,225,"Frame gen   /   3.1 + 4.0",dim);
+}
+static void draw(XPLMWindowID h){
+    if(!XPLMGetWindowIsVisible(h))return;
+    int left,top,right,bottom,mx,my;
+    XPLMGetWindowGeometry(h,&left,&top,&right,&bottom);XPLMGetMouseLocationGlobal(&mx,&my);
+    const int width=right-left,height=top-bottom;
+    const auto now=GetTickCount64();
+    const int pageKey=setupPanel.helpField>=0?1000+setupPanel.helpField:
+        setupPanel.dropdownOpen?10000+int(setupPanel.dropdown.kind)*100+setupPanel.dropdown.field:setupPanel.tab;
+    if(page!=pageKey){page=pageKey;pageChanged=now;}
+    const float entering=motion?ease(float(now-pageChanged)/200.f):1.f;
+    const float opening=motion&&opened?ease(float(now-opened)/430.f):1.f;
+    XPLMSetGraphicsState(0,0,0,0,1,0,0);
+    glBlendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);
+    solid(left,top,width,height,canvas);solid(left,top,width,148,deck);
+    solid(left+24,top-55,width-48,1,rule);
+    solid(left+24,top-55,54*opening,1,ice);
+    brand(left,top,opening);
+    const bool running=setupPanel.activity.rfind("FSR ACTIVE",0)==0;
+    const bool bypass=setupPanel.activity.find("BYPASSED")!=std::string::npos;
+    const Ink lamp=running?ice:bypass?amber:dim;
+    rounded(left+25,top-67,7,7,3.5f,lamp);
+    solid(left+24,top-146,width-48,1,border);
+    const float activeTab=nav.sample(float(setupPanel.tab),now,motion);
+    const int tabWidth=(width-48)/4;
+    solid(left+24+activeTab*tabWidth,top-145,tabWidth,2,ice);
+
+    const int foot=top-height+insim::footerHeight;
+    solid(left,foot,width,insim::footerHeight,deck);solid(left+24,foot,width-48,1,border);
+    const auto items=setupPanel.view(width,height);
+    for(const auto& item:items){
+        const auto &r=item.rect;const int x=left+r.x,y=top-r.y;
+        const bool hover=item.button&&r.contains(mx-left,top-my);
+        const bool content=r.y>=insim::contentTop&&r.y<height-insim::footerHeight;
+        auto shade=[&](Ink c){return content?mix(canvas,c,.52f+.48f*entering):c;};
+        const auto kind=item.action.kind;
+        const int baseline=y-(r.h/2+5);
+        if(item.widget==insim::Widget::Rule){solid(x,y,r.w,1,rule);continue;}
+        if(item.widget==insim::Widget::Section){
+            const float labelWidth=std::min(float(r.w-16),measure(item.text)+4);
+            text(x+3,y-21,r.w-6,item.text,shade(ice));
+            const float timingWidth=item.detail.empty()?0:measure(item.detail)+15;
+            solid(x+labelWidth+12,y-16,r.w-labelWidth-12-timingWidth,1,rule);
+            if(timingWidth)text(int(x+r.w-timingWidth+15),y-21,int(timingWidth),item.detail,shade(item.detail=="Live"?ice:dim));
+            continue;
+        }
+        if(!item.button){
+            const Ink c=item.widget==insim::Widget::Status?lamp:item.widget==insim::Widget::Reading?ice:
+                item.widget==insim::Widget::Muted?dim:white;
+            if(r.h>=34)wrapped(x,y-14,r.w,item.text,std::max(1,r.h/17),shade(c));
+            else text(x,y-14,r.w,item.text,shade(c));
+            continue;
+        }
+        if(kind==insim::Kind::Tab){
+            if(hover&&!item.selected)rounded(x+1,y-3,r.w-2,r.h-7,4,field);
+            const std::string index="0"+std::to_string(item.action.field+1);
+            text(x+7,baseline,23,index,item.selected?ice:dim);
+            text(x+32,baseline,r.w-36,item.text,item.selected?white:dim);
+            continue;
+        }
+        if(item.widget==insim::Widget::Toggle){
+            const float v=switches[{int(kind),item.action.field}].sample(item.selected?1.f:0.f,now,motion);
+            const int tx=x+r.w-45,ty=y-(r.h-20)/2;
+            rounded(tx,ty,43,20,10,shade(mix(hover?dim:border,ice,v)));
+            rounded(tx+1,ty-1,41,18,9,shade(mix(field,tint,v)));
+            rounded(tx+4+23*v,ty-4,12,12,6,shade(mix(dim,ice,v)));
+            text(x+3,baseline,r.w-53,item.text,shade(item.selected?ice:dim));
+            continue;
+        }
+        if(item.widget==insim::Widget::Slider){
+            const int value=setupDragField==item.action.field?setupDragPreview:item.value;
+            const float span=std::max(1,r.w-16),f=float(value-item.minimum)/std::max(1,item.maximum-item.minimum);
+            const float cy=y-r.h*.5f,k=x+8+span*f;
+            rounded(x+8,cy+2,span,4,2,shade(border));rounded(x+8,cy+2,span*f,4,2,shade(ice));
+            rounded(k-5,cy+6,10,12,4,shade(hover?white:ice));continue;
+        }
+        if(kind==insim::Kind::Help&&item.action.field>=0){
+            rounded(x+(r.w-20)/2,y-(r.h-20)/2,20,20,10,shade(hover?ice:border));
+            rounded(x+(r.w-18)/2,y-(r.h-18)/2,18,18,9,shade(hover?tint:canvas));
+            text(int(x+(r.w-measure("?"))/2),baseline,14,"?",shade(hover?ice:dim));continue;
+        }
+        const bool utility=kind==insim::Kind::Changelog||kind==insim::Kind::Updates||kind==insim::Kind::Close;
+        if(utility){
+            if(hover)rounded(x,y,r.w,r.h,4,field);
+            text(int(x+(r.w-measure(item.text))/2),baseline,r.w,item.text,hover?white:dim);continue;
+        }
+        const auto fill=shade(item.selected?tint:hover?mix(field,border,.4f):field);
+        rounded(x,y,r.w,r.h,5,shade(item.selected||hover?mix(border,ice,.60f):border));
+        rounded(x+1,y-1,r.w-2,r.h-2,4,fill);
+        const bool choice=item.widget==insim::Widget::Choice;
+        int pad=12;
+        if(item.selected){solid(x+6,y-10,2,r.h-20,shade(ice));pad=15;}
+        text(x+pad,baseline,r.w-pad-(choice?34:12),item.text,shade(item.selected?ice:white));
+        if(choice){line(x+r.w-22,baseline+7,x+r.w-18,baseline+3,1.5f,shade(dim));line(x+r.w-18,baseline+3,x+r.w-14,baseline+7,1.5f,shade(dim));}
     }
     if(setupPanel.helpField>=0){
         const int rows=std::max(1,(height-insim::contentTop-insim::footerHeight-62)/17);
-        const int maxSkip=std::max(0,int(setupWrapLines(width-48,setupPanel.help()).size())-rows);
+        const int maxSkip=std::max(0,int(wrap(width-48,setupPanel.help()).size())-rows);
         setupPanel.helpScroll=std::clamp(setupPanel.helpScroll,0,maxSkip);
-        setupWrapped(left+24,top-insim::contentTop-62,width-48,setupPanel.help(),rows,setupPanel.helpScroll);
-        if(maxSkip)setupText(left+24,bottom+insim::footerHeight+8,width-48,"Scroll to read more. Back returns to your settings.");
+        wrapped(left+24,top-insim::contentTop-50,width-48,setupPanel.help(),rows,white,setupPanel.helpScroll);
+        if(maxSkip)text(left+24,foot+7,width-48,"Scroll to read more.",dim);
+    }else{
+        const int maximum=setupPanel.dropdownOpen?setupPanel.maxDropdownScroll(height):setupPanel.maxScroll(height);
+        if(maximum>0){
+            const int track=std::max(1,height-insim::contentTop-insim::footerHeight-5);
+            const int thumb=std::max(19,track*track/(track+maximum));
+            const int pos=(track-thumb)*(setupPanel.dropdownOpen?setupPanel.dropdownScroll:setupPanel.scroll)/maximum;
+            rounded(right-11,top-insim::contentTop,3,track,1,rule);
+            rounded(right-11,top-insim::contentTop-pos,3,thumb,1,mix(border,ice,.55f));
+        }
     }
-    if(setupPanel.helpField<0&&(setupPanel.dropdownOpen?setupPanel.maxDropdownScroll(height):setupPanel.maxScroll(height))>0){
-        const int track=std::max(1,height-insim::contentTop-insim::footerHeight),maximum=setupPanel.dropdownOpen?setupPanel.maxDropdownScroll(height):setupPanel.maxScroll(height),thumb=std::max(24,track*track/(track+maximum));
-        glColor4f(.12f,.65f,.75f,1);int y=insim::contentTop+(track-thumb)*(setupPanel.dropdownOpen?setupPanel.dropdownScroll:setupPanel.scroll)/std::max(1,maximum);
-        glBegin(GL_QUADS);glVertex2i(right-13,top-y);glVertex2i(right-9,top-y);glVertex2i(right-9,top-y-thumb);glVertex2i(right-13,top-y-thumb);glEnd();
-    }
-}catch(...){/* No C++ exceptions cross the XPLM callback boundary. */}}
+}
+}
+static void setupDraw(XPLMWindowID window,void*) noexcept{
+    try{setup_deck::draw(window);}catch(...){/* keep exceptions inside the XPLM callback */ }
+}
 static int setupMouse(XPLMWindowID h,int x,int y,XPLMMouseStatus mouse,void*) noexcept{try{
     int left,top,right,bottom;XPLMGetWindowGeometry(h,&left,&top,&right,&bottom);if(setupDragField<0&&(x<left||x>=right||y<bottom||y>top))return 0;
     auto items=setupPanel.view(right-left,top-bottom);
@@ -260,10 +432,11 @@ static int setupMouse(XPLMWindowID h,int x,int y,XPLMMouseStatus mouse,void*) no
 static void setupKey(XPLMWindowID,char key,XPLMKeyFlags flags,char,void*,int losing) noexcept{if(!losing&&(flags&xplm_DownFlag)&&key==27){if(setupPanel.dropdownOpen)setupPanel.dropdownOpen=false;else if(setupPanel.helpField>=0)setupPanel.helpField=-1;else setupHide();}}
 static XPLMCursorStatus setupCursor(XPLMWindowID,int,int,void*){return xplm_CursorDefault;}
 static int setupRightMouse(XPLMWindowID h,int x,int y,XPLMMouseStatus,void*) noexcept{int l,t,r,b;XPLMGetWindowGeometry(h,&l,&t,&r,&b);return x>=l&&x<r&&y>=b&&y<=t;}
-static int setupWheel(XPLMWindowID h,int x,int y,int wheel,int clicks,void*) noexcept{int left,top,right,bottom;XPLMGetWindowGeometry(h,&left,&top,&right,&bottom);if(x<left||x>=right||y<bottom||y>top)return 0;if(wheel==0){if(setupPanel.helpField>=0){const int rows=std::max(1,(top-bottom-insim::contentTop-insim::footerHeight-62)/17),maximum=std::max(0,int(setupWrapLines(right-left-48,setupPanel.help()).size())-rows);setupPanel.helpScroll=std::clamp(setupPanel.helpScroll-clicks*3,0,maximum);}else setupPanel.wheel(-clicks*46,top-bottom);}return 1;}
+static int setupWheel(XPLMWindowID h,int x,int y,int wheel,int clicks,void*) noexcept{int left,top,right,bottom;XPLMGetWindowGeometry(h,&left,&top,&right,&bottom);if(x<left||x>=right||y<bottom||y>top)return 0;if(wheel==0){if(setupPanel.helpField>=0){const int rows=std::max(1,(top-bottom-insim::contentTop-insim::footerHeight-62)/17),maximum=std::max(0,int(setup_deck::wrap(right-left-48,setupPanel.help()).size())-rows);setupPanel.helpScroll=std::clamp(setupPanel.helpScroll-clicks*3,0,maximum);}else setupPanel.wheel(-clicks*46,top-bottom);}return 1;}
 struct SetupMonitor {int mouseX{},mouseY{},left{},top{},right{},bottom{};bool found{};};
 static void setupMonitor(int,int left,int top,int right,int bottom,void*ref){auto &m=*static_cast<SetupMonitor*>(ref);if(!m.found||(m.mouseX>=left&&m.mouseX<right&&m.mouseY>=bottom&&m.mouseY<top)){m.left=left;m.top=top;m.right=right;m.bottom=bottom;m.found=true;}}
 static void setupShow() noexcept{try{
+    if(!setupVisible())setup_deck::begin();
     if(!setupWindow){SetupMonitor m;XPLMGetMouseLocationGlobal(&m.mouseX,&m.mouseY);XPLMGetAllMonitorBoundsGlobal(setupMonitor,&m);if(!m.found)XPLMGetScreenBoundsGlobal(&m.left,&m.top,&m.right,&m.bottom);
         int width=std::min(880,std::max(1,m.right-m.left-40)),height=std::min(740,std::max(1,m.top-m.bottom-120));
         XPLMCreateWindow_t p{};p.structSize=sizeof(p);p.left=m.left+(m.right-m.left-width)/2;p.right=p.left+width;p.top=m.top-76;p.bottom=p.top-height;p.visible=1;p.drawWindowFunc=setupDraw;p.handleMouseClickFunc=setupMouse;p.handleRightClickFunc=setupRightMouse;p.handleKeyFunc=setupKey;p.handleCursorFunc=setupCursor;p.handleMouseWheelFunc=setupWheel;p.decorateAsFloatingWindow=xplm_WindowDecorationRoundRectangle;p.layer=xplm_WindowLayerFloatingWindows;

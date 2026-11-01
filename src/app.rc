@@ -1,8 +1,8 @@
 #include <windows.h>
 101 ICON "../assets/app.ico"
 1 VERSIONINFO
-FILEVERSION 0,7,4,0
-PRODUCTVERSION 0,7,4,0
+FILEVERSION 0,7,6,0
+PRODUCTVERSION 0,7,6,0
 FILEFLAGSMASK 0x3fL
 FILEOS 0x40004L
 FILETYPE 0x1L
@@ -13,11 +13,11 @@ BEGIN
     BEGIN
       VALUE "FileDescription", "X-Plane Plugin Updater\0"
 #ifdef XPFSR_NR_DEVELOPMENT
-      VALUE "FileVersion", "0.7.4-experimental.1\0"
+      VALUE "FileVersion", "0.7.6-experimental.1\0"
 #elif defined(XPFSR_FG_DEVELOPMENT)
-      VALUE "FileVersion", "0.7.4-experimental.1\0"
+      VALUE "FileVersion", "0.7.6-experimental.1\0"
 #else
-      VALUE "FileVersion", "0.7.4-alpha\0"
+      VALUE "FileVersion", "0.7.6-alpha\0"
 #endif
       VALUE "ProductName", "X-Plane Plugin Updater\0"
       VALUE "LegalCopyright", "2026 XPlane FSR24 prototype contributors\0"

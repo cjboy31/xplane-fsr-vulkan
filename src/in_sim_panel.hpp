@@ -31,12 +31,12 @@ inline std::string valueName(const Controls &c,Field f){
 }
 struct Rect {int x{},y{},w{},h{};bool contains(int a,int b)const{return a>=x&&a<x+w&&b>=y&&b<y+h;}};
 enum class Kind {Tab,Processing,Mode,FrameGen,NRField,Budget,Help,Close,Preset,Graphics,ApplyGraphics,OpenChoice,ChooseOption,CloseChoice,FGToggle,FGProvider,ImportModel,CloudPreset,Renderer,Changelog,Updates,Logs,RepairStartup};
-inline constexpr int contentTop=188, footerHeight=120, modelSetupHeight=132;
-inline Rect footerNotice(int width,int height){return {24,height-112,width-48,34};}
-inline Rect footerGuidance(int width,int height){return {24,height-62,width-48,51};}
-enum class Widget {Label,Button,Toggle,Slider,Choice};
+inline constexpr int contentTop=162, footerHeight=82, modelSetupHeight=96, sectionHeight=32, rowHeight=46;
+inline Rect footerNotice(int width,int height){return {28,height-78,width-56,51};}
+inline Rect footerGuidance(int width,int height){return {28,height-23,width-56,17};}
+enum class Widget {Label,Button,Toggle,Slider,Choice,Muted,Reading,Section,Rule,Status};
 struct Action {Kind kind;int field{},delta{};};
-struct Item {Rect rect;std::string text;bool button{},selected{};Action action{Kind::Help,-1,0};Widget widget{Widget::Label};int value{},minimum{},maximum{100};};
+struct Item {Rect rect;std::string text;bool button{},selected{};Action action{Kind::Help,-1,0};Widget widget{Widget::Label};int value{},minimum{},maximum{100};std::string detail{};};
 class Panel {
     std::filesystem::path file;
     ControlChannel *channel{};
@@ -215,7 +215,12 @@ public:
         if(action.kind==Kind::CloudPreset)notice="Cloud clarity setup saved: Maximum clouds with "+std::string(action.delta==1?"Ultra Quality input.":"full input and Native AA.")+" Select Apply graphics after exit, then restart. Higher source resolution costs GPU time; distant cloud detail remains limited by X-Plane's cloud pass.";
         if(action.kind==Kind::Graphics&&action.field==8)notice="Cloud quality saved for next session. Select Apply graphics after exit. This controls X-Plane's cloud quality; FSR/FG/NR choices are retained.";
     }
-    int maxScroll(int height)const{return !configured()?0:std::max(0,(tab==1?Count*64+modelSetupHeight:tab==2?360:tab==3?642:566+(needsStartupRepair()?48:0))-std::max(1,height-contentTop-footerHeight));}
+    int maxScroll(int height)const{
+        if(!configured())return 0;
+        const int lengths[]={3*sectionHeight+9*rowHeight+68,2*sectionHeight+modelSetupHeight+Count*rowHeight,
+                             42+2*sectionHeight+62+61+48+75+75+48,3*sectionHeight+10*rowHeight+44};
+        return std::max(0,lengths[tab]+(tab==0&&needsStartupRepair()?44:0)+8-std::max(1,height-contentTop-footerHeight));
+    }
     int maxDropdownScroll(int height)const{return std::max(0,int(choiceOptions(dropdown).size())*36-std::max(1,height-contentTop-footerHeight-68));}
     bool wheel(int amount,int height){auto &position=dropdownOpen?dropdownScroll:scroll;int next=std::clamp(position+amount,0,dropdownOpen?maxDropdownScroll(height):maxScroll(height));if(next==position)return false;position=next;return true;}
     std::string help()const{
@@ -240,87 +245,178 @@ public:
         if(helpField==208)return "Repair startup fixes the Windows link used to load this mod. Your image settings stay saved. Close X-Plane normally and reopen it after repair. It does not turn on an installation you disabled or switch away from another enabled installation. Use the installation package if files are missing.";
         if(helpField==206)return "Turn FSR image processing on or off during your flight. Off shows the current simulator picture without FSR processing. The FSR and frame-generation methods still need a restart when changed.";
         if(helpField==207)return "Choose a quick NR speed and detail setting. Performance uses a smaller model picture. Quality uses a larger one. Each uses one pass. Your lighting and color choices stay saved. Wait for the NR status to confirm the change.";
+        if(helpField==206)return "Turn FSR image processing on or off during your flight. Off shows the current simulator picture without FSR processing. The FSR and frame-generation methods still need a restart when changed.";
+        if(helpField==207)return "Choose a quick NR speed and detail setting. Performance uses a smaller model picture. Quality uses a larger one. Each uses one pass. Your lighting and color choices stay saved. Wait for the NR status to confirm the change.";
         return tab==3?"Choose your graphics settings, then select Apply after exit. Close X-Plane normally; the background component applies only these settings with a backup. Restart using your usual launcher. FSR/FG choices are retained for custom edits. FXAA is native-only; MSAA + FSR is experimental.":"Live NR and processing controls save automatically. Presets/graphics and FSR/FG providers need a new session. Queue changed graphics on the Image quality tab before exiting. FG pauses while this panel is visible. Open Changelog for changes, or Updates for the separate updater.";
     }
     std::vector<Item> view(int width,int height){
         std::vector<Item> out;
-        auto text=[&](int x,int y,int w,const std::string &s){out.push_back({{x,y,w,20},s});};
-        auto button=[&](Rect r,const std::string&s,Action action,bool selected=false){out.push_back({r,s,true,selected,action,Widget::Button});};
-        text(24,20,width-360,product::heading);text(24,48,width-48,activity);
-        text(24,70,width-48,"NR: "+nrStatus);
-        text(24,92,width-48,"Frame generation: "+frameGenerationStatus());
-        button({width-320,12,96,30},"Changelog",{Kind::Changelog});
-        if(configured())button({width-216,12,96,30},"Updates",{Kind::Updates});
-        button({width-112,12,88,30},"Close",{Kind::Close});
-        int tabWidth=(width-72)/4;const char *tabs[]={"Rendering","Neural rendering","Diagnostics","Image quality"};for(int i=0;i<4;++i)button({24+i*(tabWidth+8),136,tabWidth,32},tabs[i],{Kind::Tab,i},tab==i);
-        int top=contentTop,bottom=height-footerHeight;scroll=std::clamp(scroll,0,maxScroll(height));int origin=top-scroll;
-        auto row=[&](int y,const std::string &label,const std::string &value,Kind kind,int field){
-            if(y<top||y+54>bottom)return;
-            const bool toggle=kind==Kind::NRField&&(field==Enabled||field==Mask||field==Grade||field==AllowFG)||kind==Kind::Graphics&&(field==1||(field>=4&&field<=7))||kind==Kind::FGToggle;
-            const bool slider=kind==Kind::NRField&&((field>=Intensity&&field<=History)||field==Scale||field==Passes);
-            if(toggle){text(24,y+8,width-220,label);bool on=kind==Kind::NRField?choices.nr[Field(field)]!=0:value=="On";out.push_back({{width-178,y+2,98,34},on?"On":"Off",true,on,{kind,field,on?-1:1},Widget::Toggle});}
-            else if(slider){text(24,y,width-240,label);text(width-190,y,100,value);auto &s=settings[field];out.push_back({{24,y+24,width-112,28},value,true,false,{kind,field},Widget::Slider,choices.nr[Field(field)],s.minimum,s.maximum});}
-            else{text(24,y,width-120,label);out.push_back({{24,y+22,width-104,30},value,true,false,{Kind::OpenChoice,int(kind),field},Widget::Choice});}
-            const int help=kind==Kind::Renderer?205:kind==Kind::NRField?field:kind==Kind::Graphics?100+field:kind==Kind::CloudPreset?204:kind==Kind::Mode?200:kind==Kind::FrameGen||kind==Kind::FGToggle||kind==Kind::FGProvider?201:202;
-            button({width-66,y+4,36,30},"?",{Kind::Help,help});
+        auto item=[&](Rect r,const std::string &s,Widget type=Widget::Label){
+            out.push_back({r,s,false,false,{Kind::Help,-1},type});
         };
-        if(!configured()){
-            text(24,top,width-48,"Simulator connection required");
-            text(24,top+36,width-48,"The renderer did not supply a valid settings link, and no matching installed profile was found. Enable in-sim integration for this simulator, then restart. Use the installation package to connect this simulator.");out.back().rect.h=60;
+        auto button=[&](Rect r,const std::string&s,Action action,bool selected=false,Widget type=Widget::Button){
+            out.push_back({r,s,true,selected,action,type});
+        };
+        button({width-252,18,88,30},"Changelog",{Kind::Changelog});
+        if(configured())button({width-158,18,70,30},"Updates",{Kind::Updates});
+        button({width-82,18,58,30},"Close",{Kind::Close});
+        item({40,60,width-64,20},activity,Widget::Status);
+        const int half=(width-56)/2;
+        item({24,84,half,20},"NR   /   "+nrStatus,Widget::Muted);
+        item({32+half,84,half,20},"FG   /   "+frameGenerationStatus(),Widget::Muted);
+        const char *tabs[]={"Rendering","Neural rendering","Diagnostics","Image quality"};
+        const int tabWidth=(width-48)/4;
+        for(int i=0;i<4;++i)button({24+i*tabWidth,110,tabWidth,36},tabs[i],{Kind::Tab,i},tab==i);
+
+        const int top=contentTop,bottom=height-footerHeight;
+        scroll=std::clamp(scroll,0,maxScroll(height));
+        int cursor=top-scroll;
+        auto visible=[&](int y,int h){return y>=top&&y+h<=bottom;};
+        auto section=[&](const char* title,const char* timing=""){
+            if(visible(cursor,sectionHeight)){
+                item({24,cursor,width-48,sectionHeight},title,Widget::Section);
+                out.back().detail=timing;
+            }
+            cursor+=sectionHeight;
+        };
+        const int controlX=std::max(232,width/2);
+        const int helpX=width-56;
+        const int controlWidth=helpX-12-controlX;
+        auto row=[&](const std::string& label,const std::string& value,Kind kind,int field,const char* timing){
+            const int y=cursor;
+            cursor+=rowHeight;
+            if(!visible(y,rowHeight))return;
+            const bool hasTiming=timing[0]!='\0';
+            item({24,y+rowHeight-1,width-48,1},"",Widget::Rule);
+            item({28,y+(hasTiming?3:13),controlX-40,20},label);
+            if(hasTiming)item({28,y+22,controlX-40,18},timing,Widget::Muted);
+            bool toggle=kind==Kind::Processing||kind==Kind::FGToggle||
+                (kind==Kind::NRField&&(field==Enabled||field==Mask||field==Grade||field==AllowFG))||
+                (kind==Kind::Graphics&&(field==1||(field>=4&&field<=7)));
+            bool slider=kind==Kind::NRField&&((field>=Intensity&&field<=History)||field==Scale||field==Passes);
+            if(toggle){
+                const bool on=value=="On";
+                button({helpX-104,y+7,92,32},value,{kind,field,on?-1:1},on,Widget::Toggle);
+            }else if(slider){
+                const auto &s=settings[field];
+                out.push_back({{controlX,y+7,controlWidth-66,32},value,true,false,{kind,field},Widget::Slider,choices.nr[Field(field)],s.minimum,s.maximum});
+                item({helpX-69,y+13,58,20},value,Widget::Reading);
+            }else{
+                button({controlX,y+7,controlWidth,32},value,{Kind::OpenChoice,int(kind),field},false,Widget::Choice);
+            }
+            const int help=kind==Kind::Renderer?205:kind==Kind::Processing?206:kind==Kind::NRField?field:
+                kind==Kind::Graphics?100+field:kind==Kind::CloudPreset?204:kind==Kind::Mode?200:
+                kind==Kind::FGToggle||kind==Kind::FGProvider?201:202;
+            button({helpX,y+7,32,32},"?",{Kind::Help,help});
+        };
+        const char *next="After restart",*nrTiming=liveNR?"Live":next;
+
+        if(helpField>=0){
+            item({24,top,width-150,30},helpField==300?"CHANGELOG":helpField<Count?utf8(settings[helpField].label):"SETTING HELP",Widget::Section);
+            button({width-104,top,80,30},"Back",{Kind::Help,-1});
+        }else if(!configured()){
+            section("CONNECTION");
+            item({28,cursor+5,width-56,20},"Link this simulator");
+            item({28,cursor+33,width-56,60},"Enable in-sim integration for this X-Plane folder in the installation package, then restart X-Plane. Your saved settings will appear here.");
         }else if(dropdownOpen){
-            auto options=choiceOptions(dropdown);text(24,top,width-140,"Choose an option");button({width-112,top-4,88,30},"Back",{Kind::CloseChoice});dropdownScroll=std::clamp(dropdownScroll,0,maxDropdownScroll(height));
-            for(size_t i=0;i<options.size();++i){int y=top+48+int(i)*36-dropdownScroll;if(y>=top+44&&y+32<=bottom)button({24,y,width-48,32},options[i],{Kind::ChooseOption,int(i)},int(i)==choiceCurrent(dropdown));}
-        }else if(helpField>=0){
-            text(24,top,width-140,helpField==300?"Changelog":helpField<Count?utf8(settings[helpField].label):"Setting help");button({width-112,top-4,88,30},"Back",{Kind::Help,-1});
+            const auto options=choiceOptions(dropdown);
+            item({24,top,width-140,30},"CHOOSE AN OPTION",Widget::Section);
+            button({width-104,top,80,30},"Back",{Kind::CloseChoice});
+            dropdownScroll=std::clamp(dropdownScroll,0,maxDropdownScroll(height));
+            for(size_t i=0;i<options.size();++i){
+                const int y=top+44+int(i)*36-dropdownScroll;
+                if(y>=top+40&&y+32<=bottom)button({24,y,width-48,32},options[i],{Kind::ChooseOption,int(i)},int(i)==choiceCurrent(dropdown));
+            }
         }else if(tab==0){
             if(needsStartupRepair()){
-                if(origin>=top&&origin+34<=bottom){button({24,origin,width-104,34},"Repair startup link",{Kind::RepairStartup});button({width-66,origin,36,30},"?",{Kind::Help,208});}
-                origin+=48;
+                if(visible(cursor,34)){button({24,cursor,width-104,34},"Repair startup link",{Kind::RepairStartup});button({helpX,cursor,32,30},"?",{Kind::Help,208});}
+                cursor+=44;
             }
-            row(origin,"Image processor - after restart",xp_renderer::label(rendererChoice),Kind::Renderer,0);
-            origin+=56;
-            row(origin,"Resolution preset - after restart",choices.presetId.empty()?"Custom":utf8(graphics::presetById(choices.presetId).label),Kind::Preset,0);
-            if(origin+56>=top&&origin+94<=bottom){button({24,origin+56,width-104,38},rendererConnected?"Enable FSR - live":"Enable FSR - after restart",{Kind::Processing,0,choices.enabled?-1:1},choices.enabled);out.back().widget=Widget::Toggle;button({width-66,origin+60,36,30},"?",{Kind::Help,206});}
-            row(origin+112,"FSR mode - after restart",fsrNames[std::clamp(choices.mode,0,4)],Kind::Mode,0);
-            row(origin+168,sessionFG?"Frame generation - live":"Frame generation - after restart",choices.frameGeneration?"On":"Off",Kind::FGToggle,0);
-            row(origin+224,"Frame generation method - after restart",fgNames[std::clamp(choices.lastFrameGeneration,1,4)],Kind::FGProvider,0);
-            row(origin+280,liveNR?"Neural rendering - live":"Neural rendering - next session",valueName(choices.nr,Enabled),Kind::NRField,Enabled);
-            row(origin+336,liveNR?"Where to use NR - live":"Where to use NR - after restart",valueName(choices.nr,Scope),Kind::NRField,Scope);
-            row(origin+392,liveNR?"When to apply NR - live":"When to apply NR - after restart",valueName(choices.nr,Order),Kind::NRField,Order);
-            if(origin+478>=top&&origin+510<=bottom){if(origin+452>=top)text(24,origin+452,width-48,liveNR?"NR speed and detail - live":"NR speed and detail - after restart");button({width-66,origin+442,36,30},"?",{Kind::Help,207});int w=(width-64)/3;const char *labels[]={"Performance 33%","Balanced 50%","Quality 67%"};int selected=selectedBudget();for(int i=0;i<3;++i)button({24+i*(w+8),origin+478,w,32},std::string(labels[i])+(selected==i?" [Selected]":""),{Kind::Budget,i},selected==i);}
+            section("01   /   IMAGE PROCESSING",rendererConnected?"After restart unless marked live":"After restart");
+            row("Image processor",xp_renderer::label(rendererChoice),Kind::Renderer,0,"");
+            row("Resolution preset",choices.presetId.empty()?"Custom":utf8(graphics::presetById(choices.presetId).label),Kind::Preset,0,"");
+            row("Enable FSR",choices.enabled?"On":"Off",Kind::Processing,0,rendererConnected?"Live":"");
+            row("FSR mode",fsrNames[std::clamp(choices.mode,0,4)],Kind::Mode,0,"");
+            section("02   /   FRAME GENERATION",next);
+            row("Generate frames",choices.frameGeneration?"On":"Off",Kind::FGToggle,0,sessionFG?"Live":"");
+            row("Frame generation method",fgNames[std::clamp(choices.lastFrameGeneration,1,4)],Kind::FGProvider,0,"");
+            section("03   /   NEURAL RENDERING",nrTiming);
+            row("Enable neural rendering",valueName(choices.nr,Enabled),Kind::NRField,Enabled,"");
+            row("Where to use NR",valueName(choices.nr,Scope),Kind::NRField,Scope,"");
+            row("When to apply NR",valueName(choices.nr,Order),Kind::NRField,Order,"");
+            if(visible(cursor,68)){
+                item({28,cursor+5,width-130,20},"NR speed and detail");
+                button({helpX,cursor,32,30},"?",{Kind::Help,207});
+                const int w=(width-60)/3;
+                const char *labels[]={"Performance 33%","Balanced 50%","Quality 67%"};
+                for(int i=0;i<3;++i)button({24+i*(w+6),cursor+32,w,32},labels[i],{Kind::Budget,i},selectedBudget()==i);
+            }
         }else if(tab==1){
-            if(origin>=top&&origin+32<=bottom){button({24,origin,width-104,32},modelImportBusy?"Model import in progress...":"Import NR model DLL...",{Kind::ImportModel});button({width-66,origin,36,30},"?",{Kind::Help,203});}
-            if(origin+44>=top&&origin+100<=bottom){text(24,origin+44,width-48,modelImportStatus);out.back().rect.h=56;}
-            scroll=std::clamp(scroll,0,maxScroll(height));for(int i=0;i<Count;++i){int y=top+modelSetupHeight+i*64-scroll;if(y<top||y+54>bottom)continue;row(y,utf8(settings[i].label),valueName(choices.nr,Field(i)),Kind::NRField,i);}
+            section("01   /   MODEL LIBRARY");
+            if(visible(cursor,32)){
+                button({28,cursor,helpX-42,32},modelImportBusy?"Model import in progress...":"Import NR model DLL...",{Kind::ImportModel});
+                button({helpX,cursor,32,32},"?",{Kind::Help,203});
+            }
+            if(visible(cursor+40,51))item({28,cursor+40,width-56,51},modelImportStatus,Widget::Muted);
+            cursor+=modelSetupHeight;
+            section("02   /   MODEL CONTROLS",nrTiming);
+            for(int i=0;i<Count;++i)row(utf8(settings[i].label),valueName(choices.nr,Field(i)),Kind::NRField,i,"");
         }else if(tab==3){
-            auto o=choices.presetId.empty()?choices.manual:graphics::presetById(choices.presetId).settings;
-            const char *msaa[]={"Off","2x MSAA (experimental)","4x MSAA (experimental)","8x MSAA (experimental)"};const char *scales[]={"Full - Native AA","Ultra quality","Quality - 1.5x","Balanced","Performance - 2x"};
-            row(origin,"MSAA",msaa[o.msaa],Kind::Graphics,0);row(origin+56,"FXAA - native only",o.fxaa?"On":"Off",Kind::Graphics,1);
-            row(origin+112,"Input detail",scales[o.scale],Kind::Graphics,2);row(origin+168,"Output resolution",o.outputWidth?std::to_string(o.outputWidth)+" x "+std::to_string(o.outputHeight):"Keep current output",Kind::Graphics,3);
-            row(origin+224,"Keep X-Plane UI size when output changes",choices.keepSimUISize?"On":"Off",Kind::Graphics,4);
-            row(origin+280,"Reduce FSR 3 trails - after restart",choices.ghostReduction?"On":"Off",Kind::Graphics,5);
-            row(origin+336,"Cockpit screen protection - after restart",choices.cockpitRestore?"On":"Off",Kind::Graphics,6);
-            row(origin+392,"Check screen alignment - after restart",choices.alignmentTint?"On":"Off",Kind::Graphics,7);
+            const auto o=choices.presetId.empty()?choices.manual:graphics::presetById(choices.presetId).settings;
+            const char *msaa[]={"Off","2x MSAA (experimental)","4x MSAA (experimental)","8x MSAA (experimental)"};
+            const char *scales[]={"Full - Native AA","Ultra quality","Quality - 1.5x","Balanced","Performance - 2x"};
+            section("01   /   DISPLAY",next);
+            row("MSAA",msaa[o.msaa],Kind::Graphics,0,"");
+            row("FXAA",o.fxaa?"On":"Off",Kind::Graphics,1,"Native only");
+            row("Input detail",scales[o.scale],Kind::Graphics,2,"");
+            row("Output resolution",o.outputWidth?std::to_string(o.outputWidth)+" x "+std::to_string(o.outputHeight):"Keep current output",Kind::Graphics,3,"");
+            row("Keep X-Plane menu size",choices.keepSimUISize?"On":"Off",Kind::Graphics,4,"When output changes");
+            section("02   /   IMAGE PROTECTION",next);
+            row("Reduce FSR 3 trails",choices.ghostReduction?"On":"Off",Kind::Graphics,5,"");
+            row("Cockpit screen protection",choices.cockpitRestore?"On":"Off",Kind::Graphics,6,"");
+            row("Check screen alignment",choices.alignmentTint?"On":"Off",Kind::Graphics,7,"");
+            section("03   /   CLOUDS",next);
             const char *clouds[]={"Keep current cloud quality","Low","Medium","High","Maximum"};
-            row(origin+448,"Cloud quality - after restart",clouds[o.cloudQuality+1],Kind::Graphics,8);
-            row(origin+504,"Cloud clarity presets", "Choose a clarity setup...",Kind::CloudPreset,0);
-            if(origin+580>=top&&origin+612<=bottom)button({24,origin+580,width-48,32},"Apply graphics after I close X-Plane",{Kind::ApplyGraphics},choices.manualPending);
+            row("Cloud quality",clouds[o.cloudQuality+1],Kind::Graphics,8,"");
+            row("Cloud clarity presets","Choose a clarity setup...",Kind::CloudPreset,0,"");
+            if(visible(cursor+12,32))button({24,cursor+12,width-48,32},"Apply graphics after I close X-Plane",{Kind::ApplyGraphics},choices.manualPending);
         }else{
-            if(origin>=top&&origin+32<=bottom)button({24,origin,width-48,32},"Open log folder",{Kind::Logs});
-            auto detail=[&](int offset,const std::string& message,int lines=20){const auto y=origin+offset;if(y>=top&&y+lines<=bottom){text(24,y,width-48,message);out.back().rect.h=lines;}};
-            detail(48,"Renderer activity requires advancing frames; loading this plugin alone is not proof.");
-            detail(82,"FSR source recordings: "+std::to_string(telemetry.recordings));
-            detail(112,"Input "+std::to_string(telemetry.renderWidth)+" x "+std::to_string(telemetry.renderHeight)+"  /  Output "+std::to_string(telemetry.outputWidth)+" x "+std::to_string(telemetry.outputHeight));
-            detail(142,"Generated frames: "+std::to_string(telemetry.fgGenerated)+"  /  Presented: "+std::to_string(telemetry.displayedPresents));
-            detail(176,"FG: "+frameGenerationStatus(),52);
-            detail(236,"NR: "+nrStatus,52);
-            detail(304,"Logs: X-Plane / Output / FSR-Logs. A copy is saved after exit.",40);
+            if(visible(cursor,32))button({24,cursor,width-48,32},"Open log folder",{Kind::Logs});
+            cursor+=42;
+            section("01   /   FRAME COUNTERS");
+            const int col=(width-52)/3;
+            if(visible(cursor,62)){
+                const char *labels[]={"Source recordings","Generated frames","Presented frames"};
+                const uint64_t counts[]={telemetry.recordings,telemetry.fgGenerated,telemetry.displayedPresents};
+                for(int i=0;i<3;++i){
+                    item({28+i*col,cursor+4,col-12,20},labels[i],Widget::Muted);
+                    item({28+i*col,cursor+27,col-12,20},std::to_string(counts[i]),Widget::Reading);
+                }
+            }
+            cursor+=62;
+            section("02   /   SESSION STATUS");
+            auto info=[&](const std::string& title,const std::string& value,int blockHeight){
+                if(visible(cursor,blockHeight)){
+                    item({28,cursor+3,width-56,20},title,Widget::Muted);
+                    item({28,cursor+24,width-56,blockHeight-24},value);
+                }
+                cursor+=blockHeight;
+            };
+            info("Renderer",activity,61);
+            info("Image size","Input "+std::to_string(telemetry.renderWidth)+" x "+std::to_string(telemetry.renderHeight)+"   /   Output "+std::to_string(telemetry.outputWidth)+" x "+std::to_string(telemetry.outputHeight),48);
+            info("Frame generation",frameGenerationStatus(),75);
+            info("Neural rendering",nrStatus,75);
+            info("Log location","X-Plane / Output / FSR-Logs. A fresh copy is also saved after exit.",48);
         }
-        // Only fully visible controls are clickable. Long labels/help are clipped
-        // and wrapped by the XPLM drawing adapter inside the panel's content area.
-        out.erase(std::remove_if(out.begin(),out.end(),[&](const Item&i){return i.rect.x<0||i.rect.y<0||i.rect.x+i.rect.w>width||i.rect.y+i.rect.h>height||(i.rect.y>=top&&i.rect.y+i.rect.h>bottom);}),out.end());
-        out.push_back({footerNotice(width,height),notice.empty()?(configured()?"Your choices save automatically. Use ? for help.":"Setup is not linked. No saved choices have been changed."):notice});
-        if(helpField<0)out.push_back({footerGuidance(width,height),dropdownOpen?"Choose an option. Scroll to reveal more choices; Back returns without changing the selection.":help()});
+        out.erase(std::remove_if(out.begin(),out.end(),[&](const Item&i){
+            const auto &r=i.rect;
+            return r.w<=0||r.h<=0||r.x<0||r.y<0||r.x+r.w>width||r.y+r.h>height||(r.y>=top&&r.y+r.h>bottom);
+        }),out.end());
+        out.push_back({footerNotice(width,height),notice.empty()?(configured()?"Your choices save automatically.":"Setup is not linked. Your saved choices are kept."):notice});
+        if(helpField<0){
+            const char* hints[]={"Select ? for help. Queue graphics changes on Image quality before exiting.","Import your model first. Use ? beside a setting for its range and effect.","Counters come from this session. Frame generation pauses while this panel is open.","Use Apply graphics, then close X-Plane normally and restart."};
+            out.push_back({footerGuidance(width,height),dropdownOpen?"Choose a value to save it. Back keeps your current selection.":configured()?hints[tab]:"Use the installation package to connect this simulator.",false,false,{Kind::Help,-1},Widget::Muted});
+        }
         return out;
     }
 };
