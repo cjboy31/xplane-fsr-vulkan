@@ -118,6 +118,16 @@ when the simulator offers the needed live control. It is not installed or
 enabled automatically, and it does not fix every moving shadow artifact.
 
 STARTUP AND SESSION LOGS
+If an older version says Another reconstruction plugin is installed, check
+Resources/plugins/LuminaXP and Resources/plugins/MotionVectors in the X-Plane
+folder you actually launched. Older builds checked folder names, including empty
+leftovers. The development correction checks Windows plugin files and names the
+file it found; its presence still does not prove another renderer is running.
+With X-Plane closed, move an old conflicting plugin outside Resources/plugins
+to compare FSR alone. Keep the files so you can restore them. If neither folder
+exists, share a screenshot, the mod version, fresh renderer.log and X-Plane's
+Log.txt. Do not assume a conflict or delete other plugins based on this message.
+
 First setup starts with a blank simulator path. Choose your own X-Plane folder.
 If the panel recovers your settings but says the renderer did not load, use
 Repair startup link when offered, then close X-Plane normally and reopen it.
