@@ -1,4 +1,4 @@
-FSR 3/4 + FRAME GEN FOR X-PLANE 12 — 0.7.6-alpha
+FSR 3/4 + FRAME GEN FOR X-PLANE 12 — 0.7.7-alpha
 
 INSTALL OR UPDATE
 1. Close X-Plane normally. Close any plugin updater or test windows.
@@ -91,3 +91,11 @@ uploaded automatically. Share a fresh log when asking for help.
 This release reduces repeated buffer setup, including in sessions that started
 with FG enabled. It does not guarantee that every aircraft, scenery or graphics
 combination is stutter-free. Compare the same view with NR and FG Off first.
+
+UPDATING AN EXISTING INSTALLATION
+Setup starts with a recognized existing app folder when available. Keep that
+folder to retain settings and local models. If you intentionally choose another
+folder, setup can transfer renderer activation only when the previous installed
+plugin and its simulator link are verified. It does not overwrite an unknown
+or edited plugin. A failed setup now shows its actual reason and the full path
+to integration-setup.txt; an ownership error does not mean X-Plane is running.

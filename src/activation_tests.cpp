@@ -144,6 +144,29 @@ int wmain(int argc,wchar_t **argv){try{
     registration.repair(root/L"second");check(!_wcsicmp(app::registryString(HKEY_CURRENT_USER,owner.c_str(),L"Manifest").c_str(),app::LayerRegistration::manifest(root/L"second").c_str())&&launcher::readSetting(root/L"settings.ini",L"InSim",L"Enabled")==L"0","Repair did not replace the stale disabled same-simulator owner safely");
     bytes=sizeof(enabled);check(RegGetValueW(HKEY_CURRENT_USER,layers.c_str(),app::LayerRegistration::manifest(root).c_str(),RRF_RT_REG_DWORD,nullptr,&enabled,&bytes)==ERROR_FILE_NOT_FOUND,"Repair kept the stale implicit layer registered");
     registration.disable(root/L"second");registration.enable(root);
+    // A deliberate setup in a different folder may replace our verified
+    // previous plugin, including a build absent from a global digest list.
+    app::installPlugin(root,root/L"sim");app::writeInstallationLink(root,root/L"sim");
+    std::filesystem::create_directories(root/L"second/plugin/64");graphics::write(root/L"second/plugin/64/win.xpl","new installation plugin");
+    const auto oldLinked=graphics::read(app::installationLinkFile(root/L"sim")),oldPlugin=app::fileHash(installedPlugin);
+    graphics::write(app::installationLinkFile(root/L"sim"),"unknown link kept");rejects([&]{registration.preflight(root/L"second",true);});
+    check(app::fileHash(installedPlugin)==oldPlugin&&launcher::readSetting(root/L"settings.ini",L"InSim",L"Enabled")==L"1","Preflight failure altered the existing installation");
+    graphics::write(app::installationLinkFile(root/L"sim"),oldLinked);
+    graphics::write(installedPlugin,"unrelated edited plugin");rejects([&]{registration.preflight(root/L"second",true);});rejects([&]{app::installPlugin(root/L"second",root/L"sim");});
+    graphics::write(installedPlugin,"updated fixture plugin");check(app::fileHash(installedPlugin)==oldPlugin,"Fixture plugin restore mismatch");
+    registration.preflight(root/L"second",true);app::installPlugin(root/L"second",root/L"sim");registration.enable(root/L"second",false,true);app::writeInstallationLink(root/L"second",root/L"sim");
+    check(launcher::readSetting(root/L"settings.ini",L"InSim",L"Enabled")==L"0"&&launcher::readSetting(root/L"second/settings.ini",L"InSim",L"Enabled")==L"1"&&app::linkedSettings(root/L"sim/X-Plane.exe")==std::filesystem::weakly_canonical(root/L"second/settings.ini"),"Verified migration left two active owners or a stale setup link");
+    rejects([&]{registration.repair(root);}); // Repair alone must never move an enabled owner.
+    registration.preflight(root,true);app::installPlugin(root,root/L"sim");registration.enable(root,false,true);app::writeInstallationLink(root,root/L"sim");
+    check(app::fileHash(installedPlugin)==oldPlugin&&launcher::readSetting(root/L"second/settings.ini",L"InSim",L"Enabled")==L"0","Verified reverse migration did not restore single ownership");
+    std::filesystem::remove(installedPlugin);check(registration.preflight(root/L"second",true)==root,"Owned link could not recover its removed plugin");app::installPlugin(root,root/L"sim");
+    app::removeInstallationLink(root,root/L"sim");
+    auto previous=registration.preflight(root/L"second",true);check(previous==root,"Legacy registered owner was not recovered without a link");
+    app::installPlugin(root/L"second",root/L"sim",previous);registration.enable(root/L"second",false,true);
+    std::filesystem::remove(installedPlugin); // Old plugin already removed during a failed reinstall.
+    previous=registration.preflight(root,true);check(previous==root/L"second","Missing old plugin blocked verified registration recovery");
+    app::installPlugin(root,root/L"sim",previous);registration.enable(root,false,true);app::writeInstallationLink(root,root/L"sim");
+    check(app::fileHash(installedPlugin)==oldPlugin&&launcher::readSetting(root/L"second/settings.ini",L"InSim",L"Enabled")==L"0","Legacy/missing-plugin migration left the wrong active owner");
     // Removal works without a connected simulator and leaves unrelated layers.
     std::filesystem::remove(root/L"sim/X-Plane.exe");registration.disable(root);bytes=sizeof(value);check(RegGetValueW(HKEY_CURRENT_USER,layers.c_str(),L"Other-layer.json",RRF_RT_REG_DWORD,nullptr,&value,&bytes)==ERROR_SUCCESS&&value==7,"Unrelated Vulkan layer changed");
     check(app::registryString(HKEY_CURRENT_USER,owner.c_str(),L"Manifest").empty()&&launcher::readSetting(root/L"settings.ini",L"InSim",L"Enabled")==L"0","Disable left activation owned/enabled");

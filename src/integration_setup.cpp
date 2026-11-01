@@ -56,12 +56,14 @@ int wmain(int argc,wchar_t **argv){
         if(action==L"--disable"){registration.disable(root);return 0;}
         graphics::require(action==L"--enable","Unknown integration setup operation");
         graphics::ensureSimulatorClosed();
+        app::NamedLock integrationGuard(app::lockName(app::integrationOwnerKey));
         auto p=launcher::load(root/L"settings.ini");if(argc==3){auto before=p;p.simulator=argv[2];p=launcher::transactChoices(root/L"settings.ini",before,p);}
         graphics::require(std::filesystem::is_regular_file(std::filesystem::path(p.simulator)/L"X-Plane.exe"),"Select the folder containing X-Plane.exe");
         app::verifyRuntime(root/L"runtime",true);
+        const auto previous=registration.preflight(root,true); // Refuse conflicts before changing simulator files.
         if(!std::filesystem::exists(xp_renderer::file(p.simulator)))xp_renderer::save(p.simulator,xp_renderer::Choice::fsr);
         app::synchronizeInput(root);
-        app::installPlugin(root,p.simulator);registration.enable(root);
+        app::installPlugin(root,p.simulator,previous);registration.enable(root,false,true);
         app::writeInstallationLink(root,p.simulator);
         return 0;
     }catch(const std::exception&e){
