@@ -104,17 +104,16 @@ public:
         return result>0;
     }
     void pause(const char*why){if(enabled()&&!frameFailed){interrupted=true;note(why);}}
-    void report(){
+    void report(xpfsr::RendererFiles&files){
         poll();if(!neuralSessionCapable())return;
-        auto now=GetTickCount64();if(now-lastReport<500)return;lastReport=now;
-        wchar_t path[32768]{},token[128]{};if(!GetEnvironmentVariableW(L"XPFSR24_NR_STATUS",path,32768))return;
+        auto now=GetTickCount64();if(now-lastReport<500||!files.hasOutput(1))return;
+        wchar_t token[128]{};
         GetEnvironmentVariableW(L"XPFSR24_SESSION",token,128);
         std::string value;{std::lock_guard<std::mutex> lock(messageLock);value=message;}
         if(sessions.building()&&processingAllowed&&controls[xpfsr::nr::Enabled])value="NR preparing selected profile in background; FSR continues";
         else if(!interrupted&&lastRecord&&now-lastRecord>2000)value="NR waiting: no recent neural recording";
-        std::filesystem::path target=path,temp=std::wstring(path)+L".tmp";
-        {std::ofstream out(temp);out<<GetCurrentProcessId()<<' '<<now<<' '<<records<<'\n';for(auto c:std::wstring(token))out<<char(c);out<<'\n'<<value<<'\n'<<revision<<'\n';if(!out)return;}
-        MoveFileExW(temp.c_str(),target.c_str(),MOVEFILE_REPLACE_EXISTING|MOVEFILE_WRITE_THROUGH);
+        std::ostringstream out;out<<GetCurrentProcessId()<<' '<<now<<' '<<records<<'\n';for(auto c:std::wstring(token))out<<char(c);out<<'\n'<<value<<'\n'<<revision<<'\n';
+        if(files.offer(1,out.str()))lastReport=now;
     }
     void join(){sessions.join();}
     void stop(){join();sessions.clear();backend.reset();channel.close();}

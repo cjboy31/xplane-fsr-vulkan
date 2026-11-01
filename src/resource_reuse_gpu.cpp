@@ -10,6 +10,27 @@ static VKAPI_ATTR VkResult VKAPI_CALL routingAcquire(VkDevice,VkSwapchainKHR,uin
 static VKAPI_ATTR VkResult VKAPI_CALL routingAcquire2(VkDevice,const VkAcquireNextImageInfoKHR*,uint32_t *index){*index=8;return VK_SUCCESS;}
 static VKAPI_ATTR VkResult VKAPI_CALL routingImages(VkDevice,VkSwapchainKHR,uint32_t *count,VkImage*){*count=3;return VK_SUCCESS;}
 static std::atomic<unsigned> sdkRoutingCalls{};
+static void verifyFileControls(){
+    auto path=std::filesystem::temp_directory_path()/(L"FSR-control-fixture-"+std::to_wstring(GetCurrentProcessId()));
+    auto previous=app::environment(L"XPFSR24_CONTROL");
+    struct Restore{std::filesystem::path path;std::wstring previous;~Restore(){SetEnvironmentVariableW(L"XPFSR24_CONTROL",previous.empty()?nullptr:previous.c_str());std::error_code error;std::filesystem::remove(path,error);}}restore{path,previous};
+    {std::ofstream(path)<<'1';}
+    SetEnvironmentVariableW(L"XPFSR24_CONTROL",path.c_str());
+    Device d;d.files.start();app::Shared shared{};d.shared=&shared;
+    d.readControl();require(d.enabled,"Initial control file was not applied");
+    // A newer shared live switch must not be undone by an unchanged cached file.
+    d.enabled=false;shared.enabled=0;d.lastControlRead=0;d.readControl();
+    require(!d.enabled&&!shared.enabled,"Cached control overrode a newer live Off switch");
+    auto deadline=GetTickCount64()+3000;
+    {std::ofstream(path)<<'0';}
+    while(d.files.control(0)!=0&&GetTickCount64()<deadline)std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    require(d.files.control(0)==0,"Changed file control did not refresh");
+    d.lastControlRead=0;d.readControl();
+    d.enabled=true;shared.enabled=1;d.lastControlRead=0;d.readControl();
+    require(d.enabled&&shared.enabled,"Cached control overrode a newer live On switch");
+    d.files.stop();d.shared=nullptr;
+    std::cout<<"PASS: production Device applies initial/changed file controls once; newer live IPC On/Off is retained.\n";
+}
 static VKAPI_ATTR void VKAPI_CALL routingBarrier(VkCommandBuffer,VkPipelineStageFlags,VkPipelineStageFlags,VkDependencyFlags,uint32_t,const VkMemoryBarrier*,uint32_t,const VkBufferMemoryBarrier*,uint32_t count,const VkImageMemoryBarrier *images){require(count==1&&images[0].oldLayout==VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,"SDK barrier layout was rewritten");++sdkRoutingCalls;}
 static VKAPI_ATTR void VKAPI_CALL routingBarrier2(VkCommandBuffer,const VkDependencyInfo *info){require(info->imageMemoryBarrierCount==1&&info->pImageMemoryBarriers[0].oldLayout==VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,"SDK barrier2 layout was rewritten");++sdkRoutingCalls;}
 static VKAPI_ATTR VkResult VKAPI_CALL routingGraphics(VkDevice,VkPipelineCache,uint32_t,const VkGraphicsPipelineCreateInfo*,const VkAllocationCallbacks*,VkPipeline*){++sdkRoutingCalls;return VK_SUCCESS;}
@@ -84,6 +105,7 @@ struct ReuseFixture {
     }
 };
 int wmain(int argc,wchar_t**argv){try{
+    verifyFileControls();
     verifyPresenterRouting();
     ReuseFixture f;f.vk.open();auto &vk=f.vk;
     f.device=std::make_unique<Device>();auto &d=*f.device;d.handle=vk.device;d.physical=vk.physical;fixtureNativeDpa=vk.gdpa;d.next=fixtureDpa;d.memory=vk.memory;d.graphicsFamily=vk.family;

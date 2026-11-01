@@ -1,5 +1,34 @@
 # CPU cost and bounded GPU-resource reuse
 
+## File operations removed from the frame path (development)
+
+The 0.7.9 source still read processing/FG control files every 100 ms and wrote
+FSR/NR status files every 500 ms on intercepted rendering calls. NR replacement
+also requested a write-through flush. A slow or synchronized storage location
+could therefore delay rendering while the device guard was held. This is a
+code-path finding, not proof of the cause of a particular user's flight hitch.
+
+The development bridge reads initial controls during device creation, then
+polls them on a file-only worker. Rendering reads atomic cached values. FSR and
+NR each offer one replaceable status snapshot using a non-waiting mailbox;
+there is no accumulating frame queue. The worker owns copies of paths and
+strings, never Vulkan resources, device pointers or renderer locks. Device
+teardown joins it and drains accepted snapshots. Existing status identity,
+stale-status checks, file replacement and NR durability remain in place.
+
+Only a changed cached control is applied, so an old file value cannot repeatedly
+undo a newer shared-memory On/Off switch. The existing live-switch and temporal
+reset behavior is retained. Missing/invalid controls retain their last good
+value. A busy mailbox skips an intermediate status and retries on a later frame.
+
+Tests block the file worker inside a read and write while rendering-side calls
+continue, exercise 10,000 coalesced snapshots, bounded payloads, I/O exceptions,
+shutdown drain, Unicode paths, status identity and production live-switch
+precedence. These checks establish removal of these particular file waits,
+not an FPS increase. A fresh same-view flight comparison with NR/FG separated
+is still required. Linux CI exercises the portable mailbox; this Windows-layer
+change does not change Linux FSR rendering support.
+
 ## Observed regression
 
 The memory-budget build reclaimed cold command-buffer caches but repeatedly
