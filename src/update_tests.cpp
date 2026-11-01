@@ -50,6 +50,17 @@ int wmain(int argc, wchar_t **argv) {
             require(select("[" + release("v2.0.0-rc.2") + "]", "2.0.0-rc.1", Channel::Release).tag == "v2.0.0-rc.2",
                     "Release Candidates upgrade in order");
         }
+        {
+            // A feed reported under the pre-v2 repository name is still accepted,
+            // with its download URL checked against that same name.
+            auto legacy = release("v2.0.0-rc.2");
+            const std::string now = repository, old = legacyRepository;
+            for (std::size_t at; (at = legacy.find(now)) != std::string::npos;) legacy.replace(at, now.size(), old);
+            require(select("[" + legacy + "]", "2.0.0-rc.1", Channel::Release).tag == "v2.0.0-rc.2", "Legacy repository name rejected");
+            auto mixed = legacy;
+            mixed.replace(mixed.find(old + "/releases/download/"), old.size(), now);
+            rejects([&] { select("[" + mixed + "]", "2.0.0-rc.1", Channel::Release); });
+        }
         auto tracks = "[" + release("v0.6.3-alpha") + "," + release("v0.6.0-experimental.1") +
                       "," + release("v0.5.9-experimental.2") + "]";
         require(select(tracks, "0.6.2-alpha", Channel::Release).tag == "v0.6.3-alpha",
