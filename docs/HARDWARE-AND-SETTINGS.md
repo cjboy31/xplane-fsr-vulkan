@@ -59,6 +59,12 @@ AMD or driver support does not replace this mod's Windows/Linux platform limits 
 | Neural rendering | Off | Add it only if you want its visual changes and have spare GPU time and memory. |
 | Clouds and shadows | Moderate settings | Raising cloud clarity or optional shadow resolution can cost FPS and VRAM. Leave the optional shadow script Off for the first test. |
 
+Find these controls inside X-Plane: **Plugins > FSR 3.1 / 4.1 + Frame Gen >
+Open settings**. Presets are on **Rendering > Resolution preset**. After choosing
+one, open **Image quality**, scroll down and select **Apply graphics after I
+close X-Plane**, then quit normally and reopen the sim. The desktop updater
+does not contain rendering settings. See the [full walkthrough](INSTALLATION.md).
+
 **Full is correct for Native AA. Quality is correct for upscaling.** Choose the
 matching FSR mode and input scale, follow any restart/apply message, then check
 the panel after loading a flight. A saved selection does not prove it is active.

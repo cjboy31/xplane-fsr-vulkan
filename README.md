@@ -13,10 +13,20 @@ Laminar Research product.
 · [All releases](https://github.com/cjboy31/xplane-fsr-vulkan/releases)
 · [Join Discord](https://discord.gg/yh396QNgHZ)
 
-Close X-Plane, run setup, select your simulator folder and enable in-sim integration.
-Use your usual launcher afterward. Open **Plugins > FSR 3.1 / 4.1 + Frame Gen** for settings.
-Keep X-Plane's FXAA Off. Use Full input for Native AA, or a lower input setting for
-upscaling. Start with frame generation and neural rendering Off.
+1. **Install:** close X-Plane. Run the file ending in **Setup.exe**, select your
+   X-Plane folder and enable **in-sim integration**. The other EXEs are support tools.
+2. **Open settings:** start X-Plane normally and load a flight. At the top of the
+   simulator, open **Plugins > FSR 3.1 / 4.1 + Frame Gen > Open settings**.
+3. **Find presets:** on **Rendering**, open **Resolution preset** and choose one.
+4. **Apply:** open **Image quality**, scroll down and select
+   **Apply graphics after I close X-Plane**. Close X-Plane normally, then reopen it.
+5. **Check:** load a flight and reopen the panel. Look for **FSR ACTIVE**.
+   Read any waiting or bypass message if it is not active.
+
+**The presets are inside X-Plane.** The desktop **Plugin Updater** only installs
+updates. Start with FXAA, MSAA, frame generation and NR Off. Use **Full** input
+with **Native AA**, or **Quality** input with **Upscaling**.
+See the [step-by-step setup and preset instructions](docs/INSTALLATION.md).
 
 ## Features
 
