@@ -1,5 +1,18 @@
 # Changes
 
+## 0.7.9
+
+- Share a filtered diagnostic bundle from Diagnostics to Discord #render-logs or #bug-reports. Preview first, then send now or once after this session. Reporting starts Off and can be canceled before exit.
+- Include the matching X-Plane Log.txt, available setup errors, saved image settings summary and small same-session crash text. Keep original files unchanged. Models, DLLs, binary memory dumps and unrelated files are excluded.
+- Show confirmed delivery receipts and clear errors; uncertain uploads are not repeated automatically.
+- Ignore empty or disabled known-plugin leftovers in the reconstruction conflict check, while keeping protection for actual conflicting Windows plugin files. A truly clean-install warning still needs a fresh log to diagnose.
+- Add simpler preset instructions and recommended hardware/settings guidance. No new rendering algorithm or FPS improvement is claimed.
+- Windows in-sim automatic reporting; browser uploads also support Native AA logs on Linux and Mac. Linux FSR rendering remains the separate FSR 3.1 preview; Mac rendering remains unavailable.
+
+## 0.7.9-beta.windows.1
+
+- The same diagnostic reporting and setup guidance on the Beta channel. Release is recommended.
+
 ## 0.7.8
 
 - Release includes the current NR, frame-generation and compatibility updates from Experimental.

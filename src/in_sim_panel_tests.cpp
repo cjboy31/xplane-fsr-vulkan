@@ -72,10 +72,12 @@ int wmain(int argc,wchar_t**argv){try{
     check(writer.create(name.c_str(),initial.nr)&&reader.open(name.c_str()),"NR IPC attach");int publications=0;
     insim::Panel panel;panel.bind(file,&writer,true,false,[&](const auto&){++publications;});
     int logOpens=0;panel.logSupport([&]{++logOpens;});
+    int reportOpens=0;panel.reportSupport([&]{++reportOpens;});
     for(auto size:{std::pair{640,480},std::pair{880,740}}){panel.act({insim::Kind::Tab,2});bool openLog=false;
         for(const auto& item:panel.view(size.first,size.second))openLog|=item.button&&item.action.kind==insim::Kind::Logs;
         check(openLog,"Log folder button is hidden in a supported viewport");}
     panel.act({insim::Kind::Logs});check(logOpens==1&&panel.notice.find("FSR-Logs")!=std::string::npos,"Log button has no action or location feedback");panel.act({insim::Kind::Tab,0});
+    const auto reportBefore=launcher::serialized(launcher::load(file));panel.act({insim::Kind::Report});check(reportOpens==1&&panel.notice.find("Off until")!=std::string::npos&&launcher::serialized(launcher::load(file))==reportBefore,"Report preview enabled sharing or changed image settings");
     auto staleDesktop=launcher::load(file);
     for(auto field:{xpfsr::nr::Enabled,xpfsr::nr::Order,xpfsr::nr::Scope})panel.act({insim::Kind::NRField,field,1});
     xpfsr::nr::Controls live;check(reader.read(live)&&live[xpfsr::nr::Enabled]&&live[xpfsr::nr::Order]&&live[xpfsr::nr::Scope],"Live NR changes did not reach renderer IPC");

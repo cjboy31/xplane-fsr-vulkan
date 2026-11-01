@@ -2,6 +2,7 @@
 #pragma once
 #include "deferred_graphics.hpp"
 #include "managed_input.hpp"
+#include <functional>
 namespace app {
 inline auto userLogDirectory(const std::filesystem::path& sim){return sim/L"Output/FSR-Logs";}
 inline std::string matchingLog(const std::filesystem::path& path,const std::string& token){
@@ -47,7 +48,7 @@ inline bool exportSessionLog(const std::filesystem::path& root,const std::filesy
     if(!std::filesystem::exists(folder/L"READ-ME.txt"))session::write(folder/L"READ-ME.txt","FSR renderer logs\r\n\r\nrenderer.log is the most recently exported session. renderer.previous.log is the previous session.\r\nA copy is saved when X-Plane exits, including an unexpected exit. Use Open log folder in the FSR panel for a snapshot during a flight.\r\nOnly the mod's renderer log is copied. No model or settings files are included.\r\n");
     return true;
 }
-inline void finishSession(const std::filesystem::path& root,DWORD pid,const std::wstring& token){
+inline void finishSession(const std::filesystem::path& root,DWORD pid,const std::wstring& token,const std::function<void()>& afterExport={}){
     graphics::require(pid&&pid!=GetCurrentProcessId()&&validSessionToken(token),"Invalid log handoff");
     NamedLock monitor(lockName(std::filesystem::absolute(root).lexically_normal().wstring())+L"-log-monitor-"+std::to_wstring(pid)+token,0);
     HANDLE process=OpenProcess(SYNCHRONIZE|PROCESS_QUERY_LIMITED_INFORMATION,FALSE,pid);
@@ -61,8 +62,9 @@ inline void finishSession(const std::filesystem::path& root,DWORD pid,const std:
     std::filesystem::create_directories(userLogDirectory(p.simulator));
     graphics::require(WaitForSingleObject(process,INFINITE)==WAIT_OBJECT_0,"Could not wait for simulator exit");
     DWORD code{};graphics::require(GetExitCodeProcess(process,&code),"Could not read simulator exit status");
-    exportSessionLog(root,p.simulator,token,code);
+    const bool exported=exportSessionLog(root,p.simulator,token,code);
     // A crash never triggers a graphics write. The user can restart safely.
     if(code==0)try{synchronizeInput(root);}catch(const std::exception& e){session::write(root/L"logs/input-setup.txt",std::string("Input setup left unchanged: ")+e.what()+"\n");}
+    if(exported&&afterExport)afterExport();
 }
 }
