@@ -1,0 +1,33 @@
+name: Idea or improvement
+description: Suggest a new feature, a quality-of-life change or an optimization.
+title: "[Idea]: "
+labels: ["pipeline: triage"]
+body:
+  - type: dropdown
+    id: category
+    attributes:
+      label: Type of change
+      description: This decides which pipeline queue it joins (see PIPELINE.md).
+      options:
+        - Feature update (something new the mod can do)
+        - Quality-of-life update (easier setup, clearer text, better UI)
+        - Optimization update (more FPS, smoother frame pacing, less memory)
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: What would you like, and why?
+      placeholder: "Example: frame generation stutters when I fly over big cities."
+    validations:
+      required: true
+  - type: textarea
+    id: system
+    attributes:
+      label: Your system (if it matters)
+      placeholder: "GPU + driver version, CPU, Windows/Linux/Mac, X-Plane version, monitor refresh rate"
+  - type: textarea
+    id: test
+    attributes:
+      label: Aircraft or scene to test with (optional)
+      description: How someone could check the change without sharing paid aircraft files.

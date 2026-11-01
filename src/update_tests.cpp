@@ -36,6 +36,20 @@ int wmain(int argc, wchar_t **argv) {
         require(!select(feed, "0.6.0-alpha", Channel::Release), "Downgrade rejected");
         require(!select("[" + release("v0.5.4-alpha") + "]", "0.5.4-alpha", Channel::Release),
                 "Equal version rejected");
+        {
+            // v2 private Test channel: draft releases and test-* tags are never
+            // offered to users, even if a test release is published by mistake.
+            auto draft = release("v9.0.0-rc.1", true);
+            draft.replace(draft.find("\"draft\":false"), 14, "\"draft\":true");
+            std::string testTag = release("v2.0.0-beta.windows.9");
+            for (std::size_t at; (at = testTag.find("v2.0.0-beta.windows.9")) != std::string::npos;)
+                testTag.replace(at, 21, "test-2.0.0.9");
+            const auto hidden = "[" + draft + "," + testTag + "]";
+            require(!select(hidden, "2.0.0-rc.1", Channel::Release), "Draft test build reached Release Candidates");
+            require(!select(hidden, "2.0.0-beta.windows.1", Channel::Beta), "Test tag reached Betas");
+            require(select("[" + release("v2.0.0-rc.2") + "]", "2.0.0-rc.1", Channel::Release).tag == "v2.0.0-rc.2",
+                    "Release Candidates upgrade in order");
+        }
         auto tracks = "[" + release("v0.6.3-alpha") + "," + release("v0.6.0-experimental.1") +
                       "," + release("v0.5.9-experimental.2") + "]";
         require(select(tracks, "0.6.2-alpha", Channel::Release).tag == "v0.6.3-alpha",

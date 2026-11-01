@@ -5,7 +5,7 @@ and enable automatic activation for the selected simulator. The desktop app
 remains an **optional secondary interface**, sharing saved choices and providing
 updates, guide playback and complete diagnostics. This is not a claim of complete
 in-sim parity or certification of Visual Engine/other launchers. Read
-[the current installation instructions](INSTALLATION-0.7.2.txt).
+[the current installation instructions](../INSTALLATION.md).
 
 ## Development progress
 

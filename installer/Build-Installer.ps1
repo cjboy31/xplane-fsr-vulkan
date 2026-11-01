@@ -140,7 +140,7 @@ Write-Text (Join-Path $generated 'InstallFiles.nsh') ($install -join "`n")
 Write-Text (Join-Path $generated 'UninstallFiles.nsh') ($uninstall -join "`n")
 [string[]]$iconArguments = @()
 if($IconPath){$iconArguments += ('/DAPP_ICON='+(Resolve-Path -LiteralPath $IconPath).Path)}
-if($fgDevelopment){$iconArguments += @('/DFG_DEVELOPMENT=1','/DCHANNEL_LABEL=Beta')}else{$iconArguments += '/DCHANNEL_LABEL=Release'}
+if($fgDevelopment){$iconArguments += @('/DFG_DEVELOPMENT=1','/DCHANNEL_LABEL=Beta')}else{$iconArguments += '/DCHANNEL_LABEL=Release Candidate'}
 if($fgAvailable){$iconArguments += '/DFG_AVAILABLE=1'}
 if($NeuralRenderingDevelopment){$iconArguments += '/DNR_DEVELOPMENT=1'}
 & $Nsis '/V3' ('/DPACKAGE='+$package) ('/DGENERATED='+$generated) ('/DPACKAGE_VERSION='+$PackageVersion) ('/DWINDOWS_VERSION='+$WindowsVersion) @iconArguments $SetupScript

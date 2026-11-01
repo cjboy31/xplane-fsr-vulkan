@@ -1,17 +1,12 @@
 # Publishing application updates
 
 Application updates are also published at
-[GitHub Releases](https://github.com/cjboy31/xplane-fsr-vulkan/releases).
+[GitHub Releases](https://github.com/cjboy31/xplane12-fsr-framegen/releases).
 Source changes alone do not deliver the Windows installer to users.
 
-For archived versions 0.6.2 through 0.7.3, every Windows application release included a matching
-captioned feature video. Read [the media workflow](FEATURE-VIDEOS.md). Pass
-`-FeatureVideoDirectory` to `installer/Build-Installer.ps1`; packaging rejects
-missing media, mismatched version, length or SHA-256. Keep the editable scene
-script in `media/source/`. Upload the MP4 separately alongside the installer
-assets using `Prepare-Release.ps1 -FeatureVideo <tested.mp4>`; it checks the
-installer-test evidence and adds SHA256SUMS.txt. Do not move an older tag or replace an older
-version's video to make a new release appear complete.
+Versions 0.6.2 through 0.7.3 shipped feature videos. That workflow and its
+source files were removed in v2 (they remain in git history and in those
+published releases). Do not move an older tag or replace its assets.
 
 Starting with 0.7.4, the owner retired startup videos. Ship the in-sim changelog
 and CHANGELOG.txt instead. No new feature video or video approval is required.
@@ -128,3 +123,27 @@ release link. Keep the tone friendly and avoid unsupported quality/FPS claims.
 Verify the visible message and save its permalink. New releases use the in-sim
 changelog instead of feature-video approval. If access is unavailable, prepare the text and report the pending
 announcement rather than claiming success.
+
+## Release Candidates and Betas (v2 onward)
+
+v2 renames the two channels and tightens what goes in each. Saved updater keys
+stay `release` / `beta`, so nobody's choice changes.
+
+| Channel | What it may contain | Git branch | Tag examples | GitHub release |
+| --- | --- | --- | --- | --- |
+| **Release Candidates** | Only features that passed the verification checklist below | `main` | `v2.0.0-rc.1`, then `v2.0.0` | Normal release |
+| **Betas** | Features still being developed, tested or verified | `beta` | `v2.0.0-beta.windows.1` | Pre-release |
+
+Promotion from Betas to Release Candidates requires, for each feature:
+
+1. CI green (source policy, Windows CPU/native-UI suite, portable pacing tests).
+2. Relevant GPU fixtures pass on real hardware (state GPU + driver).
+3. A live X-Plane flight test: same scene with the feature Off and On, logs
+   attached, no device loss, no regression in the session log.
+4. Installer install / update / uninstall and channel switching re-tested with
+   saved choices preserved.
+5. Changelog wording describes only what was verified.
+
+Anything not meeting all five stays in Betas. Discord announcements use the
+same two names; post Release Candidates and Betas in their own threads or with
+the channel name first so users can tell them apart.

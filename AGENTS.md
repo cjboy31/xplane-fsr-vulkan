@@ -17,7 +17,7 @@ release-publication request above.
   used for the build. Alpha/experimental builds must be marked pre-release.
 - Preserve upstream license notices in the installer. Do not commit SDK runtime
   binaries, simulator/aircraft assets, user preferences, logs or credentials.
-- Follow docs/RELEASING.md. Report the public release URL and verify its assets.
+- Follow docs/developer/RELEASING.md. Report the public release URL and verify its assets.
   A local archive, source branch or draft release alone is not publication.
 - If account access blocks publication, prepare the reviewed files and explain
   the specific blocker; do not claim that a release was published.
@@ -66,7 +66,7 @@ The owner requests LuminaXP as the reference for its in-sim workflow and control
 an accessible X-Plane panel, live supported adjustments and activation compatible
 with third-party launchers. Study documented behavior; implement original code
 and artwork without copying restricted LuminaXP internals. Distinguish plugin
-presence from confirmed renderer activity. See docs/IN-SIM-PLUGIN.md.
+presence from confirmed renderer activity. See docs/developer/IN-SIM-PLUGIN.md.
 
 The owner's latest direction makes the in-sim panel the primary interface for
 presets, graphics, NR/FG, models, diagnostics, guides and updates. Keep the

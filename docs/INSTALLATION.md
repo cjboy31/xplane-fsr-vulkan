@@ -106,7 +106,7 @@ include FSR 4, NR or frame generation. Mac rendering is not available.
 Check the live status after loading a flight. If an effect is waiting or off,
 read the message rather than assuming a selected option means it is running.
 Community: https://discord.gg/yh396QNgHZ
-Downloads: https://github.com/cjboy31/xplane-fsr-vulkan/releases
+Downloads: https://github.com/cjboy31/xplane12-fsr-framegen/releases
 Keep the supplied licenses. No simulator assets or personal settings are bundled.
 
 OPTIONAL SHADOW CONTROLS

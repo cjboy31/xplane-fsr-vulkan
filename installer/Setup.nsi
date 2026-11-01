@@ -3,7 +3,7 @@ Unicode true
 RequestExecutionLevel user
 SetCompressor zlib
 !ifndef CHANNEL_LABEL
-!define CHANNEL_LABEL "Release"
+!define CHANNEL_LABEL "Release Candidate"
 !endif
 Name "FSR 3.1 / 4.1 + Frame Gen for X-Plane 12 (${CHANNEL_LABEL})"
 OutFile "${PACKAGE}\XPlane-FSR24-Setup.exe"
@@ -22,6 +22,7 @@ VIAddVersionKey /LANG=1033 "LegalCopyright" "2026 XPlane FSR24 prototype contrib
 !include nsDialogs.nsh
 !include LogicLib.nsh
 !include FileFunc.nsh
+!include TextFunc.nsh
 !include x64.nsh
 !ifdef APP_ICON
 !define MUI_ICON "${APP_ICON}"
@@ -44,24 +45,25 @@ Var IntegrationWasEnabled
 Var PreviousGuideVersion
 Var PreviousGuideSHA256
 Var IntegrationFailure
+Var DetectedNote
 
 !define MUI_ABORTWARNING
 !define MUI_WELCOMEPAGE_TITLE "FSR 3.1 / 4.1 + Frame Gen for X-Plane 12"
 !ifdef NR_DEVELOPMENT
 !define MUI_WELCOMEPAGE_TEXT "Install FSR AA/upscaling with optional independent neural rendering, frame generation and compatibility pacing. NR and FG are Off by default. Import your own supported NR model locally; NVIDIA DLLs and model weights are not included.$\r$\n$\r$\nNR On/Off, appearance, order and scene scope adjust live. Model budgets prepare in the background. NR + FG requires explicit opt-in. This project remains a preview.$\r$\n$\r$\nClose X-Plane and the updater before continuing."
 !else ifdef FG_DEVELOPMENT
-!define MUI_WELCOMEPAGE_TEXT "Install the Experimental in-sim FSR controls and plugin updater. FG testing options are included; flicker, artifacts and uneven pacing remain possible.$\r$\n$\r$\nClose X-Plane and the updater before continuing.$\r$\n$\r$\nSetup installs for your Windows account. Select your simulator and enable in-sim integration during setup."
+!define MUI_WELCOMEPAGE_TEXT "This is a BETA. It includes features that are still being tested, so you may see flicker, artifacts or uneven pacing.$\r$\n$\r$\nBefore you continue:$\r$\n  1. Close X-Plane.$\r$\n  2. Close the plugin updater if it is open.$\r$\n$\r$\nSetup looks for X-Plane 12 for you. Want only tested features? Use the Release Candidate installer instead."
 !else
-!define MUI_WELCOMEPAGE_TEXT "Install the in-sim FSR controls and the separate plugin updater.$\r$\n$\r$\nClose X-Plane and the updater before continuing. This is an alpha preview.$\r$\n$\r$\nSetup installs for your Windows account. Select your simulator and enable in-sim integration during setup."
+!define MUI_WELCOMEPAGE_TEXT "This installs FSR upscaling, anti-aliasing and frame generation for X-Plane 12.$\r$\n$\r$\nBefore you continue:$\r$\n  1. Close X-Plane.$\r$\n  2. Close the plugin updater if it is open.$\r$\n$\r$\nSetup looks for X-Plane 12 for you. In most cases you only need to click Next, then Install. Nothing is changed in your simulator until you finish."
 !endif
 !insertmacro MUI_PAGE_WELCOME
 Page custom SimulatorPage SimulatorLeave
-!define MUI_DIRECTORYPAGE_TEXT_TOP "Choose an empty writable folder for the application, or a folder installed by this setup. Keep the default for a normal per-user installation. Do not select X-Plane's plugins folder."
+!define MUI_DIRECTORYPAGE_TEXT_TOP "This is where the mod's own files go, not your X-Plane folder. Keep the suggested folder unless you have a reason to change it. If you choose another folder it must be empty or a folder this setup created before."
 !define MUI_PAGE_CUSTOMFUNCTION_LEAVE DirectoryLeave
 !insertmacro MUI_PAGE_DIRECTORY
 !insertmacro MUI_PAGE_INSTFILES
 !define MUI_FINISHPAGE_TITLE "Installation complete"
-!define MUI_FINISHPAGE_TEXT "If you enabled in-sim integration, start X-Plane normally and open Plugins > FSR 3.1 / 4.1 + Frame Gen. Open Changelog inside the panel to read changes. The separate desktop program is only a plugin updater.$\r$\n$\r$\nRead the included instructions for first setup. NR and frame generation start Off."
+!define MUI_FINISHPAGE_TEXT "You're done. Next:$\r$\n  1. Start X-Plane the way you normally do.$\r$\n  2. Load a flight.$\r$\n  3. Open Plugins > FSR 3.1 / 4.1 + Frame Gen > Open settings.$\r$\n  4. Look for FSR ACTIVE at the top of the panel.$\r$\n$\r$\nPoint at any ? in the panel for help. Frame generation and neural rendering start Off."
 !define MUI_FINISHPAGE_RUN "$INSTDIR\XPlaneFSR24.exe"
 !define MUI_FINISHPAGE_RUN_TEXT "Open plugin updater"
 !define MUI_FINISHPAGE_RUN_NOTCHECKED
@@ -183,10 +185,11 @@ Function ValidateImportSettings
 FunctionEnd
 
 Function SimulatorPage
-  !insertmacro MUI_HEADER_TEXT "Choose X-Plane" "Select your simulator folder, or leave it blank to choose later."
+  Call DetectSimulator
+  !insertmacro MUI_HEADER_TEXT "Choose X-Plane 12" "Check the folder below, then click Next."
   nsDialogs::Create 1018
   Pop $Dialog
-  ${NSD_CreateLabel} 0 0 100% 30u "Choose the folder containing X-Plane.exe, including an external drive. Enable in-sim integration to launch normally with your usual shortcut or third-party launcher. Simulator graphics are changed only when you request them."
+  ${NSD_CreateLabel} 0 0 100% 30u "$DetectedNote"
   Pop $0
   ${NSD_CreateDirRequest} 0 40u 78% 13u "$XPlaneDir"
   Pop $FolderEdit
@@ -198,14 +201,50 @@ Function SimulatorPage
   ${If} $DesktopWanted == 1
     ${NSD_Check} $DesktopCheck
   ${EndIf}
-  ${NSD_CreateCheckbox} 0 92u 100% 14u "Enable in-sim controls and automatic renderer activation"
+  ${NSD_CreateCheckbox} 0 92u 100% 14u "Load the mod automatically when X-Plane starts (recommended)"
   Pop $IntegrationCheck
   ${If} $IntegrationWanted == 1
     ${NSD_Check} $IntegrationCheck
   ${EndIf}
-  ${NSD_CreateLabel} 0 116u 100% 35u "Windows Vulkan preview; tested on X-Plane 12.4.4-r1 and Radeon AI PRO R9700. Start with NR and FG Off. Actual third-party launcher combinations still require testing."
+  ${NSD_CreateLabel} 0 116u 100% 35u "Works with your usual X-Plane shortcut and most third-party launchers. Your X-Plane graphics settings are only changed when you ask from inside the panel. Tested on X-Plane 12.4.4 with an AMD Radeon AI PRO R9700."
   Pop $0
   nsDialogs::Show
+FunctionEnd
+
+; X-Plane's own installer records each X-Plane 12 folder, one per line, in
+; %LOCALAPPDATA%\x-plane_install_12.txt. Use the first one that still has
+; X-Plane.exe so most users never need to browse.
+Function DetectSimulator
+  ${If} $XPlaneDir != ""
+    StrCpy $DetectedNote "Using the X-Plane folder you chose before. Change it below if needed."
+    Return
+  ${EndIf}
+  StrCpy $DetectedNote "Choose the folder that contains X-Plane.exe (an external drive is fine). You can also leave it blank and choose later."
+  ClearErrors
+  FileOpen $0 "$LOCALAPPDATA\x-plane_install_12.txt" r
+  ${If} ${Errors}
+    Return
+  ${EndIf}
+  detectNext:
+    ClearErrors
+    FileRead $0 $1
+    ${If} ${Errors}
+      Goto detectDone
+    ${EndIf}
+    ${TrimNewLines} $1 $1
+    StrCpy $2 $1 1 -1
+    ${If} $2 == "\"
+    ${OrIf} $2 == "/"
+      StrCpy $1 $1 -1
+    ${EndIf}
+    ${If} $1 == ""
+      Goto detectNext
+    ${EndIf}
+    IfFileExists "$1\X-Plane.exe" 0 detectNext
+    StrCpy $XPlaneDir $1
+    StrCpy $DetectedNote "We found X-Plane 12 here. If that's right, just click Next. Otherwise click Browse and pick the folder that contains X-Plane.exe."
+  detectDone:
+  FileClose $0
 FunctionEnd
 
 Function BrowseSimulator
@@ -227,7 +266,7 @@ Function ValidateSimulator
   ${If} $XPlaneDir != ""
     IfFileExists "$XPlaneDir\X-Plane.exe" simulatorValid
     IfSilent simSilentError
-    MessageBox MB_OK|MB_ICONEXCLAMATION "That folder does not contain X-Plane.exe. Select the simulator root, or clear the field to choose it later."
+    MessageBox MB_OK|MB_ICONEXCLAMATION "X-Plane.exe isn't in that folder.$\r$\n$\r$\nPick the main X-Plane 12 folder (the one with X-Plane.exe inside), or clear the box to choose later."
     Abort
     simSilentError:
     SetErrorLevel 3

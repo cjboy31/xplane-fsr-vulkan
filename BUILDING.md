@@ -119,7 +119,7 @@ the pinned MIT reference, compiler, glslang, Python and Vulkan headers and use
 the same `-AppDirectory build/release-app`. The initial build generates and
 records shaders; `-SkipShaders` subsequently verifies their hashes. Models
 are user-supplied local data and must never be packaged. See
-[the integration contract](docs/NEURAL-RENDERING.md).
+[the integration contract](docs/developer/NEURAL-RENDERING.md).
 
 `Test-LauncherUI.ps1 -Compiler '<compiler>'` exercises the actual native main
 window and NR dialog, including scrolling, clipped children, diagnostics,
