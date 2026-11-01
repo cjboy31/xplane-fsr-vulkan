@@ -41,6 +41,7 @@ then Linux, then Mac).
 | Optimization | Session log checks driver-assisted pacing for this PC (GPU, driver version, present mode/VSync, fullscreen size) and names each blocker | In Test |
 | Optimization | **Frame rate cap** for real frames while FG runs: Off / Auto (just under half refresh) / fixed FPS; high-resolution timer + short spin; never bursts after a hitch | In Test |
 | QoL | Breathing status lamp while FSR is confirmed active | In Test |
+| QoL | Native AA updater follows the Release Candidates / Betas choice (reads `[Updates] Channel`; `beta.windows.N` tags only for Betas; channel shown in its status) | In Test (C# not compiled here) |
 | Bug | 0.7.x updaters can't follow the rename: v2 updater follows API redirects and accepts both names | In Test |
 
 ## Queued

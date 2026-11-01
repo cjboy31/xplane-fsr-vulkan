@@ -19,6 +19,17 @@ internal static class NativeAAUpdaterTests {
             Check(NativeAAUpdater.Order("0.4.0-alpha").CompareTo(NativeAAUpdater.Order("v0.3.1-alpha"))>0,"newer installed version would be downgraded");
             Check(NativeAAUpdater.Order("0.3.1-alpha")==NativeAAUpdater.Order("v0.3.1-alpha"),"equal versions disagree");
             Check(NativeAAUpdater.Select(Feed("v0.3.1-linux-beta.1",hash))==null,"Linux package selected on Windows");
+            // v2 channels: beta.windows.N is Betas-only; Release Candidates never see it.
+            Check(NativeAAUpdater.Select(Feed("v2.0.0-beta.windows.1",hash))==null,"Beta offered to Release Candidates");
+            var beta=NativeAAUpdater.Select(Feed("v2.0.0-beta.windows.1",hash),true);Check(beta!=null&&beta.Tag=="v2.0.0-beta.windows.1","Beta not offered to Betas");
+            Check(NativeAAUpdater.Select(Feed("v0.3.1-alpha",hash),true)!=null,"Betas lost ordinary releases");
+            Check(NativeAAUpdater.Order("2.0.0-beta.windows.2").CompareTo(NativeAAUpdater.Order("v2.0.0-beta.windows.1"))>0&&
+                  NativeAAUpdater.Order("2.0.0").CompareTo(NativeAAUpdater.Order("2.0.0-beta.windows.9"))>0,"Namespaced beta ordering");
+            Check(NativeAAUpdater.Select(Feed("v2.0.0-rc.windows.1",hash),true)==null,"Namespaced non-beta accepted");
+            string ini=Path.Combine(root,"settings.ini");File.WriteAllText(ini,"[Launcher]\nChannel=beta\n[Updates]\nChannel=beta\n");Check(NativeAAUpdater.BetasSelected(ini),"Betas channel not read");
+            File.WriteAllText(ini,"[Updates]\nChannel=release\n");Check(!NativeAAUpdater.BetasSelected(ini),"Release channel read as Betas");
+            File.WriteAllText(ini,"[Updates]\nChannel=experimental\n");Check(NativeAAUpdater.BetasSelected(ini),"Legacy Experimental not mapped to Betas");
+            Check(!NativeAAUpdater.BetasSelected(Path.Combine(root,"missing.ini")),"Missing settings must default to Release Candidates");
             Check(NativeAAUpdater.Select(Feed("v0.3.1-alpha",hash,"other.zip"))==null,"unexpected asset selected");
             Rejected(()=>NativeAAUpdater.Select(Feed("v0.3.1-alpha","sha256:bad")),"invalid digest accepted");
             foreach(var name in new[]{"../escape.exe","/absolute.exe","C:/escape.exe","a\\b.exe","file:stream"})Rejected(()=>NativeAAUpdater.SafePath(root,name),"unsafe archive path accepted");
@@ -26,7 +37,7 @@ internal static class NativeAAUpdaterTests {
             string link=Path.Combine(root,"link.zip");Zip(link,"link",true);Rejected(()=>NativeAAUpdater.Extract(link,Path.Combine(root,"links")),"archive symlink accepted");
             string valid=Path.Combine(root,"valid.zip");using(var z=ZipFile.Open(valid,ZipArchiveMode.Create)){z.CreateEntry("package/NativeAA-Setup.exe");z.CreateEntry("package/RELEASE-MANIFEST.json");}
             Check(NativeAAUpdater.Extract(valid,Path.Combine(root,"valid")).EndsWith("NativeAA-Setup.exe"),"valid package extraction failed");
-            Console.WriteLine("PASS: Windows-only feed, exact assets/digests, bounded paths, archive traversal/link refusal and fresh package extraction; no network or installer execution.");return 0;
+            Console.WriteLine("PASS: Windows-only feed, Release Candidates/Betas channels, exact assets/digests, bounded paths, archive traversal/link refusal and fresh package extraction; no network or installer execution.");return 0;
         }catch(Exception e){Console.Error.WriteLine("FAIL: "+e.Message);return 1;}
     }
 }

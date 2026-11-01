@@ -18,7 +18,8 @@ internal static class NativeAAUpdater {
     static readonly JavaScriptSerializer Json=new JavaScriptSerializer {MaxJsonLength=8000000};
     internal sealed class Release {internal string Tag,URL,Hash;internal long Bytes;}
     internal static Version Order(string tag){
-        var m=Regex.Match(tag,@"^v?(\d{1,6}\.\d{1,6}\.\d{1,6})(?:-(alpha|beta|rc)(?:\.(\d{1,6}))?)?$");
+        // "beta.windows.N" is the Betas-channel form used from v2 on.
+        var m=Regex.Match(tag,@"^v?(\d{1,6}\.\d{1,6}\.\d{1,6})(?:-(alpha|beta|rc)(?:\.(?:windows\.)?(\d{1,6}))?)?$");
         Require(m.Success,"Unrecognized installed version. Use the Native AA setup package manually.");
         var v=new Version(m.Groups[1].Value);int stage=m.Groups[2].Value=="alpha"?0:m.Groups[2].Value=="beta"?1:m.Groups[2].Value=="rc"?2:3;
         return new Version(v.Major,v.Minor,v.Build,stage*1000000+(m.Groups[3].Success?Int32.Parse(m.Groups[3].Value):0));
@@ -47,12 +48,15 @@ internal static class NativeAAUpdater {
             }
         }throw new InvalidOperationException("Too many update redirects.");
     }
-    internal static Release Select(string feed){
+    // Release Candidates (default) never see beta.windows.N tags; Betas see both.
+    internal static Release Select(string feed){return Select(feed,false);}
+    internal static Release Select(string feed,bool betas){
         var releases=(object[])Json.DeserializeObject(feed);Release chosen=null;Version best=null;
         foreach(var entry in releases){var r=(Dictionary<string,object>)entry;if(Convert.ToBoolean(r["draft"]))continue;
-            string tag=Convert.ToString(r["tag_name"]);var match=Regex.Match(tag,@"^v(\d{1,6}\.\d{1,6}\.\d{1,6})(?:-(alpha|beta|rc)(?:\.(\d{1,6}))?)?$");if(!match.Success)continue;
+            string tag=Convert.ToString(r["tag_name"]);var match=Regex.Match(tag,@"^v(\d{1,6}\.\d{1,6}\.\d{1,6})(?:-(alpha|beta|rc)(?:\.(windows\.)?(\d{1,6}))?)?$");if(!match.Success)continue;
+            bool namespaced=match.Groups[3].Success;if(namespaced&&(match.Groups[2].Value!="beta"||!betas))continue;
             var version=new Version(match.Groups[1].Value);int stage=match.Groups[2].Value=="alpha"?0:match.Groups[2].Value=="beta"?1:match.Groups[2].Value=="rc"?2:3;
-            int rev=match.Groups[3].Success?Int32.Parse(match.Groups[3].Value):0;
+            int rev=match.Groups[4].Success?Int32.Parse(match.Groups[4].Value):0;
             var order=new Version(version.Major,version.Minor,version.Build,stage*1000000+rev);
             if(best!=null&&order.CompareTo(best)<=0)continue;
             if(Convert.ToBoolean(r["prerelease"])!=(stage<3))continue;
@@ -79,6 +83,21 @@ internal static class NativeAAUpdater {
         var setups=Directory.GetFiles(folder,"NativeAA-Setup.exe",SearchOption.AllDirectories);Require(setups.Length==1,"A unique Native AA setup was not found.");
         Require(File.Exists(Path.Combine(Path.GetDirectoryName(setups[0]),"RELEASE-MANIFEST.json")),"Native AA package manifest is missing.");return setups[0];
     }
+    // The FSR Plugin Updater saves the channel for both mods in settings.ini
+    // next to this program: [Updates] Channel=release|beta (legacy: normal|experimental).
+    internal static bool BetasSelected(string settingsFile){
+        try{
+            bool inUpdates=false;
+            foreach(var raw in File.ReadAllLines(settingsFile)){
+                var line=raw.Trim();
+                if(line.StartsWith("[")){inUpdates=line.Equals("[Updates]",StringComparison.OrdinalIgnoreCase);continue;}
+                if(!inUpdates)continue;int eq=line.IndexOf('=');if(eq<0)continue;
+                if(!line.Substring(0,eq).Trim().Equals("Channel",StringComparison.OrdinalIgnoreCase))continue;
+                var value=line.Substring(eq+1).Trim().Trim('"').ToLowerInvariant();return value=="beta"||value=="experimental";
+            }
+        }catch{}
+        return false;
+    }
     [STAThread] static int Main(string[] args){
         Application.EnableVisualStyles();Application.SetCompatibleTextRenderingDefault(false);
         var form=new Form{Text="Native AA Plugin Updates",Width=650,Height=340,StartPosition=FormStartPosition.CenterScreen,FormBorderStyle=FormBorderStyle.FixedDialog,MaximizeBox=false};
@@ -88,10 +107,10 @@ internal static class NativeAAUpdater {
         var browse=new Button{Left=500,Top=80,Width=110,Text="Browse..."};var check=new Button{Left=22,Top=128,Width=270,Height=36,Text="Check for updates"};var install=new Button{Left=310,Top=128,Width=300,Height=36,Text="Download and install",Enabled=false};
         var status=new Label{Left=22,Top=184,Width=590,Height=90,Text="Choose your X-Plane folder. Downloads come from the official project GitHub releases and are checked before setup runs."};Release release=null;bool busy=false;
         browse.Click+=delegate{using(var picker=new FolderBrowserDialog{Description="Choose the X-Plane folder",ShowNewFolderButton=false})if(picker.ShowDialog(form)==DialogResult.OK)sim.Text=picker.SelectedPath;};
-        check.Click+=async delegate{busy=true;check.Enabled=install.Enabled=browse.Enabled=sim.Enabled=false;status.Text="Checking GitHub...";try{release=await Task.Factory.StartNew(()=>Select(Encoding.UTF8.GetString(Fetch("https://api.github.com/repos/cjboy31/make-xp-anti-aliasing-great-again/releases?per_page=100",null,0))));
+        check.Click+=async delegate{busy=true;check.Enabled=install.Enabled=browse.Enabled=sim.Enabled=false;status.Text="Checking GitHub...";try{bool betas=BetasSelected(Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"settings.ini"));release=await Task.Factory.StartNew(()=>Select(Encoding.UTF8.GetString(Fetch("https://api.github.com/repos/cjboy31/make-xp-anti-aliasing-great-again/releases?per_page=100",null,0)),betas));
             string installed="Not installed";try{var inventory=(Dictionary<string,object>)Json.DeserializeObject(File.ReadAllText(Path.Combine(sim.Text,"Resources/plugins/NativeAA/installation.json")));installed=Convert.ToString(inventory["version"]);}catch{}
             bool newer=release!=null&&(installed=="Not installed"||Order(release.Tag).CompareTo(Order(installed))>0);
-            status.Text="Installed: "+installed+"\n"+(release==null?"No Windows update package is available.":newer?"Available: "+release.Tag+". Your saved choices will be kept.":"You already have this version or a newer version. No downgrade is offered.");install.Enabled=newer;
+            status.Text="Channel: "+(betas?"Betas":"Release Candidates")+"   Installed: "+installed+"\n"+(release==null?"No Windows update package is available.":newer?"Available: "+release.Tag+". Your saved choices will be kept.":"You already have this version or a newer version. No downgrade is offered.");install.Enabled=newer;
         }catch(Exception e){status.Text=e.Message+" No changes made.";}finally{busy=false;check.Enabled=browse.Enabled=sim.Enabled=true;}};
         install.Click+=async delegate{busy=true;check.Enabled=install.Enabled=browse.Enabled=false;sim.Enabled=false;string stage=null;
             try{Require(Process.GetProcessesByName("X-Plane").Length==0,"Close X-Plane normally, then try again.");string selected=Path.GetFullPath(sim.Text);Require(File.Exists(Path.Combine(selected,"X-Plane.exe")),"Choose the folder containing X-Plane.exe.");var target=release;Require(target!=null,"Check for updates first.");status.Text="Downloading and verifying "+target.Tag+"...";
