@@ -54,7 +54,7 @@ public:
     launcher::Preferences choices;
     xp_renderer::Choice rendererChoice{xp_renderer::Choice::fsr};
     app::Telemetry telemetry{};
-    int tab{},scroll{},helpField{-1},helpScroll{};std::string notice,activity="PLUGIN LOADED - renderer not confirmed",nrStatus="NR status not available";
+    int tab{},scroll{},helpField{-1},helpScroll{},pinnedHelp{-1};std::string notice,activity="PLUGIN LOADED - renderer not confirmed",nrStatus="NR status not available";
     bool dropdownOpen{};Action dropdown{Kind::Mode};int dropdownScroll{};
     bool modelImportBusy{};std::string modelImportStatus="Import your own nvngx_dlssnr.dll 310.9.16 or 310.8.0. Models are not included.";
     std::string reportStatus="Reporting is Off until you agree and choose Send now or Send after this session.";
@@ -150,8 +150,9 @@ public:
         if(action.kind==Kind::Report){if(!openReports)throw std::runtime_error("Report support is unavailable. Use the log folder and Discord for now.");openReports();notice="Report preview opened. Sharing is Off until you agree and choose Send now or Send after this session.";return;}
         if(action.kind==Kind::Changelog){helpField=300;helpScroll=0;dropdownOpen=false;return;}
         if(action.kind==Kind::Updates){if(!openUpdater)throw std::runtime_error("The updater is missing. Reinstall the complete package.");openUpdater();notice="Updater opened. You can check now; close X-Plane before installing.";return;}
-        if(action.kind==Kind::Tab){tab=std::clamp(action.field,0,3);scroll=0;helpField=-1;dropdownOpen=false;return;}
-        if(action.kind==Kind::Help){helpField=action.field;helpScroll=0;return;}
+        if(action.kind==Kind::Tab){tab=std::clamp(action.field,0,3);scroll=0;helpField=-1;pinnedHelp=-1;dropdownOpen=false;return;}
+        // "?" no longer opens a page: hovering shows a card, a click pins/unpins it.
+        if(action.kind==Kind::Help){pinnedHelp=pinnedHelp==action.field?-1:action.field;return;}
         if(action.kind==Kind::OpenChoice){dropdown={Kind(action.field),action.delta};dropdownOpen=true;dropdownScroll=0;helpField=-1;return;}
         if(action.kind==Kind::CloseChoice){dropdownOpen=false;return;}
         if(action.kind==Kind::ChooseOption){refresh();auto options=choiceOptions(dropdown);if(action.field<0||action.field>=int(options.size()))throw std::runtime_error("Invalid dropdown selection");auto selected=dropdown;selected.delta=action.field-choiceCurrent(dropdown);if(selected.kind==Kind::NRField)selected.delta=action.field+settings[selected.field].minimum-choices.nr[Field(selected.field)];dropdownOpen=false;act(selected,false);return;}
@@ -227,30 +228,36 @@ public:
     }
     int maxDropdownScroll(int height)const{return std::max(0,int(choiceOptions(dropdown).size())*36-std::max(1,height-contentTop-footerHeight-68));}
     bool wheel(int amount,int height){auto &position=dropdownOpen?dropdownScroll:scroll;int next=std::clamp(position+amount,0,dropdownOpen?maxDropdownScroll(height):maxScroll(height));if(next==position)return false;position=next;return true;}
-    std::string help()const{
-        if(helpField==300)return changelogText();
+    std::string help()const{return helpText(helpField);}
+    // Short caption for a hover card. Setting rows use their own label.
+    std::string helpTitle(int f)const{
+        if(f>=0&&f<Count)return utf8(settings[f].label);
+        switch(f){case 100:return "MSAA";case 101:return "FXAA";case 102:return "Input detail";case 103:return "Output resolution";case 104:return "Menu size";case 105:return "FSR 3 trail reduction";
+            case 106:return "Cockpit screen protection";case 107:return "Protection tint";case 108:return "Cloud quality";case 200:return "FSR mode";case 201:return "Frame generation";case 202:return "Resolution preset";
+            case 203:return "Import NR model";case 204:return "Cloud presets";case 205:return "Renderer";case 206:return "FSR processing";case 207:return "NR quick setting";case 208:return "Repair startup";case 209:return "Frame pacing";default:return "Setting guide";}
+    }
+    std::string helpText(int f)const{
+        if(f==300)return changelogText();
         if(!configured())return "Rendering controls are unavailable until this simulator is linked to a saved installation. No selections have been changed. Enable in-sim integration for this X-Plane folder, then restart using your usual launcher.";
-        if(helpField>=0&&helpField<Count)return utf8(settings[helpField].help);
-        if(helpField==100)return "MSAA smooths the edges of 3D objects. Higher levels use more graphics time and memory. Combining it with FSR is experimental. Start Off or 2x. Apply after exit, then restart.";
-        if(helpField==101)return "FXAA is a fast smoother that can soften text and textures. Keep it Off with FSR Native AA or upscaling. Use it only when the FSR mode is Off.";
-        if(helpField==102)return "Input detail controls how much detail X-Plane draws before FSR. Native AA always starts at Full. Select FSR Upscaling to use lower input settings. At 4K output, Quality starts with a 1440p picture. Lower levels can improve speed but lose detail. Apply after exit, then restart.";
-        if(helpField==103)return "Output resolution is the picture sent to your display. Keep current keeps your existing display setup. Select a supported size, then Apply after exit and restart. A higher setting cannot add pixels your monitor does not have.";
-        if(helpField==104)return "Keep menus and text about the same size when this plugin changes output resolution. Leave this On unless you want X-Plane to choose its own menu size.";
-        if(helpField==105)return "Try to reduce trails left by FSR 3. It can make some thin lines flicker more. This only affects FSR 3 and needs a restart.";
-        if(helpField==106)return "Cockpit screen protection restores supported cockpit displays after FSR. It only works with supported screen layouts, not every aircraft. Frame generation must be Off. Turn this off if the restored area is misplaced or looks wrong.";
-        if(helpField==107)return "Show a green tint on screen areas accepted by cockpit screen protection. Use it to check alignment, then turn it Off. Unsupported layouts may show no tint. This requires frame generation Off and a restart.";
-        if(helpField==108)return "Choose X-Plane's cloud quality. Higher quality can reduce blocky clouds but uses more graphics time. It cannot add every missing distant detail. Apply after exit, then restart. Your weather stays the same.";
-        if(helpField==200)return "Native AA keeps the full input resolution and smooths edges. Upscaling builds a larger picture from a smaller input and can improve speed. Match Input detail on the Image quality tab and keep FXAA Off. Changes need a restart.";
-        if(helpField==201)return "Frame generation adds pictures between real frames to make movement look smoother. It does not speed up the simulation. Start with a steady base frame rate. If this session started with frame generation, On/Off works live. Otherwise restart once to load it. Changing the method needs a restart. It pauses while this panel is open. The status above and Diagnostics show whether frames are really being generated.";
-        if(helpField==202)return "A preset chooses resolution and FSR settings together. It turns MSAA, FXAA and frame generation Off as a starting point. Choose Apply after exit, close X-Plane normally, then reopen it. Custom keeps your separate FSR and frame-generation choices.";
-        if(helpField==203)return "Select your own supported nvngx_dlssnr.dll, version 310.9.16 or 310.8.0. The importer reads the model without running the DLL. Models are not included in this download. Wait for the import result, then turn NR Off and On if needed.";
-        if(helpField==204)return "These cloud presets raise input detail and choose Maximum cloud quality. Higher detail can reduce blockiness but costs graphics time. Native AA is the most demanding choice. Your weather and other effects stay selected. Apply after exit and restart.";
-        if(helpField==205)return "Choose Native AA, the separate FSR mod, or the original simulator for your next launch. Only one mod processes the scene. Close and reopen X-Plane after changing this. Both mods keep your choices. The input scale is prepared after a normal exit; Native AA uses Full.";
-        if(helpField==208)return "Repair startup fixes the Windows link used to load this mod. Your image settings stay saved. Close X-Plane normally and reopen it after repair. It does not turn on an installation you disabled or switch away from another enabled installation. Use the installation package if files are missing.";
-        if(helpField==206)return "Turn FSR image processing on or off during your flight. Off shows the current simulator picture without FSR processing. The FSR and frame-generation methods still need a restart when changed.";
-        if(helpField==207)return "Choose a quick NR speed and detail setting. Performance uses a smaller model picture. Quality uses a larger one. Each uses one pass. Your lighting and color choices stay saved. Wait for the NR status to confirm the change.";
-        if(helpField==206)return "Turn FSR image processing on or off during your flight. Off shows the current simulator picture without FSR processing. The FSR and frame-generation methods still need a restart when changed.";
-        if(helpField==207)return "Choose a quick NR speed and detail setting. Performance uses a smaller model picture. Quality uses a larger one. Each uses one pass. Your lighting and color choices stay saved. Wait for the NR status to confirm the change.";
+        if(f>=0&&f<Count)return utf8(settings[f].help);
+        if(f==100)return "MSAA smooths the edges of 3D objects. Higher levels use more graphics time and memory. Combining it with FSR is experimental. Start Off or 2x. Apply after exit, then restart.";
+        if(f==101)return "FXAA is a fast smoother that can soften text and textures. Keep it Off with FSR Native AA or upscaling. Use it only when the FSR mode is Off.";
+        if(f==102)return "Input detail controls how much detail X-Plane draws before FSR. Native AA always starts at Full. Select FSR Upscaling to use lower input settings. At 4K output, Quality starts with a 1440p picture. Lower levels can improve speed but lose detail. Apply after exit, then restart.";
+        if(f==103)return "Output resolution is the picture sent to your display. Keep current keeps your existing display setup. Select a supported size, then Apply after exit and restart. A higher setting cannot add pixels your monitor does not have.";
+        if(f==104)return "Keep menus and text about the same size when this plugin changes output resolution. Leave this On unless you want X-Plane to choose its own menu size.";
+        if(f==105)return "Try to reduce trails left by FSR 3. It can make some thin lines flicker more. This only affects FSR 3 and needs a restart.";
+        if(f==106)return "Cockpit screen protection restores supported cockpit displays after FSR. It only works with supported screen layouts, not every aircraft. Frame generation must be Off. Turn this off if the restored area is misplaced or looks wrong.";
+        if(f==107)return "Show a green tint on screen areas accepted by cockpit screen protection. Use it to check alignment, then turn it Off. Unsupported layouts may show no tint. This requires frame generation Off and a restart.";
+        if(f==108)return "Choose X-Plane's cloud quality. Higher quality can reduce blocky clouds but uses more graphics time. It cannot add every missing distant detail. Apply after exit, then restart. Your weather stays the same.";
+        if(f==200)return "Native AA keeps the full input resolution and smooths edges. Upscaling builds a larger picture from a smaller input and can improve speed. Match Input detail on the Image quality tab and keep FXAA Off. Changes need a restart.";
+        if(f==201)return "Frame generation adds pictures between real frames to make movement look smoother. It does not speed up the simulation. Start with a steady base frame rate. If this session started with frame generation, On/Off works live. Otherwise restart once to load it. Changing the method needs a restart. It pauses while this panel is open. The status above and Diagnostics show whether frames are really being generated.";
+        if(f==202)return "A preset chooses resolution and FSR settings together. It turns MSAA, FXAA and frame generation Off as a starting point. Choose Apply after exit, close X-Plane normally, then reopen it. Custom keeps your separate FSR and frame-generation choices.";
+        if(f==203)return "Select your own supported nvngx_dlssnr.dll, version 310.9.16 or 310.8.0. The importer reads the model without running the DLL. Models are not included in this download. Wait for the import result, then turn NR Off and On if needed.";
+        if(f==204)return "These cloud presets raise input detail and choose Maximum cloud quality. Higher detail can reduce blockiness but costs graphics time. Native AA is the most demanding choice. Your weather and other effects stay selected. Apply after exit and restart.";
+        if(f==205)return "Choose Native AA, the separate FSR mod, or the original simulator for your next launch. Only one mod processes the scene. Close and reopen X-Plane after changing this. Both mods keep your choices. The input scale is prepared after a normal exit; Native AA uses Full.";
+        if(f==208)return "Repair startup fixes the Windows link used to load this mod. Your image settings stay saved. Close X-Plane normally and reopen it after repair. It does not turn on an installation you disabled or switch away from another enabled installation. Use the installation package if files are missing.";
+        if(f==206)return "Turn FSR image processing on or off during your flight. Off shows the current simulator picture without FSR processing. The FSR and frame-generation methods still need a restart when changed.";
+        if(f==207)return "Choose a quick NR speed and detail setting. Performance uses a smaller model picture. Quality uses a larger one. Each uses one pass. Your lighting and color choices stay saved. Wait for the NR status to confirm the change.";
         return tab==3?"Choose your graphics settings, then select Apply after exit. Close X-Plane normally; the background component applies only these settings with a backup. Restart using your usual launcher. FSR/FG choices are retained for custom edits. FXAA is native-only; MSAA + FSR is experimental.":"Live NR and processing controls save automatically. Presets/graphics and FSR/FG providers need a new session. Queue changed graphics on the Image quality tab before exiting. FG pauses while this panel is visible. Open Changelog for changes, or Updates for the separate updater.";
     }
     std::vector<Item> view(int width,int height){

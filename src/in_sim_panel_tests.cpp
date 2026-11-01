@@ -98,8 +98,13 @@ int wmain(int argc,wchar_t**argv){try{
             for(const auto&i:items){check(i.rect.x>=0&&i.rect.y>=0&&i.rect.x+i.rect.w<=size.first&&i.rect.y+i.rect.h<=size.second,"Panel content escaped viewport");if(i.button&&i.action.kind==insim::Kind::NRField)reached.insert(i.action.field);if(i.action.kind==insim::Kind::OpenChoice&&i.action.field==int(insim::Kind::NRField))reached.insert(i.action.delta);}}
         check(reached.size()==xpfsr::nr::Count,"NR field unreachable by scrolling");
         panel.scroll=panel.maxScroll(size.second);check(!panel.wheel(10000,size.second),"Bottom overscroll changed layout");panel.scroll=0;check(!panel.wheel(-10000,size.second),"Top overscroll changed layout");
-        panel.act({insim::Kind::Help,xpfsr::nr::Order});auto help=panel.view(size.first,size.second);for(const auto&i:help)check(!i.button||i.action.kind!=insim::Kind::NRField,"Help overlay left editable background controls");
-        panel.act({insim::Kind::Help,-1});panel.act({insim::Kind::Tab,0});for(int y=0;y<=panel.maxScroll(size.second);++y){panel.scroll=y;for(const auto&i:panel.view(size.first,size.second))check(i.rect.y<insim::contentTop||i.rect.y+i.rect.h<=size.second-insim::footerHeight||!i.button,"Flight control overlaps footer");}
+        // v2: "?" pins a hover card and keeps the user on the same page with live controls.
+        const int tabBefore=panel.tab;const auto unpinned=panel.view(size.first,size.second).size();
+        panel.act({insim::Kind::Help,xpfsr::nr::Order});check(panel.pinnedHelp==xpfsr::nr::Order&&panel.helpField<0&&panel.tab==tabBefore,"Help click left the current page");
+        check(panel.view(size.first,size.second).size()==unpinned,"Pinned help replaced the settings it explains");
+        check(!panel.helpText(xpfsr::nr::Order).empty()&&!panel.helpTitle(xpfsr::nr::Order).empty(),"Missing hover card text");
+        panel.act({insim::Kind::Help,xpfsr::nr::Order});check(panel.pinnedHelp<0,"Second help click did not unpin the card");
+        panel.act({insim::Kind::Help,-1});panel.act({insim::Kind::Tab,0});check(panel.pinnedHelp<0,"Tab change kept a pinned card");for(int y=0;y<=panel.maxScroll(size.second);++y){panel.scroll=y;for(const auto&i:panel.view(size.first,size.second))check(i.rect.y<insim::contentTop||i.rect.y+i.rect.h<=size.second-insim::footerHeight||!i.button,"Flight control overlaps footer");}
     }
     panel.act({insim::Kind::Tab,1});panel.scroll=0;
     auto widgets=panel.view(880,740);bool toggle=false,slider=false,close=false;
@@ -125,7 +130,7 @@ int wmain(int argc,wchar_t**argv){try{
     check(refused&&launcher::serialized(launcher::load(file))==saved,"Unavailable import changed preferences");
     int imports=0;panel.modelSupport([&]{++imports;panel.modelImportBusy=true;});panel.act({insim::Kind::ImportModel});panel.act({insim::Kind::ImportModel});
     check(imports==1&&launcher::serialized(launcher::load(file))==saved,"Duplicate import or model picker changed rendering choices");
-    panel.act({insim::Kind::Help,203});check(panel.help().find("never")!=std::string::npos||panel.help().find("without running")!=std::string::npos,"Missing model import guidance");panel.act({insim::Kind::Help,-1});
+    {const auto guide=panel.helpText(203);check(guide.find("never")!=std::string::npos||guide.find("without running")!=std::string::npos,"Missing model import guidance");}
     panel.nrStatus="NR bypassed: NR model missing";panel.act({insim::Kind::Budget,2});check(panel.selectedBudget()==2&&panel.notice.find("Waiting for a model")!=std::string::npos,"Budget selection falsely implied missing NR was active");
     before=publications;panel.act({insim::Kind::Budget,2});check(publications==before&&panel.notice.find("Selected: Quality 67%")!=std::string::npos,"Selecting the current budget gave no feedback or restarted NR");
     panel.act({insim::Kind::Tab,0});panel.scroll=panel.maxScroll(740);int highlights=0;
