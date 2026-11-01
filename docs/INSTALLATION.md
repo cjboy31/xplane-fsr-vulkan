@@ -1,4 +1,4 @@
-FSR 3/4 + FRAME GEN FOR X-PLANE 12 — 0.7.8
+FSR 3.1 / 4.1 + FRAME GEN FOR X-PLANE 12 — 0.7.9
 
 START HERE - WHERE ARE THE PRESETS?
 The presets are INSIDE X-PLANE. You do not open them by running a desktop EXE.
@@ -136,7 +136,13 @@ Missing files still require the full installation package.
 Open Diagnostics > Open log folder to get a current copy. After X-Plane exits,
 the session log is saved to Output/FSR-Logs/renderer.log inside your simulator
 folder. renderer.previous.log keeps the preceding exported session. No log is
-uploaded automatically. Share a fresh log when asking for help.
+uploaded unless you agree and choose a Send option in Diagnostics > Preview /
+send a Discord report. You can include Log.txt, startup errors, a saved settings
+summary and small crash text. Read the filtered preview, choose #render-logs or
+#bug-reports, and send now or once after this session. Cancel automatic report
+turns the queue Off before exit. Original files stay unchanged. See
+https://xplane-mod-log-reports.cjboy31.chatgpt.site/ for browser uploads and
+docs/DIAGNOSTIC-REPORTS.md in the source repository for full details.
 
 This release reduces repeated buffer setup, including in sessions that started
 with FG enabled. It does not guarantee that every aircraft, scenery or graphics

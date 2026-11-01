@@ -30,7 +30,7 @@ inline std::string valueName(const Controls &c,Field f){
     return std::to_string(value)+"%";
 }
 struct Rect {int x{},y{},w{},h{};bool contains(int a,int b)const{return a>=x&&a<x+w&&b>=y&&b<y+h;}};
-enum class Kind {Tab,Processing,Mode,FrameGen,NRField,Budget,Help,Close,Preset,Graphics,ApplyGraphics,OpenChoice,ChooseOption,CloseChoice,FGToggle,FGProvider,ImportModel,CloudPreset,Renderer,Changelog,Updates,Logs,RepairStartup};
+enum class Kind {Tab,Processing,Mode,FrameGen,NRField,Budget,Help,Close,Preset,Graphics,ApplyGraphics,OpenChoice,ChooseOption,CloseChoice,FGToggle,FGProvider,ImportModel,CloudPreset,Renderer,Changelog,Updates,Logs,RepairStartup,Report};
 inline constexpr int contentTop=162, footerHeight=82, modelSetupHeight=96, sectionHeight=32, rowHeight=46;
 inline Rect footerNotice(int width,int height){return {28,height-78,width-56,51};}
 inline Rect footerGuidance(int width,int height){return {28,height-23,width-56,17};}
@@ -45,6 +45,7 @@ class Panel {
     std::function<void()> importModel;
     std::function<void()> openUpdater;
     std::function<void()> openLogs;
+    std::function<void()> openReports;
     std::function<void()> repairStartup;
     bool liveNR{},sessionFG{},rendererConnected{true};
     std::vector<const graphics::Preset*> displayPresets;
@@ -56,6 +57,7 @@ public:
     int tab{},scroll{},helpField{-1},helpScroll{};std::string notice,activity="PLUGIN LOADED - renderer not confirmed",nrStatus="NR status not available";
     bool dropdownOpen{};Action dropdown{Kind::Mode};int dropdownScroll{};
     bool modelImportBusy{};std::string modelImportStatus="Import your own nvngx_dlssnr.dll 310.9.16 or 310.8.0. Models are not included.";
+    std::string reportStatus="Reporting is Off until you agree and choose Send now or Send after this session.";
     Panel()=default;
     void bind(const std::filesystem::path &settings,ControlChannel *controls,bool canNR,bool hasFG,const std::function<void(const launcher::Preferences&)> &onPublish={}){
         file=settings;channel=controls;liveNR=canNR;sessionFG=hasFG;publish=onPublish;refresh();
@@ -80,6 +82,7 @@ public:
     void graphicsSupport(std::function<void()> callback){queueGraphics=std::move(callback);}
     void updateSupport(std::function<void()> callback){openUpdater=std::move(callback);}
     void logSupport(std::function<void()> callback){openLogs=std::move(callback);}
+    void reportSupport(std::function<void()> callback){openReports=std::move(callback);}
     void repairSupport(std::function<void()> callback){repairStartup=std::move(callback);}
     bool needsStartupRepair()const{return configured()&&!rendererConnected&&bool(repairStartup);}
     void modelSupport(std::function<void()> callback){importModel=std::move(callback);}
@@ -144,6 +147,7 @@ public:
     void act(Action action,bool refreshFirst=true){
         if(action.kind==Kind::RepairStartup){if(!needsStartupRepair())throw std::runtime_error("Startup repair is unavailable for this session.");repairStartup();notice="Repairing the startup link. Your flight keeps running; your image settings are kept.";return;}
         if(action.kind==Kind::Logs){if(!openLogs)throw std::runtime_error("Log support is unavailable. Reinstall the complete package.");openLogs();notice="Opened Output / FSR-Logs in your X-Plane folder. A fresh copy is also saved when X-Plane exits.";return;}
+        if(action.kind==Kind::Report){if(!openReports)throw std::runtime_error("Report support is unavailable. Use the log folder and Discord for now.");openReports();notice="Report preview opened. Sharing is Off until you agree and choose Send now or Send after this session.";return;}
         if(action.kind==Kind::Changelog){helpField=300;helpScroll=0;dropdownOpen=false;return;}
         if(action.kind==Kind::Updates){if(!openUpdater)throw std::runtime_error("The updater is missing. Reinstall the complete package.");openUpdater();notice="Updater opened. You can check now; close X-Plane before installing.";return;}
         if(action.kind==Kind::Tab){tab=std::clamp(action.field,0,3);scroll=0;helpField=-1;dropdownOpen=false;return;}
@@ -218,7 +222,7 @@ public:
     int maxScroll(int height)const{
         if(!configured())return 0;
         const int lengths[]={3*sectionHeight+9*rowHeight+68,2*sectionHeight+modelSetupHeight+Count*rowHeight,
-                             42+2*sectionHeight+62+61+48+75+75+48,3*sectionHeight+10*rowHeight+44};
+                             144+2*sectionHeight+62+61+48+75+75+48,3*sectionHeight+10*rowHeight+44};
         return std::max(0,lengths[tab]+(tab==0&&needsStartupRepair()?44:0)+8-std::max(1,height-contentTop-footerHeight));
     }
     int maxDropdownScroll(int height)const{return std::max(0,int(choiceOptions(dropdown).size())*36-std::max(1,height-contentTop-footerHeight-68));}
@@ -383,6 +387,10 @@ public:
         }else{
             if(visible(cursor,32))button({24,cursor,width-48,32},"Open log folder",{Kind::Logs});
             cursor+=42;
+            if(visible(cursor,32))button({24,cursor,width-48,32},"Preview / send a Discord report",{Kind::Report});
+            cursor+=42;
+            if(visible(cursor,52))item({28,cursor,width-56,52},reportStatus,Widget::Muted);
+            cursor+=60;
             section("01   /   FRAME COUNTERS");
             const int col=(width-52)/3;
             if(visible(cursor,62)){

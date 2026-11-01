@@ -7,6 +7,7 @@
 #include "session_export.hpp"
 #include "nr_import_setup.hpp"
 #include "installer_cleanup.hpp"
+#include "report_ui.hpp"
 #include <iostream>
 int wmain(int argc,wchar_t **argv){
     std::filesystem::path root=app::processExecutable().parent_path();
@@ -44,7 +45,11 @@ int wmain(int argc,wchar_t **argv){
         if(action==L"--finish-session"){
             graphics::require(argc==4,"Simulator PID and session token required");size_t used{};auto pid=std::stoul(argv[2],&used);
             graphics::require(used==wcslen(argv[2])&&pid<=MAXDWORD,"Invalid simulator PID");
-            app::finishSession(root,DWORD(pid),argv[3]);return 0;
+            app::finishSession(root,DWORD(pid),argv[3],[&]{support_report::sendQueued(root,argv[3],DWORD(pid));});return 0;
+        }
+        if(action==L"--report-ui"){
+            graphics::require(argc==4,"Simulator PID and session token required");size_t used{};auto pid=std::stoul(argv[2],&used);
+            graphics::require(used==wcslen(argv[2])&&pid<=MAXDWORD,"Invalid simulator PID");support_report::show(root,DWORD(pid),argv[3]);return 0;
         }
         graphics::require(argc<=3,"Unexpected integration setup argument");
         if(action==L"--uninstall-integration"){

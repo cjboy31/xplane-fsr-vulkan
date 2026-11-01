@@ -8,8 +8,8 @@ Laminar Research product.
 
 ## Download and setup
 
-[Windows Release — recommended](https://github.com/cjboy31/xplane-fsr-vulkan/releases/tag/v0.7.8)
-· [Windows Beta](https://github.com/cjboy31/xplane-fsr-vulkan/releases/tag/v0.7.8-beta.windows.1)
+[Windows Release — recommended](https://github.com/cjboy31/xplane-fsr-vulkan/releases/tag/v0.7.9)
+· [Windows Beta](https://github.com/cjboy31/xplane-fsr-vulkan/releases/tag/v0.7.9-beta.windows.1)
 · [All releases](https://github.com/cjboy31/xplane-fsr-vulkan/releases)
 · [Join Discord](https://discord.gg/yh396QNgHZ)
 
@@ -65,10 +65,14 @@ how to find what is slowing your sim down. Linux and Mac limits are listed too.
 
 Choose **Release** for all current features or **Beta** to try upcoming changes.
 The previous Experimental updates are included in Release. Your saved Normal
-choice maps to Release; Experimental maps to Beta. Version 0.7.8 keeps the
+choice maps to Release; Experimental maps to Beta. Version 0.7.9 keeps the
 installer, buffer-reuse and startup corrections from 0.7.7 and 0.7.6.
 Diagnostics provides easy access to fresh session logs. The grouped controls,
 help and transitions from 0.7.5 are retained.
+Optional [diagnostic reporting](docs/DIAGNOSTIC-REPORTS.md) lets you preview a
+filtered bundle and send it to Discord now or after this session. It starts Off.
+The bundle can include X-Plane Log.txt, startup errors, a saved settings summary
+and small crash text. Original logs, models and preference files stay on your PC.
 The separate **Plugin Updater** handles updates for FSR and Native AA. Open **Changelog**
 inside the simulator to read changes; startup videos are retired. An optional
 [shadow script](extras/shadows/README.txt) is included separately and starts Off.
@@ -76,6 +80,7 @@ Read the instructions included with your download.
 
 [Setup instructions](docs/INSTALLATION.md) ·
 [Report a problem](https://github.com/cjboy31/xplane-fsr-vulkan/issues) ·
+[Upload diagnostic logs](https://xplane-mod-log-reports.cjboy31.chatgpt.site/) ·
 [Discord support](https://discord.gg/yh396QNgHZ)
 
 ## Platforms

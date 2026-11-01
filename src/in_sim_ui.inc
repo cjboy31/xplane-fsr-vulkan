@@ -97,6 +97,15 @@ static void setupMonitorLogs(){
     if(!CreateProcessW(helper.c_str(),command.data(),nullptr,nullptr,FALSE,CREATE_NO_WINDOW|BELOW_NORMAL_PRIORITY_CLASS,nullptr,setupRoot.c_str(),&startup,&process)){setupPanel.notice="Session log export could not start. Use Diagnostics > Open log folder before exiting.";return;}
     CloseHandle(process.hThread);if(setupLogJob)CloseHandle(setupLogJob);setupLogJob=process.hProcess;setupLogToken=setupToken;
 }
+static void setupOpenReports(){
+    if(!app::validSessionToken(setupToken))throw std::runtime_error("No current session is linked to reporting");
+    const auto helper=setupRoot/L"IntegrationSetup.exe";
+    if(!std::filesystem::is_regular_file(helper))throw std::runtime_error("Report helper is missing. Reinstall the complete package.");
+    auto command=L"\""+helper.wstring()+L"\" --report-ui "+std::to_wstring(GetCurrentProcessId())+L" "+setupToken;
+    STARTUPINFOW startup{sizeof(startup)};PROCESS_INFORMATION process{};
+    if(!CreateProcessW(helper.c_str(),command.data(),nullptr,nullptr,FALSE,CREATE_NO_WINDOW|BELOW_NORMAL_PRIORITY_CLASS,nullptr,setupRoot.c_str(),&startup,&process))throw std::runtime_error("Report preview could not open. Use the log folder for now.");
+    CloseHandle(process.hThread);CloseHandle(process.hProcess);
+}
 static void setupPollImport(){
     if(!setupImportJob)return;
     auto status=xpfsr::nr::readModelImportProgress(setupRoot,setupImportToken);
@@ -147,6 +156,7 @@ static void setupBind(){
     setupPanel.modelSupport(setupImportModel);
     setupPanel.updateSupport(setupOpenUpdater);
     setupPanel.logSupport(setupOpenLogs);
+    setupPanel.reportSupport(setupOpenReports);
     const auto selected=xp_renderer::environment("XP_RENDERER_SESSION_CHOICE"),owner=xp_renderer::environment("XP_RENDERER_OWNER");
     setupPanel.repairSupport(!connected&&selected!="off"&&owner!="native_aa"&&launcher::readSetting(file,L"InSim",L"Enabled",L"0")==L"1"?std::function<void()>(setupRepairStartup):std::function<void()>{});
     setupMonitorLogs();
@@ -172,6 +182,14 @@ static void setupPoll(){
         setupPollImport();
         setupPollRepair();
         setupPanel.refresh();app::Telemetry status{};if(shared&&app::readStatus(shared,status))setupPanel.observe(status,now);
+        if(!setupRoot.empty()&&app::validSessionToken(setupToken)){
+            const auto folder=setupRoot/L"logs/reports";auto file=folder/(setupToken+L".status.txt");bool previous=false;
+            if(!std::filesystem::exists(file)){file=folder/L"last-status.txt";previous=true;}
+            if(std::filesystem::is_regular_file(file)&&!std::filesystem::is_symlink(file)&&std::filesystem::file_size(file)<=4096){
+                auto text=graphics::read(file);if(previous){const auto first=text.find('\n');text=first==std::string::npos?std::string{}:"Previous session: "+text.substr(first+1);}
+                if(!text.empty())setupPanel.reportStatus=text.substr(0,240);
+            }
+        }
         if(setupPanel.rendererLinked()&&!setupRoot.empty()){
             std::ifstream in(setupRoot/L"logs/renderer-nr-status.txt");char data[4097]{};in.read(data,4096);std::istringstream text(std::string(data,size_t(in.gcount())));
             DWORD pid{};ULONGLONG ticks{};uint64_t records{};std::string token,message;

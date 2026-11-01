@@ -49,7 +49,7 @@ $includes=@(('-I'+(Join-Path $build 'generated')),('-I'+(Join-Path $VulkanHeader
 if($LASTEXITCODE -ne 0){throw 'Layer build failed'}
 & $Compiler '-std=c++17' '-O2' '-static' '-shared' '-Wl,--no-insert-timestamp' '-DWIN32_LEAN_AND_MEAN' '-DNOMINMAX' ('-I'+(Join-Path $XPlaneSdk 'CHeaders\XPLM')) (Join-Path $source 'plugin.cpp') (Join-Path $XPlaneSdk 'Libraries\Win\XPLM_64.lib') '-lopengl32' '-lbcrypt' '-ladvapi32' '-lshell32' '-o' (Join-Path $bin 'plugin\64\win.xpl')
 if($LASTEXITCODE -ne 0){throw 'Plugin build failed'}
-& $Compiler '-std=c++17' '-O2' '-static' '-municode' '-Wl,--no-insert-timestamp' '-DWIN32_LEAN_AND_MEAN' '-DNOMINMAX' (Join-Path $source 'integration_setup.cpp') '-lbcrypt' '-ladvapi32' '-lcomdlg32' '-luser32' '-o' (Join-Path $bin 'IntegrationSetup.exe')
+& $Compiler '-std=c++17' '-O2' '-static' '-municode' '-Wl,--no-insert-timestamp' '-DWIN32_LEAN_AND_MEAN' '-DNOMINMAX' (Join-Path $source 'integration_setup.cpp') '-lbcrypt' '-ladvapi32' '-lcomdlg32' '-luser32' '-lwinhttp' '-lcrypt32' '-lshell32' '-lgdi32' '-o' (Join-Path $bin 'IntegrationSetup.exe')
 if($LASTEXITCODE -ne 0){throw 'Integration setup build failed'}
 $aaUpdaterCompiler=Join-Path $env:WINDIR 'Microsoft.NET/Framework64/v4.0.30319/csc.exe'
 & $aaUpdaterCompiler /nologo /target:winexe /platform:x64 /optimize+ /warnaserror+ /r:System.Windows.Forms.dll /r:System.Drawing.dll /r:System.Web.Extensions.dll /r:System.IO.Compression.dll /r:System.IO.Compression.FileSystem.dll (('/win32icon:')+(Join-Path $root 'assets/app.ico')) (('/out:')+(Join-Path $bin 'NativeAAUpdater.exe')) (Join-Path $root 'tools/NativeAAUpdater.cs')
