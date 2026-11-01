@@ -29,6 +29,32 @@ not an FPS increase. A fresh same-view flight comparison with NR/FG separated
 is still required. Linux CI exercises the portable mailbox; this Windows-layer
 change does not change Linux FSR rendering support.
 
+## Depth capture limited to learned scene images (development)
+
+A Windows moving-replay check exposed a separate cost with NR and FG Off:
+matching image dimensions still admitted unrelated full-size depth passes.
+Representative ten-second windows created roughly 1,000 depth images, spending
+about 1.3 seconds in depth setup and 0.46 seconds in resource retirement. The
+4K Native AA run reported 31.28 FPS, versus 74.85 FPS with both mod renderers
+disabled at startup. Third-party plugins remained loaded and their live traffic
+was variable; these are diagnostic samples, not a universal benchmark claim.
+
+Capture now also requires an image identity and generation learned from the
+current camera's actual reconstruction color/depth relationship. Unknown passes
+continue metadata tracking but do not allocate/copy depth or force attachment
+storage. The native boundary learns new sources from that metadata. A new
+source can retain native rendering for one recording before capture resumes.
+The bounded source list supports rotating images, removes destroyed images and
+rejects recycled handles with stale generations. Existing camera checks, depth
+content probes, application fences, presenter leases and memory limits remain.
+
+Policy tests cover unrelated same-size passes, rotating sources, stale camera
+metadata, handle reuse, destruction and bounded resize recovery. The production
+GPU fixture verifies that an unknown source never reaches allocation, then
+learns it and checks a real depth copy with a fenced 0.25-pixel readback. The
+existing 128-frame reuse/ownership checks also run at 4K output. A fresh flight
+comparison is required before claiming an improvement from this change.
+
 ## Observed regression
 
 The memory-budget build reclaimed cold command-buffer caches but repeatedly

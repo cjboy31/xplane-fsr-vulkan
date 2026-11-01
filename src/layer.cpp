@@ -269,6 +269,7 @@ struct Device {
     CpuCost frameSetupCost,depthSetupCost,interceptionCost,retirementCost;
     uint64_t retiredImageBytes{},retiredNROwners{};
     xpfsr::SceneCaptureExtents captureExtents;
+    xpfsr::SceneDepthSources captureSources;
     uint64_t rejectedCaptureExtents{};
     xpfsr::FrameDiagnostics frameDiagnostics;
     std::map<VkImage, Depth> depths;
@@ -697,7 +698,7 @@ void reportMemory(Device&d){
         (unsigned long long)(d.idleFrames.bytes()/xpfsr::nr::MiB),(unsigned long long)d.idleFrames.hits,(unsigned long long)d.idleFrames.misses,(unsigned long long)(d.idleDepths.bytes()/xpfsr::nr::MiB),(unsigned long long)d.idleDepths.hits,(unsigned long long)d.idleDepths.misses,(unsigned long long)(d.retiredImageBytes/xpfsr::nr::MiB));
     d.interceptionCost={};d.frameSetupCost={};d.depthSetupCost={};d.retirementCost={};d.retiredImageBytes=d.retiredNROwners=0;
     log("SDK-owned completed source frames=%zu images=%llu MiB; awaiting presenter completion before reuse",d.presenterFrames.size(),(unsigned long long)(presenterBytes/xpfsr::nr::MiB));
-    log("Capture eligibility: unrelated-size depth passes skipped=%llu; learned only from current-camera native FSR color/depth relationships",(unsigned long long)d.rejectedCaptureExtents);
+    log("Capture eligibility: unrelated or unlearned depth passes skipped=%llu; image identity and extent learned only from current-camera native FSR color/depth relationships",(unsigned long long)d.rejectedCaptureExtents);
     d.rejectedCaptureExtents=0;
 }
 // On a profile change/Off, a one-time command buffer may have finished but
@@ -899,7 +900,8 @@ void captureDepth(Device &d, VkCommandBuffer cb, Command &command) {
     if(!d.allocationBackoff.allowed(GetTickCount64()))return;
     auto depth = command.depths.find(command.activeDepth);
     auto meta = d.images.find(command.activeDepth);
-    if (depth == command.depths.end() || meta == d.images.end() || !depth->second.cameraCoherent)
+    if (depth == command.depths.end() || meta == d.images.end() || !depth->second.cameraCoherent ||
+        !d.captureSources.accepts(uint64_t(command.activeDepth),meta->second.generation))
         return;
     auto nativeView = d.views.find(depth->second.view);
     if (nativeView == d.views.end())
@@ -1645,6 +1647,8 @@ bool replace(Device &d, VkCommandBuffer cb, Command &command) {
         // FG consumes this same validated reconstruction depth. Learning its
         // dimensions does not change presentation ownership or cache reuse.
         if(d.captureExtents.observe(rw,rh,belongs&&depth.cameraCoherent&&depth.epoch==d.camera.frame))d.camera.reset=1;
+        d.captureSources.observe(uint64_t(image),found->second.generation,
+                                 belongs&&depth.cameraCoherent&&depth.epoch==d.camera.frame);
         if (belongs && (!depth.cameraCoherent || depth.epoch != d.camera.frame)) {
             mismatchedScene = true;
             rejectedDepthFrame = depth.epoch;
@@ -2566,6 +2570,7 @@ static VKAPI_ATTR void VKAPI_CALL L_DestroyImage(VkDevice device, VkImage image,
     {
         std::lock_guard<std::recursive_mutex> l(d->lock);
         d->images.erase(image);
+        d->captureSources.erase(uint64_t(image));
         d->depths.erase(image);
         d->layouts.erase(image);
     }
@@ -3605,7 +3610,8 @@ static VKAPI_ATTR void VKAPI_CALL L_CmdBeginRendering(VkCommandBuffer cb,
                     std::abs(double(source->second.create.extent.width) /
                                  source->second.create.extent.height -
                              double(d->camera.width) / d->camera.height) < .02) {
-                    if(!d->captureExtents.accepts(source->second.create.extent.width,source->second.create.extent.height))++d->rejectedCaptureExtents;
+                    if(!d->captureExtents.accepts(source->second.create.extent.width,source->second.create.extent.height)||
+                       !d->captureSources.accepts(uint64_t(depth.image),source->second.generation))++d->rejectedCaptureExtents;
                     else{
                         command.activeCaptureEligible = true;
                         storedDepth = *c->pDepthAttachment;

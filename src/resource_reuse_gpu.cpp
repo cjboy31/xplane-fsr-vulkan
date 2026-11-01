@@ -199,10 +199,38 @@ int wmain(int argc,wchar_t**argv){try{
     d.images[f.depth->image]=source;d.views[f.nativeView]={f.depth->view};
     Command fault;fault.family=vk.family;fault.activeCaptureEligible=true;fault.activeDepth=f.depth->image;fault.depths.emplace(f.depth->image,Depth{f.nativeView,f.depth->image,VK_IMAGE_LAYOUT_UNDEFINED,1});
     d.mode=Mode::Upscale;fixtureFailAllocation=true;captureDepth(d,f.command,fault);
+    require(fixtureFailAllocation&&fault.capturedDepths.empty()&&!d.allocationPaused,"Unknown depth source reached the allocation API");
+    d.captureSources.observe(uint64_t(f.depth->image),source.generation,true);
+    captureDepth(d,f.command,fault);
     require(!fixtureFailAllocation&&fault.capturedDepths.empty()&&d.allocationPaused&&!d.runtimeFailed,"Pre-recording OOM poisoned capture selection instead of native bypass");
     const auto failedCalls=d.depthSetupCost.calls;fixtureFailAllocation=true;captureDepth(d,f.command,fault);
     require(fixtureFailAllocation&&d.depthSetupCost.calls==failedCalls,"OOM retry ignored backoff and allocated again during the same frame");fixtureFailAllocation=false;
     VkMemoryRequirements originalRequirements{};vk.dev<PFN_vkGetImageMemoryRequirements>("vkGetImageMemoryRequirements")(vk.device,f.depth->image,&originalRequirements);require(originalRequirements.size>0,"OOM recovery destroyed the original depth image");
+    // The same source becomes capturable after valid provenance is learned.
+    // Verify a real depth copy/readback, not only the source-policy predicate.
+    d.allocationBackoff.recovered();d.allocationPaused=false;
+    check(vk.dev<PFN_vkResetCommandBuffer>("vkResetCommandBuffer")(f.command,0),"Depth command reset");
+    VkCommandBufferBeginInfo depthBegin{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};depthBegin.flags=VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+    check(vk.dev<PFN_vkBeginCommandBuffer>("vkBeginCommandBuffer")(f.command,&depthBegin),"Depth command begin");
+    auto depthRange=f.depth->view.subresourceRange;
+    barrier(d,f.command,f.depth->image,VK_IMAGE_LAYOUT_UNDEFINED,VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,depthRange);
+    VkClearDepthStencilValue depthClear{.25f,0};
+    vk.dev<PFN_vkCmdClearDepthStencilImage>("vkCmdClearDepthStencilImage")(f.command,f.depth->image,VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,&depthClear,1,&depthRange);
+    fault.depths.at(f.depth->image).layout=VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+    captureDepth(d,f.command,fault);
+    require(fault.capturedDepths.size()==1,"Learned source did not resume production capture");
+    auto copied=fault.capturedDepths.at(f.depth->image);
+    barrier(d,f.command,copied->image,copied->layout,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,depthRange);
+    VkBufferImageCopy depthPixel{};depthPixel.imageSubresource={VK_IMAGE_ASPECT_DEPTH_BIT,0,0,1};depthPixel.imageExtent={1,1,1};
+    vk.dev<PFN_vkCmdCopyImageToBuffer>("vkCmdCopyImageToBuffer")(f.command,copied->image,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,f.readback,1,&depthPixel);
+    check(vk.dev<PFN_vkEndCommandBuffer>("vkEndCommandBuffer")(f.command),"Depth command end");
+    check(vk.dev<PFN_vkResetFences>("vkResetFences")(vk.device,1,&f.fence),"Depth fence reset");
+    VkSubmitInfo depthSubmit{VK_STRUCTURE_TYPE_SUBMIT_INFO};depthSubmit.commandBufferCount=1;depthSubmit.pCommandBuffers=&f.command;
+    check(vk.dev<PFN_vkQueueSubmit>("vkQueueSubmit")(vk.queue,1,&depthSubmit,f.fence),"Depth submit");
+    check(vk.dev<PFN_vkWaitForFences>("vkWaitForFences")(vk.device,1,&f.fence,VK_TRUE,10000000000ull),"Depth completion");
+    float readDepth{};memcpy(&readDepth,f.mapped,sizeof(readDepth));require(readDepth==.25f,"Learned production depth capture changed the pixel");
+    copied.reset();fault.capturedDepths.clear();
+    std::cout<<"PASS: unknown depth source performs no GPU allocation; learned source resumes production copy with a fenced 0.25 depth readback.\n";
     d.idleFrames.limit(0);d.idleDepths.limit(0);require(!d.idleFrames.bytes()&&!d.idleDepths.bytes(),"Idle memory did not retire under pressure");
     std::cout<<"PASS: 128 actual fenced GPU readbacks, FG-configured frame/depth reuse, descriptor rebinding, pending SDK owner retention through live Off, cache admission after both completions, cold retirement, pressure trim and pre-recording OOM/backoff/native-depth preservation. Resource fixture only; no FSR quality claim.\n";return 0;
 }catch(const std::exception&e){std::cerr<<"FAIL: "<<e.what()<<'\n';return 1;}}
