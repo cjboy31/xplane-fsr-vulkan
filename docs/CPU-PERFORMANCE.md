@@ -1,5 +1,69 @@
 # CPU cost and bounded GPU-resource reuse
 
+## File operations removed from the frame path (development)
+
+The 0.7.9 source still read processing/FG control files every 100 ms and wrote
+FSR/NR status files every 500 ms on intercepted rendering calls. NR replacement
+also requested a write-through flush. A slow or synchronized storage location
+could therefore delay rendering while the device guard was held. This is a
+code-path finding, not proof of the cause of a particular user's flight hitch.
+
+The development bridge reads initial controls during device creation, then
+polls them on a file-only worker. Rendering reads atomic cached values. FSR and
+NR each offer one replaceable status snapshot using a non-waiting mailbox;
+there is no accumulating frame queue. The worker owns copies of paths and
+strings, never Vulkan resources, device pointers or renderer locks. Device
+teardown joins it and drains accepted snapshots. Existing status identity,
+stale-status checks, file replacement and NR durability remain in place.
+
+Only a changed cached control is applied, so an old file value cannot repeatedly
+undo a newer shared-memory On/Off switch. The existing live-switch and temporal
+reset behavior is retained. Missing/invalid controls retain their last good
+value. A busy mailbox skips an intermediate status and retries on a later frame.
+
+Tests block the file worker inside a read and write while rendering-side calls
+continue, exercise 10,000 coalesced snapshots, bounded payloads, I/O exceptions,
+shutdown drain, Unicode paths, status identity and production live-switch
+precedence. These checks establish removal of these particular file waits,
+not an FPS increase. A fresh same-view flight comparison with NR/FG separated
+is still required. Linux CI exercises the portable mailbox; this Windows-layer
+change does not change Linux FSR rendering support.
+
+## Depth capture limited to learned scene images (development)
+
+A Windows moving-replay check exposed a separate cost with NR and FG Off:
+matching image dimensions still admitted unrelated full-size depth passes.
+Representative ten-second windows created roughly 1,000 depth images, spending
+about 1.3 seconds in depth setup and 0.46 seconds in resource retirement. The
+4K Native AA run reported 31.28 FPS, versus 74.85 FPS with both mod renderers
+disabled at startup. Third-party plugins remained loaded and their live traffic
+was variable; these are diagnostic samples, not a universal benchmark claim.
+
+Capture now also requires an image identity and generation learned from the
+current camera's actual reconstruction color/depth relationship. Unknown passes
+continue metadata tracking but do not allocate/copy depth or force attachment
+storage. The native boundary learns new sources from that metadata. A new
+source can retain native rendering for one recording before capture resumes.
+The bounded source list supports rotating images, removes destroyed images and
+rejects recycled handles with stale generations. Existing camera checks, depth
+content probes, application fences, presenter leases and memory limits remain.
+
+Policy tests cover unrelated same-size passes, rotating sources, stale camera
+metadata, handle reuse, destruction and bounded resize recovery. The production
+GPU fixture verifies that an unknown source never reaches allocation, then
+learns it and checks a real depth copy with a fenced 0.25-pixel readback. The
+existing 128-frame reuse/ownership checks also run at 4K output.
+
+The matched owner-PC moving replay then completed normally with Native AA
+confirmed active: 41.39 FPS versus the public build's 31.28 FPS. After trimming
+five seconds at each end of active flight, frame-period p95 was 33.40 ms versus
+45.66 ms, and p99 was 38.39 ms versus 53.26 ms. Representative capture setup
+dropped to 6–8 new depth images and 7–9 ms per ten-second window. These are
+single sequential local samples with live third-party traffic, not randomized
+benchmark repetitions. Both used the same replay, preset and 4K resolution with
+NR/FG Off. Replay camera metadata frequently requested temporal resets, so the
+test is pacing evidence, not a visual-quality or ghosting certification.
+
 ## Observed regression
 
 The memory-budget build reclaimed cold command-buffer caches but repeatedly

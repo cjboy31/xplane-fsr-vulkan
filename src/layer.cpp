@@ -28,6 +28,7 @@
 #include "session_logs.hpp"
 #include "startup_readiness.hpp"
 #include "renderer_status_file.hpp"
+#include "renderer_files.hpp"
 #include "panel_presence.hpp"
 #include "implicit_activation.hpp"
 #include "temporal_spv.hpp"
@@ -268,6 +269,7 @@ struct Device {
     CpuCost frameSetupCost,depthSetupCost,interceptionCost,retirementCost;
     uint64_t retiredImageBytes{},retiredNROwners{};
     xpfsr::SceneCaptureExtents captureExtents;
+    xpfsr::SceneDepthSources captureSources;
     uint64_t rejectedCaptureExtents{};
     xpfsr::FrameDiagnostics frameDiagnostics;
     std::map<VkImage, Depth> depths;
@@ -292,6 +294,8 @@ struct Device {
     Mode mode = Mode::Observe;
     std::array<uint32_t, 6> activeContext{};
     uint64_t jitterFrame{};
+    xpfsr::RendererFiles files;
+    std::array<uint64_t,2> fileControlRevision{};
     NeuralRenderer neural;
     app::StartupReadiness startup;
     bool previousNeuralApplied{};
@@ -371,7 +375,7 @@ struct Device {
         if (!enabled) neural.pause("NR paused with processing disabled");
         else if (camera.internal&&!neural.fullScene()) neural.pause("NR paused: external-only scope");
         else if (groundSafety.active) neural.pause("NR paused by ground camera safety");
-        neural.report();
+        neural.report(files);
         if (reason != status.reason)
             strncpy(status.reason, reason, sizeof(status.reason) - 1);
         attach();
@@ -385,16 +389,11 @@ struct Device {
         auto now = GetTickCount64();
         if (now - lastStatusWrite < 500)
             return;
-        lastStatusWrite = now;
-        wchar_t path[32768]{};
-        if (GetEnvironmentVariableW(L"XPFSR24_STATUS", path, 32768)) {
-            auto temporary = std::filesystem::path(path).wstring() + L".tmp";
-            {
-                std::ofstream f(std::filesystem::path(temporary), std::ios::trunc);
-                static const std::string token=session::rendererToken();
-                launcher::writeRendererStatus(f,status,GetCurrentProcessId(),now,token);
-            }
-            MoveFileExW(temporary.c_str(), path, MOVEFILE_REPLACE_EXISTING);
+        if (files.hasOutput(0)) {
+            std::ostringstream snapshot;
+            static const std::string token=session::rendererToken();
+            launcher::writeRendererStatus(snapshot,status,GetCurrentProcessId(),now,token);
+            if (files.offer(0,snapshot.str())) lastStatusWrite = now;
         }
     }
     void readControl() {
@@ -404,28 +403,24 @@ struct Device {
         if (now - lastControlRead < 100)
             return;
         lastControlRead = now;
-        wchar_t path[32768]{};
-        if (GetEnvironmentVariableW(L"XPFSR24_CONTROL", path, 32768)) {
-            std::ifstream f{std::filesystem::path(path)};
-            char value{};
-            if (f.get(value) && (value == '0' || value == '1')) {
-                bool was = enabled;
-                enabled = value == '1';
-                if (!was && enabled)
-                    camera.reset = 1;
-                if (shared)
-                    InterlockedExchange(&shared->enabled, enabled);
-            }
+        const auto processingSnapshot = files.controlSnapshot(0);
+        const auto processing = int(processingSnapshot & 3) - 1;
+        if (processingSnapshot != fileControlRevision[0] && (processing == 0 || processing == 1)) {
+            fileControlRevision[0] = processingSnapshot;
+            bool was = enabled;
+            enabled = processing == 1;
+            if (!was && enabled)
+                camera.reset = 1;
+            if (shared)
+                InterlockedExchange(&shared->enabled, enabled);
         }
-        wchar_t fgPath[32768]{};
-        if (GetEnvironmentVariableW(L"XPFSR24_FG_CONTROL", fgPath, 32768)) {
-            std::ifstream f{std::filesystem::path(fgPath)};
-            char value{};
-            if (f.get(value) && (value == '0' || value == '1')){
-                const bool next=value=='1';
-                if(next!=fgLiveEnabled)fgResumeReset=true;
-                fgLiveEnabled=next;
-            }
+        const auto fgSnapshot = files.controlSnapshot(1);
+        const auto frameGeneration = int(fgSnapshot & 3) - 1;
+        if (fgSnapshot != fileControlRevision[1] && (frameGeneration == 0 || frameGeneration == 1)) {
+            fileControlRevision[1] = fgSnapshot;
+            const bool next=frameGeneration==1;
+            if(next!=fgLiveEnabled)fgResumeReset=true;
+            fgLiveEnabled=next;
         }
     }
     void bypass(const char *reason) {
@@ -703,7 +698,7 @@ void reportMemory(Device&d){
         (unsigned long long)(d.idleFrames.bytes()/xpfsr::nr::MiB),(unsigned long long)d.idleFrames.hits,(unsigned long long)d.idleFrames.misses,(unsigned long long)(d.idleDepths.bytes()/xpfsr::nr::MiB),(unsigned long long)d.idleDepths.hits,(unsigned long long)d.idleDepths.misses,(unsigned long long)(d.retiredImageBytes/xpfsr::nr::MiB));
     d.interceptionCost={};d.frameSetupCost={};d.depthSetupCost={};d.retirementCost={};d.retiredImageBytes=d.retiredNROwners=0;
     log("SDK-owned completed source frames=%zu images=%llu MiB; awaiting presenter completion before reuse",d.presenterFrames.size(),(unsigned long long)(presenterBytes/xpfsr::nr::MiB));
-    log("Capture eligibility: unrelated-size depth passes skipped=%llu; learned only from current-camera native FSR color/depth relationships",(unsigned long long)d.rejectedCaptureExtents);
+    log("Capture eligibility: unrelated or unlearned depth passes skipped=%llu; image identity and extent learned only from current-camera native FSR color/depth relationships",(unsigned long long)d.rejectedCaptureExtents);
     d.rejectedCaptureExtents=0;
 }
 // On a profile change/Off, a one-time command buffer may have finished but
@@ -905,7 +900,8 @@ void captureDepth(Device &d, VkCommandBuffer cb, Command &command) {
     if(!d.allocationBackoff.allowed(GetTickCount64()))return;
     auto depth = command.depths.find(command.activeDepth);
     auto meta = d.images.find(command.activeDepth);
-    if (depth == command.depths.end() || meta == d.images.end() || !depth->second.cameraCoherent)
+    if (depth == command.depths.end() || meta == d.images.end() || !depth->second.cameraCoherent ||
+        !d.captureSources.accepts(uint64_t(command.activeDepth),meta->second.generation))
         return;
     auto nativeView = d.views.find(depth->second.view);
     if (nativeView == d.views.end())
@@ -1651,6 +1647,8 @@ bool replace(Device &d, VkCommandBuffer cb, Command &command) {
         // FG consumes this same validated reconstruction depth. Learning its
         // dimensions does not change presentation ownership or cache reuse.
         if(d.captureExtents.observe(rw,rh,belongs&&depth.cameraCoherent&&depth.epoch==d.camera.frame))d.camera.reset=1;
+        d.captureSources.observe(uint64_t(image),found->second.generation,
+                                 belongs&&depth.cameraCoherent&&depth.epoch==d.camera.frame);
         if (belongs && (!depth.cameraCoherent || depth.epoch != d.camera.frame)) {
             mismatchedScene = true;
             rejectedDepthFrame = depth.epoch;
@@ -2393,6 +2391,8 @@ static VKAPI_ATTR VkResult VKAPI_CALL L_CreateDevice(VkPhysicalDevice physical,
     state->next = next;
     state->instance = instance;
     state->featuresReady = cloned;
+    try { state->files.start(); }
+    catch (const std::exception &e) { log("Background status/control files unavailable: %s; shared controls retained", e.what()); }
     state->neural.features(neuralSupported);
     state->mode = selectedMode();
     auto fgGuard=app::environment(L"XPFSR24_FG_GUARD");
@@ -2486,6 +2486,7 @@ static VKAPI_ATTR void VKAPI_CALL L_DestroyDevice(VkDevice device,
     auto d = deviceFor(device);
     if (!d)
         return;
+    d->files.stop(); // file worker never calls Vulkan or takes the device lock
     d->neural.join();
     d->fn<PFN_vkDeviceWaitIdle>("vkDeviceWaitIdle")(device);
     stopGenerator(*d);
@@ -2569,6 +2570,7 @@ static VKAPI_ATTR void VKAPI_CALL L_DestroyImage(VkDevice device, VkImage image,
     {
         std::lock_guard<std::recursive_mutex> l(d->lock);
         d->images.erase(image);
+        d->captureSources.erase(uint64_t(image));
         d->depths.erase(image);
         d->layouts.erase(image);
     }
@@ -3608,7 +3610,8 @@ static VKAPI_ATTR void VKAPI_CALL L_CmdBeginRendering(VkCommandBuffer cb,
                     std::abs(double(source->second.create.extent.width) /
                                  source->second.create.extent.height -
                              double(d->camera.width) / d->camera.height) < .02) {
-                    if(!d->captureExtents.accepts(source->second.create.extent.width,source->second.create.extent.height))++d->rejectedCaptureExtents;
+                    if(!d->captureExtents.accepts(source->second.create.extent.width,source->second.create.extent.height)||
+                       !d->captureSources.accepts(uint64_t(depth.image),source->second.generation))++d->rejectedCaptureExtents;
                     else{
                         command.activeCaptureEligible = true;
                         storedDepth = *c->pDepthAttachment;

@@ -8,6 +8,17 @@
 static void check(bool ok,const char*why){if(!ok)throw std::runtime_error(why);}
 struct Resource{int &destroyed;explicit Resource(int&n):destroyed(n){}~Resource(){++destroyed;}};
 int main(){try{
+    xpfsr::SceneDepthSources sources;
+    check(!sources.accepts(1,1),"Unknown pass caused speculative depth copying");
+    sources.observe(1,1,false);check(!sources.accepts(1,1),"Unvalidated/stale camera learned a source");
+    for(uint64_t i=1;i<=4;++i)sources.observe(i,1,true);
+    for(uint64_t i=1;i<=4;++i)check(sources.accepts(i,1),"Rotating scene sources evicted each other");
+    check(!sources.accepts(9,1),"Unrelated same-size image became a scene source");
+    sources.observe(1,2,true);check(sources.accepts(1,2)&&!sources.accepts(1,1),"Recycled image handle retained a stale generation");
+    sources.erase(1);check(!sources.accepts(1,2),"Destroyed source stayed eligible");
+    for(uint64_t i=5;i<=100;++i)sources.observe(i,1,true);
+    check(!sources.accepts(2,1)&&sources.accepts(100,1),"Source learning grew without a bound or failed to recover after resize");
+    sources.observe(0,1,true);sources.observe(1,0,true);check(!sources.accepts(0,1)&&!sources.accepts(1,0),"Invalid source identity was accepted");
     xpfsr::SceneCaptureExtents extents;
     check(extents.accepts(2953,1661)&&extents.accepts(1920,1080)&&!extents.accepts(0,0),"Unknown/invalid scene extent policy failed");
     check(!extents.accepts(8192,4320)&&!extents.observe(8192,4320,true),"Unsupported oversized scene created a capture guide");

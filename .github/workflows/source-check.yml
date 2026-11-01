@@ -35,3 +35,14 @@ jobs:
           Expand-Archive -LiteralPath $archive -DestinationPath $env:RUNNER_TEMP
       - name: Check CPU, saved settings, session logs, update channels and UI
         run: ./Test-Regression.ps1 -Compiler "$env:RUNNER_TEMP/llvm-mingw-20261020-ucrt-x86_64/bin/clang++.exe"
+  portable-file-worker:
+    needs: source-policy
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Check bounded file worker on Linux (no rendering claim)
+        run: |
+          g++ -std=c++17 -O2 -pthread src/background_files_tests.cpp -o /tmp/background-files-tests
+          /tmp/background-files-tests

@@ -8,10 +8,10 @@ Laminar Research product.
 
 ## Download and setup
 
-[Windows Release — recommended](https://github.com/cjboy31/xplane-fsr-vulkan/releases/tag/v0.7.9)
-· [Windows Beta](https://github.com/cjboy31/xplane-fsr-vulkan/releases/tag/v0.7.9-beta.windows.1)
-· [All releases](https://github.com/cjboy31/xplane-fsr-vulkan/releases)
-· [Join Discord](https://discord.gg/yh396QNgHZ)
+[Windows Release â€” recommended](https://github.com/cjboy31/xplane-fsr-vulkan/releases/tag/v0.7.10)
+Â· [Windows Beta](https://github.com/cjboy31/xplane-fsr-vulkan/releases/tag/v0.7.10-beta.windows.1)
+Â· [All releases](https://github.com/cjboy31/xplane-fsr-vulkan/releases)
+Â· [Join Discord](https://discord.gg/yh396QNgHZ)
 
 1. **Install:** close X-Plane. Run the file ending in **Setup.exe**, select your
    X-Plane folder and enable **in-sim integration**. The other EXEs are support tools.
@@ -65,8 +65,10 @@ how to find what is slowing your sim down. Linux and Mac limits are listed too.
 
 Choose **Release** for all current features or **Beta** to try upcoming changes.
 The previous Experimental updates are included in Release. Your saved Normal
-choice maps to Release; Experimental maps to Beta. Version 0.7.9 keeps the
-installer, buffer-reuse and startup corrections from 0.7.7 and 0.7.6.
+choice maps to Release; Experimental maps to Beta. Version 0.7.10 keeps the
+installer, buffer-reuse and startup corrections from 0.7.7 and 0.7.6. It reduces
+unneeded scene copies and moves status-file work into the background to help
+frame pacing. Performance gains vary by computer and scene.
 Diagnostics provides easy access to fresh session logs. The grouped controls,
 help and transitions from 0.7.5 are retained.
 Optional [diagnostic reporting](docs/DIAGNOSTIC-REPORTS.md) lets you preview a
@@ -78,9 +80,9 @@ inside the simulator to read changes; startup videos are retired. An optional
 [shadow script](extras/shadows/README.txt) is included separately and starts Off.
 Read the instructions included with your download.
 
-[Setup instructions](docs/INSTALLATION.md) ·
-[Report a problem](https://github.com/cjboy31/xplane-fsr-vulkan/issues) ·
-[Upload diagnostic logs](https://xplane-mod-log-reports.cjboy31.chatgpt.site/) ·
+[Setup instructions](docs/INSTALLATION.md) Â·
+[Report a problem](https://github.com/cjboy31/xplane-fsr-vulkan/issues) Â·
+[Upload diagnostic logs](https://xplane-mod-log-reports.cjboy31.chatgpt.site/) Â·
 [Discord support](https://discord.gg/yh396QNgHZ)
 
 ## Platforms
@@ -91,6 +93,6 @@ only offers FSR 3.1 upscaling and still needs Linux flight testing. It does not
 include FSR 4, NR or frame generation. The Mac download is a diagnostic tool;
 Mac rendering is not available.
 
-For developers: [Build](BUILDING.md) · [Testing](docs/RENDERING-STABILITY.md) ·
+For developers: [Build](BUILDING.md) Â· [Testing](docs/RENDERING-STABILITY.md) Â·
 [Contribute](CONTRIBUTING.md). Original code and artwork are MIT; supplied
 [third-party licenses](licenses/) have their own terms.

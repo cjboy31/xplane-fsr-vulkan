@@ -1,4 +1,4 @@
-FSR 3.1 / 4.1 + FRAME GEN FOR X-PLANE 12 — 0.7.9
+FSR 3.1 / 4.1 + FRAME GEN FOR X-PLANE 12 â€” 0.7.10
 
 START HERE - WHERE ARE THE PRESETS?
 The presets are INSIDE X-PLANE. You do not open them by running a desktop EXE.
