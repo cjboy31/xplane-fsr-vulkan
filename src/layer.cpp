@@ -262,6 +262,9 @@ struct Device {
     std::map<VkCommandBuffer, Command> commands;
     xpfsr::CompletedResourceCache<FrameReuseKey,std::unique_ptr<FrameResources>> idleFrames{8};
     xpfsr::CompletedResourceCache<DepthReuseKey,std::shared_ptr<DepthCapture>> idleDepths{24};
+    // The application has finished these recordings, but the SDK presenter
+    // still owns their images. No new waits or early descriptor updates.
+    std::vector<std::unique_ptr<FrameResources>> presenterFrames;
     CpuCost frameSetupCost,depthSetupCost,interceptionCost,retirementCost;
     uint64_t retiredImageBytes{},retiredNROwners{};
     xpfsr::SceneCaptureExtents captureExtents;
@@ -623,16 +626,20 @@ struct FrameResources {
 FrameReuseKey frameReuseKey(uint32_t family,uint32_t rw,uint32_t rh,uint32_t ow,uint32_t oh,VkFormat color,VkFormat output){return {family,rw,rh,ow,oh,uint64_t(color),uint64_t(output)};}
 DepthReuseKey depthReuseKey(uint32_t family,uint32_t w,uint32_t h,VkFormat format,VkSampleCountFlagBits samples){return {family,w,h,uint64_t(format),uint64_t(samples)};}
 uint64_t frameBytes(const FrameResources&f){return f.uniformBytes+f.color.bytes+f.depth.bytes+f.motion.bytes+f.reactive.bytes+f.output.bytes+f.neuralColor.bytes+f.neuralOutput.bytes;}
-bool canRetainIdle(const Device&d){return d.enabled&&!d.runtimeFailed&&!d.nrMemoryPaused&&!d.allocationPaused&&d.fgRequested.empty();}
+bool canRetainIdle(const Device&d){return d.enabled&&!d.runtimeFailed&&!d.nrMemoryPaused&&!d.allocationPaused;}
+void retireDepth(Device&,std::shared_ptr<DepthCapture>&);
 void retireFrame(Device&d,std::unique_ptr<FrameResources>&owner){
-    // Call only after the captured GPU fence or a successful host reset/Begin,
-    // and never for an FG-presenter lease. These images have no pending users.
+    // Caller proves application completion by fence/recording serial or a
+    // legal host reset/Begin/free. The presenter is a separate owner.
     if(!owner)return;
+    if(!xpfsr::presenterFinished(owner->fgLease,d.fgCompletedLease)){
+        d.presenterFrames.push_back(std::move(owner));return;
+    }
     if(canRetainIdle(d)&&owner->ready){
-        auto&f=*owner;f.neuralOwner.reset();
+        auto&f=*owner;f.fgLease=0;f.neuralOwner.reset();
         if(!d.neural.enabled()){f.neuralColor.release();f.neuralOutput.release();}
         if(f.depthView)d.fn<PFN_vkDestroyImageView>("vkDestroyImageView")(d.handle,f.depthView,nullptr);
-        f.depthView=VK_NULL_HANDLE;f.depthOwner.reset();f.nativeDepth=VK_NULL_HANDLE;f.nativeDepthGeneration=0;
+        f.depthView=VK_NULL_HANDLE;retireDepth(d,f.depthOwner);f.nativeDepth=VK_NULL_HANDLE;f.nativeDepthGeneration=0;
         d.idleFrames.limit(xpfsr::nr::frameCacheTargetBytes(d.memoryBudget.budget));
         auto key=frameReuseKey(f.family,f.sizes[0],f.sizes[1],f.sizes[2],f.sizes[3],f.colorFormat,f.outputFormat);
         if(d.idleFrames.store(key,owner,frameBytes(f),true))return;
@@ -648,11 +655,23 @@ void retireDepth(Device&d,std::shared_ptr<DepthCapture>&owner){
     }
     owner.reset();
 }
+void retirePresenterFrames(Device&d){
+    for(auto i=d.presenterFrames.begin();i!=d.presenterFrames.end();){
+        if(!xpfsr::presenterFinished((*i)->fgLease,d.fgCompletedLease)){++i;continue;}
+        auto owner=std::move(*i);i=d.presenterFrames.erase(i);retireFrame(d,owner);
+    }
+}
+void retireCommand(Device&d,Command&command){
+    retireFrame(d,command.resources);
+    for(auto&capture:command.capturedDepths)retireDepth(d,capture.second);
+    command.capturedDepths.clear();
+}
 void reportMemory(Device&d){
+    retirePresenterFrames(d);
     const auto now=GetTickCount64();
     if(now-d.lastBudgetMonitor>=1000){
         d.lastBudgetMonitor=now;
-        if(d.fgRequested.empty())d.idleDepths.eraseIf([&](const DepthReuseKey&key,const std::shared_ptr<DepthCapture>&){return !d.captureExtents.accepts(uint32_t(key[1]),uint32_t(key[2]));});
+        d.idleDepths.eraseIf([&](const DepthReuseKey&key,const std::shared_ptr<DepthCapture>&){return !d.captureExtents.accepts(uint32_t(key[1]),uint32_t(key[2]));});
         if(!d.neural.enabled())d.idleFrames.eraseIf([](const FrameReuseKey&,const std::unique_ptr<FrameResources>&f){return f->neuralColor.memory||f->neuralOutput.memory;});
         if(now-d.lastBudgetCheck>=1000){d.lastBudgetCheck=now;d.memoryBudget=xpfsr::nr::queryGpuMemoryBudget(d.instance->handle,d.physical,d.instance->next);}
         if(d.memoryBudget.available){const auto&memory=d.memoryBudget;const auto free=memory.budget>memory.usage?memory.budget-memory.usage:0;
@@ -674,6 +693,7 @@ void reportMemory(Device&d){
         bytes+=f->color.bytes+f->depth.bytes+f->motion.bytes+f->reactive.bytes+f->output.bytes;
     }
     for(auto*depth:depths)depthBytes+=depth->bytes;
+    uint64_t presenterBytes{};for(const auto&f:d.presenterFrames)presenterBytes+=frameBytes(*f)+(f->depthOwner?f->depthOwner->bytes:0);
     const auto&memory=d.memoryBudget;
     log("GPU memory: driver-budget-available=%u heap-usage=%llu MiB heap-budget=%llu MiB; cached-frame-resources=%zu private-frame-images=%llu MiB NR-scratch=%llu MiB NR-command-owners=%zu cache-target=%llu MiB captured-depth-images=%zu captured-depth=%llu MiB; excludes SDK arenas and simulator textures",
         memory.available,(unsigned long long)(memory.usage/xpfsr::nr::MiB),(unsigned long long)(memory.budget/xpfsr::nr::MiB),frames,
@@ -682,6 +702,7 @@ void reportMemory(Device&d){
         (unsigned long long)d.interceptionCost.calls,d.interceptionCost.microseconds/1000.,d.interceptionCost.maximum/1000.,(unsigned long long)d.frameSetupCost.calls,d.frameSetupCost.microseconds/1000.,(unsigned long long)d.depthSetupCost.calls,d.depthSetupCost.microseconds/1000.,d.retirementCost.microseconds/1000.,
         (unsigned long long)(d.idleFrames.bytes()/xpfsr::nr::MiB),(unsigned long long)d.idleFrames.hits,(unsigned long long)d.idleFrames.misses,(unsigned long long)(d.idleDepths.bytes()/xpfsr::nr::MiB),(unsigned long long)d.idleDepths.hits,(unsigned long long)d.idleDepths.misses,(unsigned long long)(d.retiredImageBytes/xpfsr::nr::MiB));
     d.interceptionCost={};d.frameSetupCost={};d.depthSetupCost={};d.retirementCost={};d.retiredImageBytes=d.retiredNROwners=0;
+    log("SDK-owned completed source frames=%zu images=%llu MiB; awaiting presenter completion before reuse",d.presenterFrames.size(),(unsigned long long)(presenterBytes/xpfsr::nr::MiB));
     log("Capture eligibility: unrelated-size depth passes skipped=%llu; learned only from current-camera native FSR color/depth relationships",(unsigned long long)d.rejectedCaptureExtents);
     d.rejectedCaptureExtents=0;
 }
@@ -693,9 +714,9 @@ void reclaimCompletedFrames(Device&d,VkQueue queue){
     const auto now=GetTickCount64();if(d.reclaimFailed||(!d.reclaimPending&&now-d.lastReclaimCheck<250))return;d.lastReclaimCheck=now;
     CpuScope timing{d.retirementCost};
     const bool nrEnabled=d.enabled&&d.neural.enabled();
-    const bool releaseFrames=!d.enabled&&d.fgRequested.empty();
+    const bool releaseFrames=!d.enabled;
     auto coldCutoff=[&](VkQueue q){std::vector<uint64_t> recordings;uint64_t largest{};
-        if(d.fgRequested.empty())for(const auto&e:d.commands)if(e.second.oneTime&&e.second.submitted&&e.second.submittedQueue==q&&(e.second.resources||!e.second.capturedDepths.empty())){
+        for(const auto&e:d.commands)if(e.second.oneTime&&e.second.submitted&&e.second.submittedQueue==q&&(e.second.resources||!e.second.capturedDepths.empty())){
             recordings.push_back(e.second.recording);uint64_t bytes{};if(const auto*f=e.second.resources.get())bytes=f->color.bytes+f->depth.bytes+f->motion.bytes+f->reactive.bytes+f->output.bytes+f->neuralColor.bytes+f->neuralOutput.bytes;
             for(const auto&capture:e.second.capturedDepths)if(capture.second)bytes+=capture.second->bytes;largest=std::max(largest,bytes);}
         return xpfsr::nr::coldFrameCutoff(std::move(recordings),xpfsr::nr::frameCacheKeep(d.memoryBudget.budget,largest));};
@@ -891,7 +912,7 @@ void captureDepth(Device &d, VkCommandBuffer cb, Command &command) {
         return;
     auto &owner = command.capturedDepths[command.activeDepth];
     if (!owner || owner->generation != meta->second.generation) {
-        auto candidate=d.fgRequested.empty()?d.idleDepths.take(depthReuseKey(command.family,meta->second.create.extent.width,meta->second.create.extent.height,meta->second.create.format,meta->second.create.samples)):std::shared_ptr<DepthCapture>{};
+        auto candidate=d.idleDepths.take(depthReuseKey(command.family,meta->second.create.extent.width,meta->second.create.extent.height,meta->second.create.format,meta->second.create.samples));
         try{
             if(!candidate){candidate=std::make_shared<DepthCapture>();candidate->create(d,meta->second,command.family);}
             else{candidate->generation=meta->second.generation;candidate->frame=0;candidate->layout=VK_IMAGE_LAYOUT_UNDEFINED;}
@@ -1202,6 +1223,7 @@ void stopGenerator(Device &d) {
             d.fgCurrent->presentation->wait();
         check(d.fn<PFN_vkDeviceWaitIdle>("vkDeviceWaitIdle")(d.handle),
               "Flush FG before context destruction");
+        d.fgCompletedLease=std::max(d.fgCompletedLease,d.fgPreparedLease);
         d.frameGenerator.reset();
     }
     d.fgSequence = {};
@@ -1731,9 +1753,12 @@ bool replace(Device &d, VkCommandBuffer cb, Command &command) {
         std::array<uint32_t, 6> configKey = {rw, rh, ow, oh, d.camera.reverseZ, d.camera.infiniteZ};
         const bool newImages=!command.resources||!command.resources->ready||command.resources->sizes!=std::array<uint32_t,4>{rw,rh,ow,oh}||command.resources->family!=command.family||command.resources->colorFormat!=ic.format||command.resources->outputFormat!=oc.format;
         const bool newDepth=newImages||!command.resources->depthView||command.resources->nativeDepth!=captured->image||command.resources->nativeDepthGeneration!=d.images.at(depth.image).generation||command.resources->depthLayer!=0;
-        const bool newFrame=newImages||(!d.fgRequested.empty()&&newDepth);
+        if(command.resources&&!xpfsr::presenterFinished(command.resources->fgLease,d.fgCompletedLease)){
+            d.bypass("Waiting for the previous frame's presenter ownership");return false;
+        }
+        const bool newFrame=newImages;
         const auto reuseKey=frameReuseKey(command.family,rw,rh,ow,oh,ic.format,oc.format);
-        const bool cachedFrame=newFrame&&d.fgRequested.empty()&&d.idleFrames.contains(reuseKey);
+        const bool cachedFrame=newFrame&&d.idleFrames.contains(reuseKey);
         auto existing=d.contexts.find(configKey);const bool newContext=existing==d.contexts.end()||!existing->second;
         const auto estimate=xpfsr::nr::saturatedAdd(newFrame&&!cachedFrame?xpfsr::nr::estimatedFrameBytes(rw,rh,ow,oh):0,newContext?xpfsr::nr::estimatedUpscalerBytes(rw,rh,ow,oh):0);
         if(estimate){
@@ -1765,8 +1790,8 @@ bool replace(Device &d, VkCommandBuffer cb, Command &command) {
             log("FSR provider: %s (%ux%u -> %ux%u)", name.c_str(), rw, rh, ow, oh);
         }
         if (newFrame) {
-            if(d.fgRequested.empty())retireFrame(d,command.resources);else command.resources.reset();
-            if(d.fgRequested.empty())command.resources=d.idleFrames.take(reuseKey);
+            retireFrame(d,command.resources);
+            command.resources=d.idleFrames.take(reuseKey);
             if(command.resources){discardFrameContents(*command.resources);bindFrameDepth(d,*command.resources,capturedView,captured);}
             else{command.resources = std::make_unique<FrameResources>();setupFrame(d, *command.resources, rw, rh, ow, oh, ic.format, oc.format, capturedView,captured,command.family);}
         }
@@ -2473,6 +2498,7 @@ static VKAPI_ATTR void VKAPI_CALL L_DestroyDevice(VkDevice device,
     }
     d->fn<PFN_vkDeviceWaitIdle>("vkDeviceWaitIdle")(device);
     d->commands.clear();
+    d->presenterFrames.clear();
     d->idleFrames.clear();d->idleDepths.clear();
     if(d->reclaimFence)d->fn<PFN_vkDestroyFence>("vkDestroyFence")(device,d->reclaimFence,nullptr);
     d->neural.stop();
@@ -2799,8 +2825,10 @@ static VKAPI_ATTR void VKAPI_CALL L_DestroyCommandPool(VkDevice device, VkComman
     {
         std::lock_guard<std::recursive_mutex> l(d->lock);
         for (auto it = d->commands.begin(); it != d->commands.end();)
-            if (it->second.pool == pool)
+            if (it->second.pool == pool){
+                retireCommand(*d,it->second);
                 it = d->commands.erase(it);
+            }
             else
                 ++it;
         d->pools.erase(pool);
@@ -2842,8 +2870,10 @@ static VKAPI_ATTR void VKAPI_CALL L_FreeCommandBuffers(VkDevice device, VkComman
     }
     {
         std::lock_guard<std::recursive_mutex> l(d->lock);
-        for (uint32_t i = 0; i < count; ++i)
-            d->commands.erase(buffers[i]);
+        for (uint32_t i = 0; i < count; ++i){
+            auto found=d->commands.find(buffers[i]);
+            if(found!=d->commands.end()){retireCommand(*d,found->second);d->commands.erase(found);}
+        }
     }
     d->fn<PFN_vkFreeCommandBuffers>("vkFreeCommandBuffers")(device, pool, count, buffers);
 }
@@ -2859,23 +2889,29 @@ static VKAPI_ATTR VkResult VKAPI_CALL L_BeginCommandBuffer(VkCommandBuffer cb,
     if (result == VK_SUCCESS) {
         std::lock_guard<std::recursive_mutex> l(d->lock);
         auto &old = d->commands[cb];
+        retirePresenterFrames(*d);
         auto pool = old.pool;
         auto family = old.family;
         auto secondary = old.secondary;
         auto resources = std::move(old.resources);
+        // Begin proves only application completion. Move SDK-owned images out
+        // of this command so the new recording cannot overwrite them.
+        const bool presenterPending=resources&&!xpfsr::presenterFinished(resources->fgLease,d->fgCompletedLease);
+        if(presenterPending)retireFrame(*d,resources);
         if(resources)resources->neuralOwner.reset();
         // Successful Begin means this command buffer is no longer in flight.
         // Return disabled NR scratch allocations too, rather than pinning them
         // in a command-buffer cache for the rest of the flight.
         // An FG presenter can outlive the application's source-frame fence.
         // Leave its shared output/depth/motion cache to the existing FG drain.
-        if(resources&&!d->enabled&&d->fgRequested.empty())resources.reset();
+        if(resources&&!d->enabled)resources.reset();
         else if(resources&&!d->neural.enabled()){
             resources->neuralColor.release();resources->neuralOutput.release();
         }
         auto captures = std::move(old.capturedDepths);
-        if (!old.submitted) {
-            resources.reset();
+        if (!old.submitted || presenterPending) {
+            retireFrame(*d,resources);
+            for(auto&capture:captures)retireDepth(*d,capture.second);
             captures.clear();
         } else
             for (auto it = captures.begin(); it != captures.end();) {
@@ -2922,7 +2958,8 @@ static VKAPI_ATTR VkResult VKAPI_CALL L_EndCommandBuffer(VkCommandBuffer cb) {
     // Begin already retired this buffer's previous recording. If this new
     // recording used no private FSR work, its old cache is unnecessary. Partial
     // SDK failures and asynchronous FG outputs remain protected.
-    if(xpfsr::nr::unusedPrivateFrame(result==VK_SUCCESS,command.processed,command.failed,!d->fgRequested.empty()))retireFrame(*d,command.resources);
+    const bool presenterPending=command.resources&&!xpfsr::presenterFinished(command.resources->fgLease,d->fgCompletedLease);
+    if(xpfsr::nr::unusedPrivateFrame(result==VK_SUCCESS,command.processed,command.failed,presenterPending))retireFrame(*d,command.resources);
     return command.failed ? VK_ERROR_UNKNOWN : result;
 }
 static VKAPI_ATTR void VKAPI_CALL L_CmdBindPipeline(VkCommandBuffer cb, VkPipelineBindPoint point,

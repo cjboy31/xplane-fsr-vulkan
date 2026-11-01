@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT
-param([Parameter(Mandatory)][string]$Compiler,[Parameter(Mandatory)][string]$VulkanHeaders,[Parameter(Mandatory)][string]$FsrSdk)
+param([Parameter(Mandatory)][string]$Compiler,[Parameter(Mandatory)][string]$VulkanHeaders,[Parameter(Mandatory)][string]$FsrSdk,[switch]$Large)
 $ErrorActionPreference='Stop'
 $includes=@(('-I'+(Join-Path $PSScriptRoot 'build/generated')),('-I'+(Join-Path $VulkanHeaders 'include')),('-I'+(Join-Path $FsrSdk 'Kits/FidelityFX/api/include')),('-I'+(Join-Path $FsrSdk 'Kits/FidelityFX/upscalers/include')),('-I'+(Join-Path $FsrSdk 'Kits/FidelityFX/framegeneration/include')))
 $exe=Join-Path $PSScriptRoot 'build/resource-reuse-gpu.exe'
@@ -7,3 +7,4 @@ $exe=Join-Path $PSScriptRoot 'build/resource-reuse-gpu.exe'
 if($LASTEXITCODE -ne 0){throw 'Production resource GPU fixture did not compile'}
 & $exe
 if($LASTEXITCODE -ne 0){throw 'Production resource GPU fixture failed'}
+if($Large){& $exe --large;if($LASTEXITCODE -ne 0){throw 'Production 4K resource GPU fixture failed'}}

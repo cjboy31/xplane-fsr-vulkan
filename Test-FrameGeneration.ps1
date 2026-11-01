@@ -1,10 +1,14 @@
 param(
  [Parameter(Mandatory)][string]$Compiler,
  [Parameter(Mandatory)][string]$VulkanHeaders,
- [Parameter(Mandatory)][string]$FsrSdk
+ [Parameter(Mandatory)][string]$FsrSdk,
+ [string]$AppDirectory='',
+ [string]$RuntimeDirectory=''
 )
 $ErrorActionPreference='Stop'
 $root=$PSScriptRoot
+$app=if($AppDirectory){[IO.Path]::GetFullPath($AppDirectory)}else{Join-Path $root 'app'}
+$runtime=if($RuntimeDirectory){[IO.Path]::GetFullPath($RuntimeDirectory)}else{Join-Path $app 'runtime'}
 $build=Join-Path $root 'build'
 New-Item -ItemType Directory -Force -Path $build | Out-Null
 $includes=@(('-I'+(Join-Path $build 'generated')),('-I'+(Join-Path $VulkanHeaders 'include')),('-I'+(Join-Path $FsrSdk 'Kits\FidelityFX\api\include')),('-I'+(Join-Path $FsrSdk 'Kits\FidelityFX\upscalers\include')),('-I'+(Join-Path $FsrSdk 'Kits\FidelityFX\framegeneration\include')))
@@ -17,16 +21,16 @@ try{
  foreach($name in $names){[Environment]::SetEnvironmentVariable($name,$null,'Process')}
  foreach($provider in @('3.1.6','4.0.2')){
   $folder=if($provider -eq '4.0.2'){'fg-check-ml'}else{'fg-check'}
-  & (Join-Path $root 'app\FrameGenCheck.exe') (Join-Path $root 'app\runtime') (Join-Path $root ('app\'+$folder)) $provider
+  & (Join-Path $app 'FrameGenCheck.exe') $runtime (Join-Path $build $folder) $provider
   if($LASTEXITCODE -ne 0){throw "Moving-scene generation/presentation check failed: $provider"}
-  & (Join-Path $root 'app\FrameGenCheck.exe') (Join-Path $root 'app\runtime') (Join-Path $build ($folder+'-srgb')) $provider '--srgb'
+  & (Join-Path $app 'FrameGenCheck.exe') $runtime (Join-Path $build ($folder+'-srgb')) $provider '--srgb'
   if($LASTEXITCODE -ne 0){throw "sRGB generated-frame black-flash check failed: $provider"}
  }
- $env:VK_LAYER_PATH=Join-Path $root 'app\layer'
+ $env:VK_LAYER_PATH=Join-Path $app 'layer'
  $env:VK_INSTANCE_LAYERS='VK_LAYER_XPFSR24'
  $env:VK_LOADER_LAYERS_ENABLE='VK_LAYER_XPFSR24'
  $env:DISABLE_VULKAN_OBS_CAPTURE='1'
- $env:XPFSR24_RUNTIME=Join-Path $root 'app\runtime'
+ $env:XPFSR24_RUNTIME=$runtime
  $env:XPFSR24_FG='3.1.6'
  $env:XPFSR24_MODE='native-aa'
  $env:XPFSR24_LOG=Join-Path $build 'presentation-lifecycle.log'

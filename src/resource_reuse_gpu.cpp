@@ -67,8 +67,9 @@ struct ReuseFixture {
     VkImageView nativeView{};
     ~ReuseFixture(){
         if(!vk.device)return;vk.waitIdle(vk.device);frame.reset();
+        {std::lock_guard<std::mutex> lock(registryLock);devices.erase(key(vk.device));}
         if(nativeView)vk.dev<PFN_vkDestroyImageView>("vkDestroyImageView")(vk.device,nativeView,nullptr);depth.reset();
-        if(device){device->idleFrames.clear();device->idleDepths.clear();
+        if(device){device->presenterFrames.clear();device->idleFrames.clear();device->idleDepths.clear();
             if(device->reclaimFence)vk.dev<PFN_vkDestroyFence>("vkDestroyFence")(vk.device,device->reclaimFence,nullptr);
             if(device->packPipeline)vk.dev<PFN_vkDestroyPipeline>("vkDestroyPipeline")(vk.device,device->packPipeline,nullptr);
             if(device->packMsaaPipeline)vk.dev<PFN_vkDestroyPipeline>("vkDestroyPipeline")(vk.device,device->packMsaaPipeline,nullptr);
@@ -82,17 +83,21 @@ struct ReuseFixture {
         if(pool)vk.dev<PFN_vkDestroyCommandPool>("vkDestroyCommandPool")(vk.device,pool,nullptr);
     }
 };
-int wmain(){try{
+int wmain(int argc,wchar_t**argv){try{
     verifyPresenterRouting();
     ReuseFixture f;f.vk.open();auto &vk=f.vk;
     f.device=std::make_unique<Device>();auto &d=*f.device;d.handle=vk.device;d.physical=vk.physical;fixtureNativeDpa=vk.gdpa;d.next=fixtureDpa;d.memory=vk.memory;d.graphicsFamily=vk.family;
+    {std::lock_guard<std::mutex> lock(registryLock);devices[key(vk.device)]=std::shared_ptr<Device>(&d,[](Device*){});}
     d.instance=std::make_shared<Instance>();d.instance->handle=vk.instance;d.instance->next=vk.gipa;setupPack(d);
     VkCommandPoolCreateInfo pool{VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO};pool.flags=VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;pool.queueFamilyIndex=vk.family;
     check(vk.dev<PFN_vkCreateCommandPool>("vkCreateCommandPool")(vk.device,&pool,nullptr,&f.pool),"Fixture pool");
     VkCommandBufferAllocateInfo alloc{VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};alloc.commandPool=f.pool;alloc.level=VK_COMMAND_BUFFER_LEVEL_PRIMARY;alloc.commandBufferCount=1;
     check(vk.dev<PFN_vkAllocateCommandBuffers>("vkAllocateCommandBuffers")(vk.device,&alloc,&f.command),"Fixture command");
     VkFenceCreateInfo fence{VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};check(vk.dev<PFN_vkCreateFence>("vkCreateFence")(vk.device,&fence,nullptr,&f.fence),"Fixture fence");
-    constexpr uint32_t width=64,height=32;constexpr uint64_t bytes=width*height*4;
+    const bool large=argc>1&&!wcscmp(argv[1],L"--large");
+    const uint32_t width=large?2953:64,height=large?1661:32,outputWidth=large?3840:width,outputHeight=large?2160:height;
+    const uint64_t bytes=uint64_t(width)*height*4;
+    std::vector<uint8_t> checkedPixels(size_t(bytes),0);
     VkBufferCreateInfo buffer{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};buffer.size=bytes;buffer.usage=VK_BUFFER_USAGE_TRANSFER_DST_BIT;
     check(vk.dev<PFN_vkCreateBuffer>("vkCreateBuffer")(vk.device,&buffer,nullptr,&f.readback),"Readback buffer");
     VkMemoryRequirements requirements{};vk.dev<PFN_vkGetBufferMemoryRequirements>("vkGetBufferMemoryRequirements")(vk.device,f.readback,&requirements);
@@ -101,16 +106,20 @@ int wmain(){try{
     check(vk.dev<PFN_vkBindBufferMemory>("vkBindBufferMemory")(vk.device,f.readback,f.readbackMemory,0),"Readback binding");
     check(vk.dev<PFN_vkMapMemory>("vkMapMemory")(vk.device,f.readbackMemory,0,bytes,0,&f.mapped),"Readback map");
     ImageInfo source{};source.generation=1;source.create.extent={width,height,1};source.create.format=VK_FORMAT_D32_SFLOAT;source.create.samples=VK_SAMPLE_COUNT_1_BIT;
-    auto frameKey=frameReuseKey(vk.family,width,height,width,height,VK_FORMAT_R8G8B8A8_UNORM,VK_FORMAT_R8G8B8A8_UNORM);
+    auto frameKey=frameReuseKey(vk.family,width,height,outputWidth,outputHeight,VK_FORMAT_R8G8B8A8_UNORM,VK_FORMAT_R8G8B8A8_UNORM);
     auto depthKey=depthReuseKey(vk.family,width,height,VK_FORMAT_D32_SFLOAT,VK_SAMPLE_COUNT_1_BIT);
     VkImage firstColor{},firstDepth{};
-    for(int iteration=0;iteration<64;++iteration){
+    auto testStart=std::chrono::steady_clock::now();
+    for(int iteration=0;iteration<128;++iteration){
+        // A configured FG provider must not disable reuse after its lease
+        // finishes, nor when the user switches FG Off without a restart.
+        if(iteration==64)d.fgRequested="4.0.2";
         f.depth=d.idleDepths.take(depthKey);
         if(!f.depth){f.depth=std::make_shared<DepthCapture>();f.depth->create(d,source,vk.family);}
         f.depth->generation=iteration+1;f.depth->layout=VK_IMAGE_LAYOUT_UNDEFINED;
         ViewInfo view{};view.create=f.depth->view;view.create.image=f.depth->image;
         f.frame=d.idleFrames.take(frameKey);
-        if(!f.frame){f.frame=std::make_unique<FrameResources>();setupFrame(d,*f.frame,width,height,width,height,VK_FORMAT_R8G8B8A8_UNORM,VK_FORMAT_R8G8B8A8_UNORM,view,f.depth,vk.family);}
+        if(!f.frame){f.frame=std::make_unique<FrameResources>();setupFrame(d,*f.frame,width,height,outputWidth,outputHeight,VK_FORMAT_R8G8B8A8_UNORM,VK_FORMAT_R8G8B8A8_UNORM,view,f.depth,vk.family);}
         else{discardFrameContents(*f.frame);bindFrameDepth(d,*f.frame,view,f.depth);}
         if(!iteration){firstColor=f.frame->color.value.handle;firstDepth=f.depth->image;}
         else require(firstColor==f.frame->color.value.handle&&firstDepth==f.depth->image,"Production resources were recreated on a compatible reuse");
@@ -128,10 +137,28 @@ int wmain(){try{
         check(vk.dev<PFN_vkQueueSubmit>("vkQueueSubmit")(vk.queue,1,&submit,f.fence),"Queue submit");
         check(vk.dev<PFN_vkWaitForFences>("vkWaitForFences")(vk.device,1,&f.fence,VK_TRUE,10000000000ull),"Fixture completion");
         check(vk.dev<PFN_vkGetFenceStatus>("vkGetFenceStatus")(vk.device,f.fence),"Completion proof");
-        auto *pixels=static_cast<const uint8_t*>(f.mapped);for(size_t i=0;i<bytes;i+=4)require(pixels[i]==(iteration%2?255:0)&&pixels[i+1]==0&&pixels[i+2]==0&&pixels[i+3]==255,"Reused GPU image returned stale or corrupted data");
+        memcpy(checkedPixels.data(),f.mapped,size_t(bytes));
+        const auto*pixels=checkedPixels.data();for(size_t i=0;i<bytes;i+=4)require(pixels[i]==(iteration%2?255:0)&&pixels[i+1]==0&&pixels[i+2]==0&&pixels[i+3]==255,"Reused GPU image returned stale or corrupted data");
+        if(iteration>=64){f.frame->fgLease=++d.fgPreparedLease;d.fgCompletedLease=d.fgPreparedLease;}
         retireFrame(d,f.frame);retireDepth(d,f.depth);
     }
-    require(d.frameSetupCost.calls==1&&d.depthSetupCost.calls==1&&d.idleFrames.hits==63&&d.idleDepths.hits==63,"Production creation/reuse counters disagree");
+    require(d.frameSetupCost.calls==1&&d.depthSetupCost.calls==1&&d.idleFrames.hits==127&&d.idleDepths.hits==127,"Production creation/reuse counters disagree with FG configured");
+    std::cout<<"Reuse at "<<width<<'x'<<height<<" -> "<<outputWidth<<'x'<<outputHeight<<": 128 GPU frames, one frame/depth allocation each, "<<std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-testStart).count()<<"ms total (includes readback/CPU checks; not FSR timing).\n";
+    // Application completion does not allow overwriting asynchronous SDK work.
+    f.frame=d.idleFrames.take(frameKey);f.depth=d.idleDepths.take(depthKey);
+    auto pendingImage=f.frame->color.value.handle;f.frame->fgLease=100;d.fgCompletedLease=99;
+    ViewInfo pendingView{};pendingView.create=f.depth->view;bindFrameDepth(d,*f.frame,pendingView,f.depth);
+    const auto pendingDepth=f.depth->image;
+    auto&prior=d.commands[f.command];prior.pool=f.pool;prior.family=vk.family;prior.submitted=true;prior.resources=std::move(f.frame);prior.capturedDepths[pendingDepth]=std::move(f.depth);
+    VkCommandBufferBeginInfo beginAgain{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};beginAgain.flags=VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+    check(L_BeginCommandBuffer(f.command,&beginAgain),"Production Begin with pending presenter");
+    require(!d.commands[f.command].resources&&d.commands[f.command].capturedDepths.empty()&&d.presenterFrames.size()==1&&!d.idleFrames.contains(frameKey),"Begin let a new recording overwrite pending SDK images");
+    check(L_EndCommandBuffer(f.command),"Production empty End with pending presenter");
+    retirePresenterFrames(d);require(d.presenterFrames.size()==1,"SDK owner was discarded without a completion");
+    d.enabled=false;retirePresenterFrames(d);require(d.presenterFrames.size()==1,"Live processing Off discarded a pending SDK owner");d.enabled=true;
+    d.fgCompletedLease=100;retirePresenterFrames(d);
+    require(d.presenterFrames.empty()&&d.idleFrames.contains(frameKey),"Presenter completion failed to return a reusable image");
+    f.frame=d.idleFrames.take(frameKey);require(f.frame->color.value.handle==pendingImage&&!f.frame->fgLease,"Presenter completion changed the allocation or kept a stale lease");retireFrame(d,f.frame);
     // Exercise production retirement against a real completed GPU recording.
     // The application fence is complete, but the SDK lease is deliberately not.
     auto& cold=d.commands[f.command];cold.oneTime=cold.submitted=true;cold.recording=100;cold.submittedQueue=vk.queue;
@@ -155,5 +182,5 @@ int wmain(){try{
     require(fixtureFailAllocation&&d.depthSetupCost.calls==failedCalls,"OOM retry ignored backoff and allocated again during the same frame");fixtureFailAllocation=false;
     VkMemoryRequirements originalRequirements{};vk.dev<PFN_vkGetImageMemoryRequirements>("vkGetImageMemoryRequirements")(vk.device,f.depth->image,&originalRequirements);require(originalRequirements.size>0,"OOM recovery destroyed the original depth image");
     d.idleFrames.limit(0);d.idleDepths.limit(0);require(!d.idleFrames.bytes()&&!d.idleDepths.bytes(),"Idle memory did not retire under pressure");
-    std::cout<<"PASS: 64 actual fenced GPU readbacks, production frame/depth reuse, descriptor rebinding, pending SDK lease retention, cold FG retirement after both completions, pressure trim and pre-recording OOM/backoff/native-depth preservation. Resource fixture only; no FSR quality claim.\n";return 0;
+    std::cout<<"PASS: 128 actual fenced GPU readbacks, FG-configured frame/depth reuse, descriptor rebinding, pending SDK owner retention through live Off, cache admission after both completions, cold retirement, pressure trim and pre-recording OOM/backoff/native-depth preservation. Resource fixture only; no FSR quality claim.\n";return 0;
 }catch(const std::exception&e){std::cerr<<"FAIL: "<<e.what()<<'\n';return 1;}}

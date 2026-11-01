@@ -3,11 +3,13 @@
 // proxy handles so oldSwapchain destruction cannot destroy a recreated proxy.
 static VKAPI_ATTR VkResult VKAPI_CALL L_DeviceWaitIdle(VkDevice device) {
     auto d = deviceFor(device);
+    uint64_t completedLease{};
     if (!sdkNesting) {
         std::shared_ptr<SwapchainGeneration> generation;
         {
             std::lock_guard<std::recursive_mutex> lock(d->lock);
             generation = d->fgCurrent;
+            completedLease=generation?d->fgPreparedLease:0;
         }
         if (generation) {
             try {
@@ -19,15 +21,19 @@ static VKAPI_ATTR VkResult VKAPI_CALL L_DeviceWaitIdle(VkDevice device) {
             }
         }
     }
-    return d->fn<PFN_vkDeviceWaitIdle>("vkDeviceWaitIdle")(device);
+    const auto result=d->fn<PFN_vkDeviceWaitIdle>("vkDeviceWaitIdle")(device);
+    if(result==VK_SUCCESS&&completedLease){std::lock_guard<std::recursive_mutex> lock(d->lock);d->fgCompletedLease=std::max(d->fgCompletedLease,completedLease);retirePresenterFrames(*d);}
+    return result;
 }
 static VKAPI_ATTR VkResult VKAPI_CALL L_QueueWaitIdle(VkQueue queue) {
     auto d = deviceFor(queue);
+    uint64_t completedLease{};
     if (!sdkNesting && queue == d->fgQueues[0]) {
         std::shared_ptr<SwapchainGeneration> generation;
         {
             std::lock_guard<std::recursive_mutex> lock(d->lock);
             generation = d->fgCurrent;
+            completedLease=generation?d->fgPreparedLease:0;
         }
         if (generation) {
             try {
@@ -39,7 +45,9 @@ static VKAPI_ATTR VkResult VKAPI_CALL L_QueueWaitIdle(VkQueue queue) {
             }
         }
     }
-    return d->fn<PFN_vkQueueWaitIdle>("vkQueueWaitIdle")(queue);
+    const auto result=d->fn<PFN_vkQueueWaitIdle>("vkQueueWaitIdle")(queue);
+    if(result==VK_SUCCESS&&completedLease){std::lock_guard<std::recursive_mutex> lock(d->lock);d->fgCompletedLease=std::max(d->fgCompletedLease,completedLease);retirePresenterFrames(*d);}
+    return result;
 }
 static VKAPI_ATTR VkResult VKAPI_CALL L_CreateSwapchainKHR(VkDevice device,
                                                            const VkSwapchainCreateInfoKHR *info,
