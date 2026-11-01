@@ -31,36 +31,47 @@ int wmain(int argc, wchar_t **argv) {
         require(version("0.5.4").key() > version("0.5.4-rc.9").key(), "Stable version order");
         auto feed = "[" + release("v0.5.4-alpha") + "," + release("v0.5.10-alpha") + "," +
                     release("v0.5.5", false) + "]";
-        require(select(feed, "0.5.3-alpha", Channel::Normal).tag == "v0.5.10-alpha", "Preview selection");
-        require(select(feed, "0.5.3-alpha", Channel::Normal).tag == "v0.5.10-alpha", "Normal includes alpha releases");
-        require(!select(feed, "0.6.0-alpha", Channel::Normal), "Downgrade rejected");
-        require(!select("[" + release("v0.5.4-alpha") + "]", "0.5.4-alpha", Channel::Normal),
+        require(select(feed, "0.5.3-alpha", Channel::Release).tag == "v0.5.10-alpha", "Preview selection");
+        require(select(feed, "0.5.3-alpha", Channel::Release).tag == "v0.5.10-alpha", "Normal includes alpha releases");
+        require(!select(feed, "0.6.0-alpha", Channel::Release), "Downgrade rejected");
+        require(!select("[" + release("v0.5.4-alpha") + "]", "0.5.4-alpha", Channel::Release),
                 "Equal version rejected");
         auto tracks = "[" + release("v0.6.3-alpha") + "," + release("v0.6.0-experimental.1") +
                       "," + release("v0.5.9-experimental.2") + "]";
-        require(select(tracks, "0.6.2-alpha", Channel::Normal).tag == "v0.6.3-alpha",
+        require(select(tracks, "0.6.2-alpha", Channel::Release).tag == "v0.6.3-alpha",
                 "Experimental never leaks into Normal");
-        require(!select(tracks, "0.6.3-alpha", Channel::Experimental),
+        require(!select(tracks, "0.6.3-alpha", Channel::Beta),
                 "Older channel requires explicit channel-switch opt-in");
-        auto switchTo = select(tracks, "0.6.3-alpha", Channel::Experimental, true);
+        auto switchTo = select(tracks, "0.6.3-alpha", Channel::Beta, true);
         require(switchTo.tag == "v0.6.0-experimental.1" && switchTo.channelSwitch,
                 "Explicit switch offers latest Experimental even when numerically older");
-        auto switchBack = select(tracks, "0.6.0-experimental.1", Channel::Normal, true);
+        auto switchBack = select(tracks, "0.6.0-experimental.1", Channel::Release, true);
         require(switchBack.tag == "v0.6.3-alpha" && switchBack.channelSwitch,
                 "Explicit return to Normal");
-        require(!select(tracks, "0.6.1-experimental.1", Channel::Experimental, true),
+        require(!select(tracks, "0.6.1-experimental.1", Channel::Beta, true),
                 "Ordinary Experimental update never downgrades");
-        require(!select(tracks, "0.6.0-experimental.1", Channel::Experimental, true),
+        require(!select(tracks, "0.6.0-experimental.1", Channel::Beta, true),
                 "Experimental equal version never loops");
         auto revisions = "[" + release("v0.6.4-experimental.2") + "," +
                          release("v0.6.4-experimental.10") + "," + release("v9.0.0-alpha") + "]";
-        require(select(revisions, "0.6.4-experimental.1", Channel::Experimental).tag ==
+        require(select(revisions, "0.6.4-experimental.1", Channel::Beta).tag ==
                     "v0.6.4-experimental.10", "Experimental revision ordering and isolation");
         require(!select("[" + release("v0.6.4-experimental.2", false) + "]",
-                        "0.6.4-experimental.1", Channel::Experimental),
+                        "0.6.4-experimental.1", Channel::Beta),
                 "Experimental must be marked prerelease");
         rejects([] { version("1.2.3-experimental.01"); });
         rejects([] { version("1.2.3-experimental-evil.1"); });
+        // Numeric Release entries must have the matching production badge.
+        auto finalEntry=release("v0.7.8",false);
+        auto betaTracks="["+finalEntry+","+release("v0.7.9-beta.windows.2")+","+release("v0.7.9-beta.windows.10")+","+release("v0.7.8-experimental.9")+"]";
+        require(select(betaTracks,"0.7.7-alpha",Channel::Release).tag=="v0.7.8","Beta must never leak into Release");
+        require(select(betaTracks,"0.7.7-experimental.1",Channel::Beta).tag=="v0.7.9-beta.windows.10","Legacy Experimental upgrades into Beta in numeric revision order");
+        require(select(betaTracks,"0.7.8",Channel::Beta,true).channelSwitch,"Release can switch to Beta");
+        require(select(betaTracks,"0.7.9-beta.windows.10",Channel::Release,true).tag=="v0.7.8","Explicit Beta return can install an older Release");
+        require(!select(betaTracks,"0.7.9-beta.windows.10",Channel::Beta),"Beta equal version must not reinstall");
+        require(channel(version("1.2.3-beta.1"))==Channel::Beta,"Ordinary beta tags stay out of Release");
+        rejects([] { version("1.2.3-beta.linux.1"); });
+        rejects([] { version("1.2.3-beta.windows.01"); });
         auto legacy = release("v0.5.5-alpha", true, "XPlane-FSR-Ghosting-Fix-");
         auto branded = release("v0.5.5-alpha");
         auto legacyJson = Parser(legacy).parse();
@@ -68,21 +79,21 @@ int wmain(int argc, wchar_t **argv) {
         auto legacyAsset = legacy.substr(assetStart + 1, legacy.size() - assetStart - 3);
         auto both = branded;
         both.insert(both.size() - 2, "," + legacyAsset);
-        require(select("[" + legacy + "]", "0.5.4-alpha", Channel::Normal)
+        require(select("[" + legacy + "]", "0.5.4-alpha", Channel::Release)
                         .assetURL.find("XPlane-FSR-Ghosting-Fix-") != std::string::npos,
                 "Legacy filename accepted");
-        require(select("[" + both + "]", "0.5.4-alpha", Channel::Normal)
+        require(select("[" + both + "]", "0.5.4-alpha", Channel::Release)
                         .assetURL.find("XPlane-FSR3-4-FrameGen-") != std::string::npos,
                 "New filename preferred when both aliases are present");
         auto missing = release("v0.5.4-alpha");
         missing.replace(missing.find("-Setup.exe"), 10, "-Other.exe");
-        require(!select("[" + missing + "]", "0.5.3-alpha", Channel::Normal), "Missing installer skipped");
+        require(!select("[" + missing + "]", "0.5.3-alpha", Channel::Release), "Missing installer skipped");
         auto checkBad = [&](std::string from, std::string to) {
             auto bad = release("v0.5.4-alpha");
             auto at = bad.find(from);
             require(at != std::string::npos, "Test replacement missing");
             bad.replace(at, from.size(), to);
-            rejects([&] { select("[" + bad + "]", "0.5.3-alpha", Channel::Normal); });
+            rejects([&] { select("[" + bad + "]", "0.5.3-alpha", Channel::Release); });
         };
         checkBad("https://github.com/", "http://github.com/");
         checkBad("sha256:", "sha512:");
@@ -96,7 +107,7 @@ int wmain(int argc, wchar_t **argv) {
         rejects([] { Parser(std::string(49, '[') + std::string(49, ']')).parse(); });
         rejects([] { version("1.2.3-alpha.01"); });
         rejects([] { version("1.2.3/evil"); });
-        auto unicode = select("[" + release("v0.5.4-alpha") + "]", "0.5.3-alpha", Channel::Normal);
+        auto unicode = select("[" + release("v0.5.4-alpha") + "]", "0.5.3-alpha", Channel::Release);
         require(unicode.notes == "Changes\nNext" && widen(unicode.name).size() > 8,
                 "Escaped release notes");
         wchar_t temp[MAX_PATH]{}, filename[MAX_PATH]{};
@@ -112,9 +123,14 @@ int wmain(int argc, wchar_t **argv) {
         } cleanup{fixture};
         graphics::write(fixture, "[Updates]\r\nPreviewReleases=0\r\n[FeatureVideo]\r\nMuted=1\r\n");
         require(loadChannel(fixture) == installedChannel(), "Legacy preference migration");
-        for (auto c : {Channel::Normal, Channel::Experimental, Channel::Normal}) {
+        for (auto old : {L"normal", L"experimental"}) {
+            launcher::writeSetting(L"Updates",L"Channel",old,fixture.c_str());
+            require(loadChannel(fixture)==(!wcscmp(old,L"normal")?Channel::Release:Channel::Beta),"Legacy channel choice migration");
+        }
+        for (auto c : {Channel::Release, Channel::Beta, Channel::Release}) {
             saveChannel(fixture, c);
             require(loadChannel(fixture) == c, "Release channel must survive reopen");
+            require(launcher::readSetting(fixture,L"Updates",L"Channel")==(c==Channel::Beta?L"beta":L"release"),"Save only Release/Beta channel names");
             launcher::save(fixture, launcher::Preferences{});
             require(loadChannel(fixture) == c &&
                         launcher::readSetting(fixture, L"FeatureVideo", L"Muted") == L"1",
@@ -150,7 +166,7 @@ int wmain(int argc, wchar_t **argv) {
         if (argc > 1 && std::wstring(argv[1]) == L"--live") {
             std::atomic<bool> cancel{};
             std::atomic<uint64_t> progress{};
-            auto latest = check("0.5.3-alpha", Channel::Normal, cancel, progress);
+            auto latest = check("0.5.3-alpha", Channel::Release, cancel, progress);
             std::cout << "Live public feed: " << progress
                       << " bytes; newer compatible installer: " << latest.tag << '\n';
             if (argc > 2 && latest) {
@@ -161,12 +177,12 @@ int wmain(int argc, wchar_t **argv) {
                 std::cout << "Live download verified: " << latest.tag << "; " << latest.bytes
                           << " bytes; " << sha256(path) << '\n';
             }
-            auto experiment = check("0.6.3-alpha", Channel::Experimental, cancel, progress);
+            auto experiment = check("0.6.3-alpha", Channel::Beta, cancel, progress);
             require(bool(experiment) && experiment.channelSwitch &&
-                        version(experiment.tag).experimental,
+                        version(experiment.tag).beta,
                     "Published Experimental installer must be discoverable across channels");
-            auto regular = check(experiment.tag.substr(1), Channel::Normal, cancel, progress);
-            require(bool(regular) && regular.channelSwitch && !version(regular.tag).experimental,
+            auto regular = check(experiment.tag.substr(1), Channel::Release, cancel, progress);
+            require(bool(regular) && regular.channelSwitch && !version(regular.tag).beta,
                     "Published Normal return installer must be discoverable");
             std::cout << "Live channel switch: " << experiment.tag << " -> " << regular.tag << '\n';
         }

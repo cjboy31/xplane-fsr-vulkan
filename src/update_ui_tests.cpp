@@ -33,8 +33,7 @@ int wmain(int argc, wchar_t **argv) {
             theme::makeFonts();
             channelBox = scaledControl(L"COMBOBOX", L"", CBS_DROPDOWNLIST | WS_TABSTOP,
                                         20, 20, 650, 150, 151, updateWindow);
-            const wchar_t *labels[] = {L"Normal - recommended / frame generation Off",
-                                       L"Experimental - frame generation development"};
+            const auto &labels = updates::channelChoices;
             for (auto label : labels)
                 ensure(SendMessageW(channelBox, CB_ADDSTRING, 0, LPARAM(label)) >= 0,
                        "Cannot add channel option");
@@ -77,11 +76,11 @@ int wmain(int argc, wchar_t **argv) {
                            "A dropdown row is blank or has an unpainted background");
                 }
                 SendMessageW(channelBox, CB_SETCURSEL, row, 0);
-                updateJob->channel = row ? updates::Channel::Experimental : updates::Channel::Normal;
+                updateJob->channel = row ? updates::Channel::Beta : updates::Channel::Release;
                 SendMessageW(updateWindow, WM_COMMAND, MAKEWPARAM(151, CBN_SELCHANGE),
                              LPARAM(channelBox));
                 ensure(updates::loadChannel(appDirectory / L"settings.ini") ==
-                           (row ? updates::Channel::Experimental : updates::Channel::Normal),
+                           (row ? updates::Channel::Beta : updates::Channel::Release),
                        "Selecting the visible channel did not persist");
             }
             MEASUREITEMSTRUCT measure{};

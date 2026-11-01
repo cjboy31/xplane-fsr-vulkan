@@ -37,7 +37,7 @@ function Add-Payload([string]$Source,[string]$Relative,[string]$License) {
 $originalFiles = @('XPlaneFSR24.exe','NativeAACheck.exe','CockpitRestoreCheck.exe','layer\XPFSR24Layer.dll','layer\XPFSR24Layer.json','plugin\64\win.xpl') + $AdditionalOriginalFiles
 if([version](($PackageVersion -split '-')[0]) -ge [version]'0.7.2'){$originalFiles += @('IntegrationSetup.exe','auto\XPFSR24Implicit.json')}
 if([version](($PackageVersion -split '-')[0]) -ge [version]'0.7.4'){$originalFiles += @('CHANGELOG.txt','NativeAAUpdater.exe','extras/shadows/make XP shadows great again - enhanced edition.lua','extras/shadows/README.txt')}
-$fgDevelopment = $PackageVersion -match '^\d+\.\d+\.\d+-experimental\.\d+$'
+$fgDevelopment = $PackageVersion -match '^\d+\.\d+\.\d+-(?:experimental|beta)(?:\.windows)?\.\d+$'
 $fgAvailable = $fgDevelopment -or [version](($PackageVersion -split '-')[0]) -ge [version]'0.7.1'
 if($fgAvailable){$originalFiles += 'FrameGenCheck.exe'}
 $builtVersion = (Get-Item -LiteralPath (Join-Path $app 'XPlaneFSR24.exe')).VersionInfo.FileVersion
@@ -112,7 +112,9 @@ LLVM-MinGW and NSIS retain their respective licenses. No endorsement is claimed.
 '@
 Write-Text (Join-Path $generated 'THIRD-PARTY-NOTICES.txt') $notice
 Add-Payload (Join-Path $generated 'THIRD-PARTY-NOTICES.txt') 'licenses\THIRD-PARTY-NOTICES.txt' 'Original MIT index of upstream notices'
-$manifest = [ordered]@{product='FSR 3/4 + Frame Gen for X-Plane 12 (Experimental)';packageVersion=$PackageVersion;reviewDate='2026-10-29';hashAlgorithm='SHA-256';scope='Installed payload except this manifest. Its hash is recorded by the outer package manifest. Uninstaller, settings and ownership marker are generated at install time.';files=@($entries | Sort-Object path)}
+# Keep this legacy ownership identity stable so previous installers can repair
+# or roll back a recognized package. It is not a channel label; use channel.
+$manifest = [ordered]@{product='FSR 3/4 + Frame Gen for X-Plane 12 (Experimental)';channel=$(if($fgDevelopment){'Beta'}else{'Release'});packageVersion=$PackageVersion;reviewDate='2026-10-31';hashAlgorithm='SHA-256';scope='Installed payload except this manifest. Its hash is recorded by the outer package manifest. Uninstaller, settings and ownership marker are generated at install time.';files=@($entries | Sort-Object path)}
 Write-Text (Join-Path $payload 'PAYLOAD-MANIFEST.json') ($manifest | ConvertTo-Json -Depth 5)
 $allFiles = @($entries.path) + @('PAYLOAD-MANIFEST.json')
 # Reject unexpected staging files instead of silently including a development file.
@@ -138,7 +140,7 @@ Write-Text (Join-Path $generated 'InstallFiles.nsh') ($install -join "`n")
 Write-Text (Join-Path $generated 'UninstallFiles.nsh') ($uninstall -join "`n")
 [string[]]$iconArguments = @()
 if($IconPath){$iconArguments += ('/DAPP_ICON='+(Resolve-Path -LiteralPath $IconPath).Path)}
-if($fgDevelopment){$iconArguments += '/DFG_DEVELOPMENT=1'}
+if($fgDevelopment){$iconArguments += @('/DFG_DEVELOPMENT=1','/DCHANNEL_LABEL=Beta')}else{$iconArguments += '/DCHANNEL_LABEL=Release'}
 if($fgAvailable){$iconArguments += '/DFG_AVAILABLE=1'}
 if($NeuralRenderingDevelopment){$iconArguments += '/DNR_DEVELOPMENT=1'}
 & $Nsis '/V3' ('/DPACKAGE='+$package) ('/DGENERATED='+$generated) ('/DPACKAGE_VERSION='+$PackageVersion) ('/DWINDOWS_VERSION='+$WindowsVersion) @iconArguments $SetupScript

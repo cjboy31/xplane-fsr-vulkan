@@ -1,4 +1,4 @@
-REDISTRIBUTION REVIEW - 0.7.7
+REDISTRIBUTION REVIEW - 0.7.8
 
 Original in-sim plugin, Vulkan adapter, plugin updater, checks, optional shadow
 script, instructions and artwork: project MIT license, included as LICENSE.txt.

@@ -132,7 +132,7 @@ static void startUpdateCheck() {
                                L"Ordinary updates never downgrade within a channel."
                              : L"No compatible installer is published for your selected "
                                L"channel. Ordinary updates never downgrade within a channel. "
-                               L"Normal includes this project's alpha releases and current NR/FG features.";
+                               L"Release includes all current NR and frame-generation features.";
         } catch (const std::exception &e) {
             std::lock_guard<std::mutex> guard(j->mutex);
             j->phase = UpdateJob::failed;
@@ -290,7 +290,7 @@ static LRESULT CALLBACK updateProcedure(HWND hwnd, UINT message, WPARAM w, LPARA
                 auto selected = SendMessageW(channelBox, CB_GETCURSEL, 0, 0);
                 ensure(selected == 0 || selected == 1, "Choose a release channel");
                 auto next =
-                    selected == 1 ? updates::Channel::Experimental : updates::Channel::Normal;
+                    selected == 1 ? updates::Channel::Beta : updates::Channel::Release;
                 updates::saveChannel(appDirectory / L"settings.ini", next);
                 releaseChannel = next;
                 startUpdateCheck();
@@ -317,7 +317,7 @@ static LRESULT CALLBACK updateProcedure(HWND hwnd, UINT message, WPARAM w, LPARA
             SendMessageW(autoCheckBox, BM_SETCHECK, autoCheckUpdates ? BST_CHECKED : BST_UNCHECKED,
                          0);
             SendMessageW(channelBox, CB_SETCURSEL,
-                         releaseChannel == updates::Channel::Experimental ? 1 : 0, 0);
+                         releaseChannel == updates::Channel::Beta ? 1 : 0, 0);
             MessageBoxW(hwnd, wide(e.what()).c_str(), L"Application updates",
                         MB_OK | MB_ICONEXCLAMATION);
         }
@@ -379,17 +379,15 @@ static void showUpdates() {
     scaledControl(L"STATIC", L"Release channel", 0, 20, 60, 120, 24, 0, updateWindow);
     channelBox = scaledControl(L"COMBOBOX", L"", CBS_DROPDOWNLIST | WS_TABSTOP, 155, 54, 510, 150,
                                151, updateWindow);
-    SendMessageW(channelBox, CB_ADDSTRING, 0,
-                 LPARAM(L"Normal - all current features (recommended)"));
-    SendMessageW(channelBox, CB_ADDSTRING, 0,
-                 LPARAM(L"Experimental - early development builds"));
+    for (auto label : updates::channelChoices)
+        SendMessageW(channelBox, CB_ADDSTRING, 0, LPARAM(label));
     SendMessageW(autoCheckBox, BM_SETCHECK, autoCheckUpdates ? BST_CHECKED : BST_UNCHECKED, 0);
-    SendMessageW(channelBox, CB_SETCURSEL, releaseChannel == updates::Channel::Experimental ? 1 : 0,
+    SendMessageW(channelBox, CB_SETCURSEL, releaseChannel == updates::Channel::Beta ? 1 : 0,
                  0);
-    theme::name(channelBox, L"Release channel: Normal or Experimental");
+    theme::name(channelBox, L"Update channel: Release or Beta");
     scaledControl(L"STATIC",
-                  L"Normal includes current NR, FG and compatibility options. Experimental "
-                  L"receives future development builds. Hardware/model requirements still apply. Selecting a channel only "
+                  L"Release includes all current features. Beta lets you try upcoming changes. "
+                  L"Hardware and model requirements still apply. Selecting a channel only "
                   L"checks releases. Install explicitly, with X-Plane closed.",
                   0, 20, 96, 645, 64, 0, updateWindow);
     updateText = scaledControl(L"EDIT", L"", ES_MULTILINE | ES_READONLY | WS_VSCROLL, 20, 170, 645,

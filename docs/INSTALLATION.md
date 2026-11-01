@@ -1,6 +1,9 @@
-FSR 3/4 + FRAME GEN FOR X-PLANE 12 — 0.7.7-alpha
+FSR 3/4 + FRAME GEN FOR X-PLANE 12 — 0.7.8
 
 INSTALL OR UPDATE
+Choose Release for all current features, or Beta to try upcoming changes.
+Normal settings migrate to Release and Experimental settings migrate to Beta.
+There are only these two update channels. Change image settings inside X-Plane.
 1. Close X-Plane normally. Close any plugin updater or test windows.
 2. Extract the RAR and run the setup inside it, or run the standalone Setup.exe.
 3. Select the X-Plane folder containing X-Plane.exe. External drives are fine.
