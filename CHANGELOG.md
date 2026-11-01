@@ -1,5 +1,16 @@
 # Changes
 
+## 0.7.10
+
+- Skip image copies from passes that do not feed the final scene, reducing repeated graphics-memory setup and associated CPU spikes.
+- Move status-file writes and live-control file checks to a background worker. Keep saved choices, fresh-session logs and live On/Off controls.
+- Retain the current FSR, NR and frame-generation options, memory limits and completion safeguards. Performance gains vary; NR and FG still add processing work.
+- Windows rendering correction. Linux keeps its separate FSR 3.1 preview; Mac rendering remains unavailable.
+
+## 0.7.10-beta.windows.1
+
+- The same tested performance correction on the Beta channel. Release is recommended.
+
 ## 0.7.9
 
 - Share a filtered diagnostic bundle from Diagnostics to Discord #render-logs or #bug-reports. Preview first, then send now or once after this session. Reporting starts Off and can be canceled before exit.
@@ -403,7 +414,7 @@ readbacks are added by this correction.
 ## 0.6.1-alpha
 
 - Temporarily suspend built-in frame generation in regular releases. Show
-  **Off — Temporarily suspended**, disable its diagnostic action, and explain
+  **Off â€” Temporarily suspended**, disable its diagnostic action, and explain
   the suspension through the setting's help. Keep the existing application name.
 - Force FG Off at launch and in the Vulkan layer, including old saved choices,
   inherited environment variables and stale FG-control files. The public layer

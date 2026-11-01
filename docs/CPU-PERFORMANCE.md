@@ -52,8 +52,17 @@ Policy tests cover unrelated same-size passes, rotating sources, stale camera
 metadata, handle reuse, destruction and bounded resize recovery. The production
 GPU fixture verifies that an unknown source never reaches allocation, then
 learns it and checks a real depth copy with a fenced 0.25-pixel readback. The
-existing 128-frame reuse/ownership checks also run at 4K output. A fresh flight
-comparison is required before claiming an improvement from this change.
+existing 128-frame reuse/ownership checks also run at 4K output.
+
+The matched owner-PC moving replay then completed normally with Native AA
+confirmed active: 41.39 FPS versus the public build's 31.28 FPS. After trimming
+five seconds at each end of active flight, frame-period p95 was 33.40 ms versus
+45.66 ms, and p99 was 38.39 ms versus 53.26 ms. Representative capture setup
+dropped to 6–8 new depth images and 7–9 ms per ten-second window. These are
+single sequential local samples with live third-party traffic, not randomized
+benchmark repetitions. Both used the same replay, preset and 4K resolution with
+NR/FG Off. Replay camera metadata frequently requested temporal resets, so the
+test is pacing evidence, not a visual-quality or ghosting certification.
 
 ## Observed regression
 
