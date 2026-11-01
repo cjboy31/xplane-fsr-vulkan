@@ -1,16 +1,53 @@
 FSR 3/4 + FRAME GEN FOR X-PLANE 12 — 0.7.8
 
-INSTALL OR UPDATE
-Choose Release for all current features, or Beta to try upcoming changes.
-Normal settings migrate to Release and Experimental settings migrate to Beta.
-There are only these two update channels. Change image settings inside X-Plane.
-1. Close X-Plane normally. Close any plugin updater or test windows.
-2. Extract the RAR and run the setup inside it, or run the standalone Setup.exe.
-3. Select the X-Plane folder containing X-Plane.exe. External drives are fine.
-4. Enable in-sim integration. Keep the default application folder, or choose
-   your existing official installation when updating. Saved choices are kept.
-5. Launch X-Plane with your normal shortcut or usual third-party launcher.
-6. Open Plugins > FSR 3/4 + Frame Gen > Open settings.
+START HERE - WHERE ARE THE PRESETS?
+The presets are INSIDE X-PLANE. You do not open them by running a desktop EXE.
+Install with X-Plane closed. Choose your picture settings with X-Plane running.
+Then close X-Plane normally to apply any queued graphics changes.
+
+STEP 1 - INSTALL (X-PLANE CLOSED)
+1. Close X-Plane normally. Close the Plugin Updater too.
+2. Download the recommended Windows Release. Beta is for testing newer changes.
+3. Run the downloaded file ending in Setup.exe. If you downloaded the RAR,
+   extract the whole RAR first and run XPlane-FSR24-Setup.exe inside it.
+4. In setup, choose your own X-Plane folder: the one containing X-Plane.exe.
+   It can be on an external drive. Turn on in-sim integration when offered.
+5. Finish setup. Keep the existing application folder when updating so your
+   saved choices and local NR models stay available.
+
+STEP 2 - OPEN THE SETTINGS (X-PLANE RUNNING)
+1. Start X-Plane using your usual shortcut or other simulator launcher.
+2. Load a flight.
+3. Open Plugins in X-Plane's top menu.
+4. Choose FSR 3.1 / 4.1 + Frame Gen, then Open settings.
+   Some older versions shorten the menu name to FSR 3/4 + Frame Gen.
+5. Select the Rendering tab. Open the Resolution preset list and choose a preset.
+   Custom means you will choose the separate settings yourself.
+
+STEP 3 - APPLY A PRESET OR GRAPHICS CHANGE
+1. In the same panel, open Image quality.
+2. Scroll down to Apply graphics after I close X-Plane, then select that button.
+3. Close X-Plane normally. Do not end it in Task Manager: queued settings need
+   a normal exit. The background component applies the changes after exit.
+4. Start X-Plane again and load your flight.
+5. Open the panel and check for FSR ACTIVE. If you see Waiting or Bypassed,
+   read the message. Selecting a preset alone does not prove FSR is running.
+
+The preset is a starting setup. It turns MSAA, FXAA and frame generation Off.
+Check the NR switch and leave it Off for your first test too. You can change
+individual settings afterward. Use the ? buttons for help.
+
+WHICH EXE SHOULD I RUN?
+- The file ending in Setup.exe: installs or updates the mod.
+- XPlaneFSR24.exe / X-Plane Plugin Updater: checks and installs plugin updates.
+- X-Plane.exe: starts the simulator as usual.
+- The other EXEs: support and test tools. Setup and the plugin use them when
+  needed. Opening each one will not show the presets.
+
+Full input + Native AA = smooth edges at your normal input resolution.
+Quality input + Upscaling = draw a smaller picture, then build the output.
+Keep FXAA, MSAA, frame generation and NR Off for the first comparison.
+Select presets while the sim is RUNNING; apply queued graphics after EXIT.
 
 YOUR SETTINGS ARE INSIDE X-PLANE
 The old desktop rendering dashboard is retired. The separate X-Plane Plugin
@@ -32,7 +69,7 @@ FIRST SETUP
 - Start with MSAA, frame generation and neural rendering Off. Add one effect
   at a time and compare the same view. MSAA with FSR is experimental.
 - Choices marked live can change while you fly. Choices marked after restart
-  need a new session. For graphics edits, choose Apply after I close X-Plane,
+  need a new session. For graphics edits, choose Apply graphics after I close X-Plane,
   then quit normally and reopen it. Your current flight is not interrupted.
 - Keep X-Plane UI size helps menus stay about the same size after output changes.
 
