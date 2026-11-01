@@ -23,6 +23,7 @@ int wmain(int argc,wchar_t**argv){try{
     check(receipt("https://discord.com/channels/1565487749832777830/1565487905328070878/123456789012345678","logs")&&!receipt("https://discord.com/channels/1565487749832777830/1565487905328070878/123456789012345678","bugs"),"Report receipt destination was not checked");
     check(graphics::read(root/L"settings.ini")==before&&graphics::read(log)==xp,"Reporting changed settings or original Log.txt");
     check(wide("one\ntwo\r\nthree")==L"one\r\ntwo\r\nthree","Preview lost or doubled line breaks");
+    std::string unicode="x";for(int n=0;n<25000;++n)unicode+="\xe2\x82\xac";const auto shortened=smallText(unicode);check(shortened.size()<65536&&MultiByteToWideChar(CP_UTF8,MB_ERR_INVALID_CHARS,shortened.data(),int(shortened.size()),nullptr,0)>0,"Large diagnostic text split a Unicode character");
     ReportDialog dialog;dialog.root=root;dialog.token=token;WNDCLASSW cls{};cls.hInstance=GetModuleHandleW(nullptr);cls.lpfnWndProc=reportProcedure;cls.lpszClassName=L"XPReportConsentFixture";RegisterClassW(&cls);
     const auto window=CreateWindowExW(0,cls.lpszClassName,L"Report test",0,0,0,600,400,nullptr,nullptr,cls.hInstance,&dialog);check(window!=nullptr,"Report fixture window unavailable");
     dialog.consent=CreateWindowW(L"BUTTON",L"Consent",WS_CHILD|BS_AUTOCHECKBOX,0,0,100,20,window,nullptr,cls.hInstance,nullptr);dialog.status=CreateWindowW(L"STATIC",L"",WS_CHILD,0,30,500,60,window,nullptr,cls.hInstance,nullptr);

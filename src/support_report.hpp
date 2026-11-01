@@ -72,7 +72,8 @@ inline std::string xplaneLog(const std::filesystem::path& root,DWORD pid){
     const auto sim=launcher::load(root/L"settings.ini").simulator;return textSnapshot(std::filesystem::path(sim)/L"Log.txt",fileTime(begin),fileTime(end),true);
 }
 struct File{std::string name,text;};
-inline std::string smallText(const std::string& value){return value.size()<=64*1024?value:value.substr(0,60*1024)+"\n[remaining diagnostic text omitted for size]\n";}
+inline std::string limitText(const std::string& value,size_t limit){if(value.size()<=limit)return value;while(limit&&(static_cast<unsigned char>(value[limit])&0xc0)==0x80)--limit;return value.substr(0,limit);}
+inline std::string smallText(const std::string& value){return value.size()<=64*1024?value:limitText(value,60*1024)+"\n[remaining diagnostic text omitted for size]\n";}
 inline std::vector<File> diagnosticFiles(const std::filesystem::path& root,const std::wstring& token,DWORD pid){
     const auto p=launcher::load(root/L"settings.ini");std::vector<File> files;
     SYSTEM_INFO system{};GetNativeSystemInfo(&system);
@@ -102,7 +103,7 @@ inline std::vector<File> diagnosticFiles(const std::filesystem::path& root,const
         while(std::getline(in,line)){if(!line.empty()&&line.back()=='\r')line.pop_back();const auto at=line.find('=');if(at==std::string::npos)continue;const auto key=line.substr(0,at),value=line.substr(at+1);if(std::find(allowed.begin(),allowed.end(),key)!=allowed.end()&&!value.empty()&&value.size()<=3&&value.find_first_not_of("0123456789")==std::string::npos)selected+=key+'='+value+'\n';}
         files.push_back({"native-aa-settings.txt",selected});
     }}catch(...){/* Optional companion preferences are numeric-only and may be absent. */}
-    return files;
+    for(auto& file:files)file.text=smallText(redact(file.text));return files;
 }
 inline std::string fileJson(const std::vector<File>& files){std::string out="[";for(const auto& f:files){if(out.size()>1)out+=',';out+="{\"name\":"+quote(f.name)+",\"text\":"+quote(redact(f.text))+"}";}return out+']';}
 inline std::filesystem::path saveBundle(const std::filesystem::path& root,const std::wstring& token,const std::string& renderer,const std::string& xp,const std::vector<File>& files){
@@ -137,7 +138,7 @@ inline void sendQueued(const std::filesystem::path& root,const std::wstring& tok
     try{const auto text=graphics::read(path);auto data=updates::Parser(text).parse();graphics::require(data.at("policy").str()==policy&&data.at("consent").yes(),"No valid report consent");
         const auto attempted=sessionPath(root,token,L".attempted.json");graphics::require(!std::filesystem::exists(attempted),"This session's automatic report was already attempted");
         std::filesystem::rename(path,attempted);const bool include=data.at("includeXPlane").yes();const auto xp=include?xplaneLog(root,pid):std::string{};
-        const auto renderer=currentLog(root,token),target=data.at("target").str(),summary=data.at("summary").str()+(include&&xp.empty()?"\nX-Plane Log.txt omitted: its session could not be verified.":"");const auto files=include?diagnosticFiles(root,token,pid):std::vector<File>{};
+        const auto renderer=currentLog(root,token),target=data.at("target").str(),summary=include&&xp.empty()?limitText(data.at("summary").str(),900)+"\nX-Plane Log.txt omitted: its session could not be verified.":data.at("summary").str();const auto files=include?diagnosticFiles(root,token,pid):std::vector<File>{};
         if(submit)submit(renderer,target,summary,xp,files);else send(root,token,renderer,target,summary,xp,files);
     }catch(const std::exception& e){localStatus(root,token,std::string("Report not confirmed. Your local log is kept. ")+e.what());}
 }

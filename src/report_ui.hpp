@@ -16,7 +16,7 @@ struct ReportDialog{
         if(busy)return;graphics::require(SendMessageW(consent,BM_GETCHECK,0,0)==BST_CHECKED,"Check the sharing agreement before sending or queuing a report.");
         const auto target=selected(),summary=text(description);graphics::require(summary.size()<=1000,"Keep the description under 1,000 characters");const bool include=SendMessageW(includeXPlane,BM_GETCHECK,0,0)==BST_CHECKED;const auto xp=include?xplanePreview:std::string{};
         if(worker.joinable())worker.join();busy=true;for(auto control:{sendButton,queueButton,destination,description,includeXPlane,consent})EnableWindow(control,FALSE);message("Sending the filtered copy. Your original log stays on this computer.");
-        worker=std::thread([this,target,summary,xp,include]{try{send(root,token,preview,target,summary+(include&&xp.empty()?"\nX-Plane Log.txt omitted: session not verified.":""),xp,include?files:std::vector<File>{});result="Sent. The receipt is in the local reporting status file. Your original logs are kept.";}catch(const std::exception& e){result=e.what();try{localStatus(root,token,std::string("Not confirmed. ")+result);}catch(...){}}PostMessageW(window,WM_APP+1,0,0);});
+        worker=std::thread([this,target,summary,xp,include]{try{send(root,token,preview,target,include&&xp.empty()?limitText(summary,900)+"\nX-Plane Log.txt omitted: session not verified.":summary,xp,include?files:std::vector<File>{});result="Sent. The receipt is in the local reporting status file. Your original logs are kept.";}catch(const std::exception& e){result=e.what();try{localStatus(root,token,std::string("Not confirmed. ")+result);}catch(...){}}PostMessageW(window,WM_APP+1,0,0);});
     }
 };
 inline LRESULT CALLBACK reportProcedure(HWND h,UINT msg,WPARAM w,LPARAM l){
