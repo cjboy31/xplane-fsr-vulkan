@@ -6,6 +6,7 @@
 #include "named_lock.hpp"
 #include "renderer_selection.hpp"
 #include "loader_order.hpp"
+#include "reconstruction_plugins.hpp"
 #include <memory>
 namespace app {
 // Implicit discovery loads a DLL into many processes. Only the exact selected
@@ -78,7 +79,8 @@ public:
                 graphics::require(current.fxaa==0,"Set FXAA Off in X-Plane for FSR");
                 graphics::require((p.mode==1||p.mode==3)?current.scale==0:current.scale>0,"X-Plane input scale does not match the running FSR mode");}
             graphics::require(!std::filesystem::exists(std::filesystem::path(p.simulator)/L"vulkan-1.dll"),"Another Vulkan proxy is installed");
-            for(auto name:{L"LuminaXP",L"MotionVectors"})graphics::require(!std::filesystem::exists(std::filesystem::path(p.simulator)/L"Resources/plugins"/name),"Another reconstruction plugin is installed");
+            const auto conflict=reconstructionConflict(p.simulator);
+            graphics::require(conflict.empty(),conflict.c_str());
             verifyRuntime(root/L"runtime",effectiveFrameGeneration(p.frameGeneration)!=0);
             prepareSessionProfile(root,p,controls);active=true;
         }catch(const std::exception &e){error=e.what();if(owner&&!ownsSession){CloseHandle(owner);owner=nullptr;}configurationOnly(root);OutputDebugStringA(("XPFSR24 automatic activation bypassed: "+error+"\n").c_str());}

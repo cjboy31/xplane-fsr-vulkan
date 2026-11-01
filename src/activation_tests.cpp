@@ -3,6 +3,7 @@
 #include "layer_registration.hpp"
 #include "deferred_graphics.hpp"
 #include "plugin_install.hpp"
+#include "reconstruction_plugins.hpp"
 #include "installer_cleanup.hpp"
 #include <iostream>
 #include <future>
@@ -12,6 +13,24 @@ int wmain(int argc,wchar_t **argv){try{
     check(argc==2,"Fresh test root required");std::filesystem::path root=argv[1];check(!std::filesystem::exists(root),"Refusing an existing fixture");
     std::filesystem::create_directories(root/L"sim");graphics::write(root/L"sim/X-Plane.exe","fixture");
     std::filesystem::create_directories(root/L"other-sim");graphics::write(root/L"other-sim/X-Plane.exe","different fixture");
+    check(app::reconstructionConflict(root/L"sim").empty(),"Plain simulator incorrectly reported a reconstruction conflict");
+    for(const auto* name:{L"LuminaXP",L"MotionVectors"}){
+        const auto plugin=root/L"sim/Resources/plugins"/name;
+        std::filesystem::create_directories(plugin/L"64");
+        graphics::write(plugin/L"README.txt","support files are not an active plugin");
+        graphics::write(plugin/L"64/lin.xpl","other platform");
+        check(app::reconstructionConflict(root/L"sim").empty(),"Empty/support-only/other-platform folder caused a conflict");
+        const std::filesystem::path candidates[]={plugin/L"64/win.xpl",plugin/L"win_x64"/(std::wstring(name)+L".xpl"),plugin/L"win.xpl",root/L"sim/Resources/plugins"/(std::wstring(name)+L".xpl")};
+        for(const auto& file:candidates){
+            std::filesystem::create_directories(file.parent_path());graphics::write(file,"Windows plugin fixture");
+            const auto warning=app::reconstructionConflict(root/L"sim");
+            check(warning.find(file.lexically_relative(root/L"sim").generic_u8string())!=std::string::npos&&warning.find("does not confirm")!=std::string::npos,"Conflict warning did not identify its file or distinguish presence from activity");
+            check(app::reconstructionConflict(root/L"other-sim").empty(),"Another simulator's plugin caused a conflict");
+            auto disabled=file;disabled+=L".disabled";std::filesystem::rename(file,disabled);
+            check(app::reconstructionConflict(root/L"sim").empty(),"Disabled plugin file caused a conflict");
+            check(graphics::read(disabled)=="Windows plugin fixture","Conflict inspection changed a plugin");std::filesystem::remove(disabled);
+        }
+    }
     launcher::Preferences p;p.simulator=(root/L"sim").wstring();p.mode=4;p.frameGeneration=3;p.cockpitRestore=false;p.neuralRendering=4;p.nr[xpfsr::nr::Enabled]=1;p.nr[xpfsr::nr::AllowFG]=1;
     launcher::save(root/L"settings.ini",p);
     std::filesystem::create_directories(root/L"plugin/64");
