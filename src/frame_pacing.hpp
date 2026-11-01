@@ -17,6 +17,7 @@
 // 26.10.1+. It is selected automatically by the swapchain; this file only
 // explains whether the documented requirements look satisfied.
 #include <algorithm>
+#include <cctype>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -84,6 +85,8 @@ struct DisplayState {
     bool vsyncOn{};
     bool variableRefresh{};            // VRR/FreeSync active for this display.
     bool presenterIs4OrLater{};        // FG swapchain 4.0.0+, not the 3.1.7 compatibility presenter.
+    bool driverKnown{true};            // false: the driver version string could not be read.
+    bool variableRefreshKnown{true};   // false: Windows does not report VRR to the layer.
 };
 
 // Plain-language reasons why driver-assisted pacing will not be used. An
@@ -93,7 +96,9 @@ inline std::vector<std::string> driverPacingBlockers(const DisplayState &s) {
     std::vector<std::string> out;
     if (!s.amdRdna4OrLater)
         out.push_back("needs an AMD Radeon RX 9000-series (RDNA 4) or newer GPU");
-    if (s.driverMajor < 26 || (s.driverMajor == 26 && s.driverMinor < 10))
+    if (!s.driverKnown)
+        out.push_back("could not read the driver version; Adrenalin 26.10.1 or newer is needed");
+    else if (s.driverMajor < 26 || (s.driverMajor == 26 && s.driverMinor < 10))
         out.push_back("needs AMD Software: Adrenalin 26.10.1 or newer");
     if (!s.presenterIs4OrLater)
         out.push_back("the compatibility presenter (3.1.7) is selected");
@@ -101,9 +106,99 @@ inline std::vector<std::string> driverPacingBlockers(const DisplayState &s) {
         out.push_back("X-Plane must be fullscreen or a borderless window covering the display");
     if (s.vsyncOn)
         out.push_back("turn VSync off");
-    if (!s.variableRefresh)
+    if (!s.variableRefreshKnown)
+        out.push_back("make sure FreeSync / variable refresh is on (Windows does not report it to the mod)");
+    else if (!s.variableRefresh)
         out.push_back("turn on FreeSync / variable refresh for this display");
     return out;
 }
+
+// Reads "26.10.1" style versions from a Vulkan driverInfo string. Returns
+// false when no plausible Adrenalin-style version (year >= 20) is present.
+inline bool parseDriverVersion(const std::string &info, int &major, int &minor) {
+    for (std::size_t i = 0; i + 3 < info.size(); ++i) {
+        if (!std::isdigit(static_cast<unsigned char>(info[i])) || (i && std::isdigit(static_cast<unsigned char>(info[i - 1]))))
+            continue;
+        std::size_t j = i;
+        int a = 0, b = 0, digits = 0;
+        while (j < info.size() && std::isdigit(static_cast<unsigned char>(info[j])) && digits < 3) { a = a * 10 + (info[j] - '0'); ++j; ++digits; }
+        if (j >= info.size() || info[j] != '.' || a < 20 || a > 99)
+            continue;
+        ++j; digits = 0;
+        while (j < info.size() && std::isdigit(static_cast<unsigned char>(info[j])) && digits < 3) { b = b * 10 + (info[j] - '0'); ++j; ++digits; }
+        if (!digits || b > 12)
+            continue;
+        major = a; minor = b;
+        return true;
+    }
+    return false;
+}
+
+// AMD lists driver-assisted pacing for RX 9000 (RDNA 4) and newer. The
+// device name is the only portable hint a layer has; treat it as a hint.
+inline bool looksLikeRdna4OrLater(unsigned vendorId, const std::string &name) {
+    if (vendorId != 0x1002)
+        return false;
+    for (const char *marker : {"RX 9", "R9700", "R9600", "AI PRO R9"})
+        if (name.find(marker) != std::string::npos)
+            return true;
+    return false;
+}
+
+// ---- Base frame-rate cap -------------------------------------------------
+// AMD: keep the real frame rate slightly below half the output rate. The cap
+// is applied to real frames only, before the SDK presents them.
+inline constexpr int capSettings[] = {0, -1, 30, 36, 40, 45, 48, 60, 72, 82, 90, 120};
+inline constexpr const char *capNames[] = {
+    "Off", "Auto (just under half refresh)", "30 FPS", "36 FPS", "40 FPS", "45 FPS",
+    "48 FPS", "60 FPS", "72 FPS", "82 FPS", "90 FPS", "120 FPS"};
+inline constexpr int capCount = int(sizeof(capSettings) / sizeof(capSettings[0]));
+inline int capIndex(int setting) {
+    for (int i = 0; i < capCount; ++i)
+        if (capSettings[i] == setting)
+            return i;
+    return 0;
+}
+// 0 = Off, -1 = Auto from the display refresh rate, otherwise frames per second.
+inline int resolveBaseCap(int setting, double refreshHz) {
+    if (setting == 0)
+        return 0;
+    if (setting < 0)
+        return recommendedBaseCap(refreshHz);
+    return std::clamp(setting, 20, 240);
+}
+
+// Deadline scheduler in nanoseconds. The caller sleeps for the returned delay.
+// Keeps an even cadence after small delays and never bursts to catch up after
+// a long hitch (scenery load, pause): the schedule restarts instead.
+class FrameLimiter {
+    std::int64_t period_{}, next_{};
+    bool started_{};
+  public:
+    void setFps(int fps) {
+        period_ = fps > 0 ? 1000000000LL / fps : 0;
+        started_ = false;
+    }
+    bool enabled() const { return period_ > 0; }
+    std::int64_t period() const { return period_; }
+    void reset() { started_ = false; }
+    std::int64_t delay(std::int64_t now) {
+        if (!period_)
+            return 0;
+        if (!started_) {
+            started_ = true;
+            next_ = now + period_;
+            return 0;
+        }
+        std::int64_t wait = next_ - now;
+        if (wait < 0) {
+            if (-wait > period_)
+                next_ = now;  // Hitch: restart the cadence, no catch-up burst.
+            wait = 0;
+        }
+        next_ += period_;
+        return wait;
+    }
+};
 
 }  // namespace xpfsr::pacing

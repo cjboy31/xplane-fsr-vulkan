@@ -375,6 +375,10 @@ static void draw(XPLMWindowID h){
     const bool running=setupPanel.activity.rfind("FSR ACTIVE",0)==0;
     const bool bypass=setupPanel.activity.find("BYPASSED")!=std::string::npos;
     const Ink lamp=running?ice:bypass?amber:dim;
+    if(running&&motion){ // A slow breathing halo marks confirmed processing.
+        const float breath=.5f+.5f*std::sin(float(now%2400)/2400.f*6.2831853f);
+        rounded(left+21.5f-breath,top-63.5f+breath,14+2*breath,14+2*breath,7+breath,mix(deck,tint,.35f+.65f*breath));
+    }
     rounded(left+25,top-67,7,7,3.5f,lamp);
     solid(left+24,top-146,width-48,1,border);
     const float activeTab=nav.sample(float(setupPanel.tab),now,motion);

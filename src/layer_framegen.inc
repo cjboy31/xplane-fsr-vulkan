@@ -49,6 +49,90 @@ static VKAPI_ATTR VkResult VKAPI_CALL L_QueueWaitIdle(VkQueue queue) {
     if(result==VK_SUCCESS&&completedLease){std::lock_guard<std::recursive_mutex> lock(d->lock);d->fgCompletedLease=std::max(d->fgCompletedLease,completedLease);retirePresenterFrames(*d);}
     return result;
 }
+// v2: refresh rate and size of the monitor X-Plane is on (foreground window,
+// else the primary monitor). Returns false when Windows reports nothing usable.
+static bool displayMode(double &refreshHz, uint32_t &width, uint32_t &height) {
+    HMONITOR monitor = MonitorFromWindow(GetForegroundWindow(), MONITOR_DEFAULTTOPRIMARY);
+    MONITORINFOEXW info{};
+    info.cbSize = sizeof(info);
+    if (!monitor || !GetMonitorInfoW(monitor, &info))
+        return false;
+    DEVMODEW mode{};
+    mode.dmSize = sizeof(mode);
+    if (!EnumDisplaySettingsW(info.szDevice, ENUM_CURRENT_SETTINGS, &mode))
+        return false;
+    refreshHz = mode.dmDisplayFrequency > 1 ? double(mode.dmDisplayFrequency) : 0;
+    width = uint32_t(info.rcMonitor.right - info.rcMonitor.left);
+    height = uint32_t(info.rcMonitor.bottom - info.rcMonitor.top);
+    return true;
+}
+// v2: resolve the base-FPS cap and explain driver-assisted pacing for this
+// swapchain. Logging and the cap never change what the SDK presents.
+static void reportPacingSetup(Device &d, const VkSwapchainCreateInfoKHR &info) {
+    double refresh = 0;
+    uint32_t monitorWidth = 0, monitorHeight = 0;
+    const bool haveMode = displayMode(refresh, monitorWidth, monitorHeight);
+    wchar_t capValue[8]{};
+    int capSetting = 0;
+    if (GetEnvironmentVariableW(L"XPFSR24_FG_CAP", capValue, 8))
+        capSetting = _wtoi(capValue);
+    const int cap = xpfsr::pacing::resolveBaseCap(capSetting, refresh);
+    d.fgLimiter.setFps(cap);
+    d.fgLimiterArmed = false;
+    if (capSetting && !cap)
+        log("FG base FPS cap: Auto requested but the refresh rate is unknown; cap Off.");
+    else
+        log("FG base FPS cap: %s (display %.0f Hz).", cap ? (std::to_string(cap) + " FPS").c_str() : "Off", refresh);
+
+    xpfsr::pacing::DisplayState state;
+    VkPhysicalDeviceDriverProperties driver{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES};
+    VkPhysicalDeviceProperties2 properties{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2, &driver};
+    if (auto get2 = d.inst<PFN_vkGetPhysicalDeviceProperties2>("vkGetPhysicalDeviceProperties2"))
+        get2(d.physical, &properties);
+    state.amdRdna4OrLater = xpfsr::pacing::looksLikeRdna4OrLater(properties.properties.vendorID,
+                                                                 properties.properties.deviceName);
+    state.driverKnown = xpfsr::pacing::parseDriverVersion(driver.driverInfo, state.driverMajor, state.driverMinor);
+    state.presenterIs4OrLater = d.fgPresenter.empty() || d.fgPresenter.rfind("4.", 0) == 0;
+    state.fullscreenCoversDisplay = haveMode && info.imageExtent.width == monitorWidth &&
+                                    info.imageExtent.height == monitorHeight;
+    state.vsyncOn = info.presentMode == VK_PRESENT_MODE_FIFO_KHR ||
+                    info.presentMode == VK_PRESENT_MODE_FIFO_RELAXED_KHR;
+    state.variableRefreshKnown = false;  // Windows exposes no per-app VRR state to a Vulkan layer.
+    const auto blockers = xpfsr::pacing::driverPacingBlockers(state);
+    std::string reasons;
+    for (const auto &b : blockers)
+        reasons += (reasons.empty() ? "" : "; ") + b;
+    log("Driver-assisted pacing check (%s, driver '%s', present mode %u, swapchain %ux%u, monitor %ux%u): %s",
+        properties.properties.deviceName, driver.driverInfo, unsigned(info.presentMode), info.imageExtent.width,
+        info.imageExtent.height, monitorWidth, monitorHeight,
+        reasons.empty() ? "requirements look met; the AMD driver decides" : reasons.c_str());
+}
+// v2: high-resolution wait used by the base-FPS cap. Sleeps most of the
+// interval on a high-resolution waitable timer, then spins the last part.
+static void preciseWait(int64_t nanoseconds) {
+    if (nanoseconds <= 0)
+        return;
+#ifndef CREATE_WAITABLE_TIMER_HIGH_RESOLUTION
+#define CREATE_WAITABLE_TIMER_HIGH_RESOLUTION 0x00000002
+#endif
+    LARGE_INTEGER frequency{}, start{}, now{};
+    QueryPerformanceFrequency(&frequency);
+    QueryPerformanceCounter(&start);
+    const int64_t target = start.QuadPart + nanoseconds * frequency.QuadPart / 1000000000LL;
+    static thread_local HANDLE timer = CreateWaitableTimerExW(
+        nullptr, nullptr, CREATE_WAITABLE_TIMER_HIGH_RESOLUTION, TIMER_ALL_ACCESS);
+    const int64_t coarse = nanoseconds - 1000000;  // leave ~1 ms to spin
+    if (coarse > 0) {
+        LARGE_INTEGER due{};
+        due.QuadPart = -(coarse / 100);
+        if (timer && SetWaitableTimer(timer, &due, 0, nullptr, nullptr, FALSE))
+            WaitForSingleObject(timer, 100);
+        else if (coarse > 2000000)
+            Sleep(DWORD((coarse - 1000000) / 1000000));
+    }
+    for (QueryPerformanceCounter(&now); now.QuadPart < target; QueryPerformanceCounter(&now))
+        YieldProcessor();
+}
 static VKAPI_ATTR VkResult VKAPI_CALL L_CreateSwapchainKHR(VkDevice device,
                                                            const VkSwapchainCreateInfoKHR *info,
                                                            const VkAllocationCallbacks *allocator,
@@ -103,8 +187,9 @@ static VKAPI_ATTR VkResult VKAPI_CALL L_CreateSwapchainKHR(VkDevice device,
                 if(GetEnvironmentVariableW(L"XPFSR24_FG_PACING",pacingValue,8))pacingChoice=_wtoi(pacingValue);
                 const auto profile=xpfsr::pacing::clampProfile(pacingChoice);
                 const bool tuned=profile==xpfsr::pacing::Profile::Smooth||presentation->tunePacing(xpfsr::pacing::tuning(profile));
-                log("FG pacing profile: %s (%s). Driver-assisted pacing on RDNA 4 needs FG swapchain 4.0+, Adrenalin 26.10.1+, fullscreen/borderless covering the display, VSync Off and VRR; base FPS slightly below half refresh is recommended.",
+                log("FG pacing profile: %s (%s).",
                     xpfsr::pacing::profileNames[int(profile)],tuned?"applied":"provider kept AMD defaults");
+                reportPacingSetup(*d,*info);
             }
             auto generation = std::make_shared<SwapchainGeneration>();
             generation->presentation = std::move(presentation);
@@ -242,6 +327,20 @@ static VkResult presentFrame(Device &d, VkQueue queue, const VkPresentInfoKHR *i
     // AMD requires Present (including its generation callback), PrepareV2 and
     // context destruction to be externally serialized. Keep the device guard
     // across the SDK call, not just the bookkeeping before/after it.
+    if (d.fgLimiterArmed && d.fgLimiter.enabled()) {
+        // Real frames only: SDK presenter traffic returned above. Waiting here,
+        // before the device guard, never blocks the SDK's own threads.
+        LARGE_INTEGER counter{}, frequency{};
+        QueryPerformanceCounter(&counter);
+        QueryPerformanceFrequency(&frequency);
+        const int64_t nowNs = int64_t(double(counter.QuadPart) * 1e9 / double(frequency.QuadPart));
+        const int64_t wait = d.fgLimiter.delay(nowNs);
+        if (wait > 0 && wait <= 2 * d.fgLimiter.period()) {
+            preciseWait(wait);
+            ++d.fgLimiterWaits;
+            d.fgLimiterWaitNs += uint64_t(wait);
+        }
+    }
     std::lock_guard<std::recursive_mutex> presentationGuard(d.lock);
     LARGE_INTEGER presentStart{}, presentEnd{}, clockFrequency{};
     QueryPerformanceFrequency(&clockFrequency);
@@ -311,6 +410,12 @@ static VkResult presentFrame(Device &d, VkQueue queue, const VkPresentInfoKHR *i
         auto present = *info;
         present.pSwapchains = &proxy;
         result = generation->presentation->functions.pOutQueuePresentKHR(queue, &present);
+        {
+            const bool arm = d.status.fgActive && d.fgLimiter.enabled();
+            if (!arm && d.fgLimiterArmed)
+                d.fgLimiter.reset();
+            d.fgLimiterArmed = arm;
+        }
         const bool pressureDrain=d.memoryBudget.available&&!xpfsr::nr::profileFits(d.memoryBudget.budget,d.memoryBudget.usage,0);
         if((d.fgSynchronized||pressureDrain) && d.status.fgActive && (result==VK_SUCCESS||result==VK_SUBOPTIMAL_KHR)){
             // The compatibility path deliberately gives up CPU/GPU overlap.
@@ -378,10 +483,11 @@ static VkResult presentFrame(Device &d, VkQueue queue, const VkPresentInfoKHR *i
         }
         if (d.status.presents < 5 || d.status.presents % 500 == 0)
             log("Presentation counters: rendered=%llu FG-prepared=%llu generated=%llu "
-                "SDK-presents=%llu FG-active=%u",
+                "SDK-presents=%llu FG-active=%u cap-waits=%llu cap-wait-ms=%.1f",
                 (unsigned long long)d.status.presents, (unsigned long long)d.status.fgPrepared,
                 (unsigned long long)d.status.fgGenerated,
-                (unsigned long long)d.status.displayedPresents, d.status.fgActive);
+                (unsigned long long)d.status.displayedPresents, d.status.fgActive,
+                (unsigned long long)d.fgLimiterWaits, double(d.fgLimiterWaitNs) / 1e6);
         if (!d.enabled) {
             d.status.active = 0;
             d.publish("Disabled; native simulator upscaling active");

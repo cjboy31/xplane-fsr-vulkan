@@ -38,7 +38,10 @@ then Linux, then Mac).
 | QoL | Channels renamed **Release Candidates** / **Betas**; saved choice kept | In Beta |
 | QoL | Repository renamed `xplane12-fsr-framegen`; old feature-video pipeline and stale docs removed; developer docs moved to `docs/developer/` | In Beta |
 | Optimization | Frame pacing profiles (Smooth / Recover after heavy scenes / Power saver) passed to the AMD SDK pacer | In Beta |
-| Optimization | Session log explains driver-assisted pacing requirements (RDNA 4 + Adrenalin 26.10.1+) | In Beta |
+| Optimization | Session log checks driver-assisted pacing for this PC (GPU, driver version, present mode/VSync, fullscreen size) and names each blocker | In Test |
+| Optimization | **Frame rate cap** for real frames while FG runs: Off / Auto (just under half refresh) / fixed FPS; high-resolution timer + short spin; never bursts after a hitch | In Test |
+| QoL | Breathing status lamp while FSR is confirmed active | In Test |
+| Bug | 0.7.x updaters can't follow the rename: v2 updater follows API redirects and accepts both names | In Test |
 
 ## Queued
 
@@ -46,8 +49,7 @@ then Linux, then Mac).
 
 | P | Item | Why / evidence | Notes |
 | --- | --- | --- | --- |
-| P1 | Optional base-FPS cap for frame generation (`recommendedBaseCap`: just under half refresh) | AMD's swapchain docs: the real frame rate should be slightly below half the output rate | Policy + tests already in `src/frame_pacing.hpp`; needs a present-time limiter in the layer and a panel switch (Off by default) |
-| P1 | Show in the panel whether driver-assisted pacing can engage (fullscreen, VSync, VRR, driver version, presenter 4.0) | SDK 2.4.0 driver-assisted pacing silently falls back when a requirement is missing | `driverPacingBlockers()` already explains each reason; needs real detection of each state |
+| P2 | Show the driver-pacing check in the panel, not only the session log | The v2 log line already names each blocker | Needs a status field from the layer to the panel |
 | P2 | AMD Anti-Lag 2 through `VK_AMD_anti_lag` when the driver exposes it | Lower input latency with FG; Mesa/RADV now implement it natively on Linux | Must not fight the SDK pacer; measure with PresentMon on Windows |
 | P2 | CPU frame time much higher than GPU time | Owner report; see [CPU-PERFORMANCE](docs/developer/CPU-PERFORMANCE.md) | Compare bypass / FSR / NR / FG in one scene first |
 | P2 | Zink audit: run the layer with `--zink` and `--no_zink` and confirm no false bypass | Laminar plans Zink as the only plugin GL path | Native AA already fixed a Zink push-descriptor false bypass (0.3.3) |
@@ -58,7 +60,7 @@ then Linux, then Mac).
 
 | P | Item | Why / evidence | Notes |
 | --- | --- | --- | --- |
-| P2 | FSR 4.1 on more AMD hardware | SDK 2.4.0 adds FSR 4.1 on RX 6000 (RDNA 2) and Ryzen AI Max / AI 9 APUs | Driver-dependent; update hardware guide and test an RX 6000 card |
+| P2 | FSR 4.1 on more AMD hardware | SDK 2.4.0 adds FSR 4.1 on RX 6000 (RDNA 2) and Ryzen AI Max / AI 9 APUs | README and hardware guide already state it; needs a real RX 6000 test |
 | P2 | Real per-object motion vectors shared with Native AA | X-Plane has no velocity buffer; patching sim shaders at compile time is the only way to get object motion | Must be original code (the community *Motion Vectors V2* project is GPL-3.0). One vector producer, both mods consume |
 | P3 | Intel XeSS upscaling as an extra choice on Intel Arc | XeSS upscaling supports Vulkan; XeSS frame generation and XeLL are DX12-only, so they can't run in X-Plane | User would supply Intel's runtime, like the NR model |
 | P3 | Linux: FSR 4 / FG parity with Windows | Linux preview only has FSR 3.1 upscaling | Needs Linux AMD providers and real flights |
@@ -70,8 +72,8 @@ then Linux, then Mac).
 | --- | --- | --- |
 | P1 | Linux one-click installer that finds X-Plane via `~/.x-plane/x-plane_install_12.txt` | Mirror the Windows auto-detect |
 | P1 | Mac installer that clearly says "diagnostics only" and finds X-Plane via `~/Library/Preferences/x-plane_install_12.txt` | Never imply Mac rendering works |
-| P2 | Remove the retired intro-video code from the desktop updater | Only migration code that cleans old videos must stay |
-| P2 | More panel motion: animated section reveal and status lamp pulse | Keep `SPI_GETCLIENTAREAANIMATION` respected |
+| P2 | Remove the retired intro-video code from the desktop updater | Deferred: it touches updater startup and five tests for little user benefit; do it with a Windows test run |
+| P2 | More panel motion: animated section reveal | Status lamp pulse shipped; keep `SPI_GETCLIENTAREAANIMATION` respected |
 
 ### Bugs
 

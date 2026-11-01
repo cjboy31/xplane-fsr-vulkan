@@ -31,7 +31,7 @@ inline std::string valueName(const Controls &c,Field f){
     return std::to_string(value)+"%";
 }
 struct Rect {int x{},y{},w{},h{};bool contains(int a,int b)const{return a>=x&&a<x+w&&b>=y&&b<y+h;}};
-enum class Kind {Tab,Processing,Mode,FrameGen,NRField,Budget,Help,Close,Preset,Graphics,ApplyGraphics,OpenChoice,ChooseOption,CloseChoice,FGToggle,FGProvider,ImportModel,CloudPreset,Renderer,Changelog,Updates,Logs,RepairStartup,Report,FGPacing};
+enum class Kind {Tab,Processing,Mode,FrameGen,NRField,Budget,Help,Close,Preset,Graphics,ApplyGraphics,OpenChoice,ChooseOption,CloseChoice,FGToggle,FGProvider,ImportModel,CloudPreset,Renderer,Changelog,Updates,Logs,RepairStartup,Report,FGPacing,FGCap};
 inline constexpr int contentTop=162, footerHeight=82, modelSetupHeight=96, sectionHeight=32, rowHeight=46;
 inline Rect footerNotice(int width,int height){return {28,height-78,width-56,51};}
 inline Rect footerGuidance(int width,int height){return {28,height-23,width-56,17};}
@@ -95,6 +95,7 @@ public:
         if(a.kind==Kind::FrameGen)return {std::begin(fgNames),std::end(fgNames)};
         if(a.kind==Kind::FGProvider)return {std::begin(fgNames)+1,std::end(fgNames)};
         if(a.kind==Kind::FGPacing)return {std::begin(xpfsr::pacing::profileNames),std::end(xpfsr::pacing::profileNames)};
+        if(a.kind==Kind::FGCap)return {std::begin(xpfsr::pacing::capNames),std::end(xpfsr::pacing::capNames)};
         if(a.kind==Kind::CloudPreset)return {"Keep current choices","Cloud clarity - Ultra Quality source","Cloud clarity - Native AA source (highest cost)"};
         if(a.kind==Kind::Preset){std::vector<std::string> names{"Custom"};for(auto p:displayPresets)names.push_back(utf8(p->label));return names;}
         if(a.kind==Kind::NRField){std::vector<std::string> result;auto c=choices.nr;for(int i=settings[a.field].minimum;i<=settings[a.field].maximum;++i){c[Field(a.field)]=i;result.push_back(valueName(c,Field(a.field)));}return result;}
@@ -106,6 +107,7 @@ public:
         if(a.kind==Kind::Mode)return choices.mode;if(a.kind==Kind::FrameGen)return choices.frameGeneration;
         if(a.kind==Kind::FGProvider)return choices.lastFrameGeneration-1;
         if(a.kind==Kind::FGPacing)return std::clamp(choices.fgPacing,0,2);
+        if(a.kind==Kind::FGCap)return std::clamp(choices.fgCap,0,xpfsr::pacing::capCount-1);
         if(a.kind==Kind::CloudPreset)return 0;
         if(a.kind==Kind::NRField)return choices.nr[Field(a.field)]-settings[a.field].minimum;
         if(a.kind==Kind::Preset){for(size_t i=0;i<displayPresets.size();++i)if(choices.presetId==displayPresets[i]->id)return int(i)+1;return 0;}
@@ -181,6 +183,7 @@ public:
             if(p.frameGeneration&&!p.mode)throw std::runtime_error("Choose FSR AA/upscaling for the next session first.");if(p.frameGeneration&&p.nr[Enabled]&&!p.nr[AllowFG])throw std::runtime_error("Enable Allow NR + frame generation before queuing this combination.");if(p.frameGeneration){p.cockpitRestore=false;p.lastFrameGeneration=p.frameGeneration;}
         }
         if(action.kind==Kind::FGPacing)p.fgPacing=std::clamp(p.fgPacing+action.delta,0,2);
+        if(action.kind==Kind::FGCap)p.fgCap=std::clamp(p.fgCap+action.delta,0,xpfsr::pacing::capCount-1);
         if(action.kind==Kind::Budget)performanceProfile(p.nr,std::clamp(action.field,0,2));
         if(action.kind==Kind::CloudPreset){
             if(action.delta==0){notice="Cloud clarity choices unchanged.";return;}
@@ -220,6 +223,7 @@ public:
         if(launcher::serialized(p)!=launcher::serialized(choices))persist(p);
         if(action.kind==Kind::FGToggle)notice=sessionFG?(choices.frameGeneration?"Frame generation On. Close this panel to resume; check Diagnostics for generated frames.":"Frame generation Off. The change is live; your method stays saved."):(choices.frameGeneration?"Frame generation saved On. Restart X-Plane to load its presenter; it is not running yet.":"Frame generation saved Off. Your method stays saved.");
         if(action.kind==Kind::FGProvider)notice="Frame generation method saved. The new method applies after restarting X-Plane. The current method is retained for this flight.";
+        if(action.kind==Kind::FGCap)notice=std::string("Frame rate cap saved: ")+xpfsr::pacing::capNames[std::clamp(choices.fgCap,0,xpfsr::pacing::capCount-1)]+". It limits real frames while frame generation runs, after you restart X-Plane.";
         if(action.kind==Kind::FGPacing)notice=std::string("Frame pacing saved: ")+xpfsr::pacing::profileNames[std::clamp(choices.fgPacing,0,2)]+". It applies the next time X-Plane starts with frame generation.";
         if(action.kind==Kind::Budget)notice=budgetSelectionMessage(action.field);
         if(action.kind==Kind::CloudPreset)notice="Cloud clarity setup saved: Maximum clouds with "+std::string(action.delta==1?"Ultra Quality input.":"full input and Native AA.")+" Select Apply graphics after exit, then restart. Higher source resolution costs GPU time; distant cloud detail remains limited by X-Plane's cloud pass.";
@@ -227,7 +231,7 @@ public:
     }
     int maxScroll(int height)const{
         if(!configured())return 0;
-        const int lengths[]={3*sectionHeight+10*rowHeight+68,2*sectionHeight+modelSetupHeight+Count*rowHeight,
+        const int lengths[]={3*sectionHeight+11*rowHeight+68,2*sectionHeight+modelSetupHeight+Count*rowHeight,
                              144+2*sectionHeight+62+61+48+75+75+48,3*sectionHeight+10*rowHeight+44};
         return std::max(0,lengths[tab]+(tab==0&&needsStartupRepair()?44:0)+8-std::max(1,height-contentTop-footerHeight));
     }
@@ -239,7 +243,7 @@ public:
         if(f>=0&&f<Count)return utf8(settings[f].label);
         switch(f){case 100:return "MSAA";case 101:return "FXAA";case 102:return "Input detail";case 103:return "Output resolution";case 104:return "Menu size";case 105:return "FSR 3 trail reduction";
             case 106:return "Cockpit screen protection";case 107:return "Protection tint";case 108:return "Cloud quality";case 200:return "FSR mode";case 201:return "Frame generation";case 202:return "Resolution preset";
-            case 203:return "Import NR model";case 204:return "Cloud presets";case 205:return "Renderer";case 206:return "FSR processing";case 207:return "NR quick setting";case 208:return "Repair startup";case 209:return "Frame pacing";default:return "Setting guide";}
+            case 203:return "Import NR model";case 204:return "Cloud presets";case 205:return "Renderer";case 206:return "FSR processing";case 207:return "NR quick setting";case 208:return "Repair startup";case 209:return "Frame pacing";case 210:return "Frame rate cap";default:return "Setting guide";}
     }
     std::string helpText(int f)const{
         if(f==300)return changelogText();
@@ -262,6 +266,7 @@ public:
         if(f==205)return "Choose Native AA, the separate FSR mod, or the original simulator for your next launch. Only one mod processes the scene. Close and reopen X-Plane after changing this. Both mods keep your choices. The input scale is prepared after a normal exit; Native AA uses Full.";
         if(f==208)return "Repair startup fixes the Windows link used to load this mod. Your image settings stay saved. Close X-Plane normally and reopen it after repair. It does not turn on an installation you disabled or switch away from another enabled installation. Use the installation package if files are missing.";
         if(f==209)return "Frame pacing decides when each real and generated picture is shown. Smooth uses AMD's default timing. Recover after heavy scenes gets your frame rate back sooner after busy airports or thick clouds, with slightly less even timing. Power saver lets the CPU rest instead of waiting in a busy loop. For the smoothest result, keep your real frame rate a little below half your monitor's refresh rate, use fullscreen or borderless, and turn VSync off with FreeSync on. Applies after restart.";
+        if(f==210)return "Frame rate cap limits how many real frames X-Plane draws while frame generation runs. Frame generation is smoothest when real frames come at an even rate a little below half your monitor's refresh rate. Auto picks that for you (for example 71 FPS on a 144 Hz screen). Off lets X-Plane run free. Applies after restart.";
         if(f==206)return "Turn FSR image processing on or off during your flight. Off shows the current simulator picture without FSR processing. The FSR and frame-generation methods still need a restart when changed.";
         if(f==207)return "Choose a quick NR speed and detail setting. Performance uses a smaller model picture. Quality uses a larger one. Each uses one pass. Your lighting and color choices stay saved. Wait for the NR status to confirm the change.";
         return tab==3?"Choose your graphics settings, then select Apply after exit. Close X-Plane normally; the background component applies only these settings with a backup. Restart using your usual launcher. FSR/FG choices are retained for custom edits. FXAA is native-only; MSAA + FSR is experimental.":"Live NR and processing controls save automatically. Presets/graphics and FSR/FG providers need a new session. Queue changed graphics on the Image quality tab before exiting. FG pauses while this panel is visible. Open Changelog for changes, or Updates for the separate updater.";
@@ -323,7 +328,7 @@ public:
             }
             const int help=kind==Kind::Renderer?205:kind==Kind::Processing?206:kind==Kind::NRField?field:
                 kind==Kind::Graphics?100+field:kind==Kind::CloudPreset?204:kind==Kind::Mode?200:
-                kind==Kind::FGToggle||kind==Kind::FGProvider?201:kind==Kind::FGPacing?209:202;
+                kind==Kind::FGToggle||kind==Kind::FGProvider?201:kind==Kind::FGPacing?209:kind==Kind::FGCap?210:202;
             button({helpX,y+7,32,32},"?",{Kind::Help,help});
         };
         const char *next="After restart",*nrTiming=liveNR?"Live":next;
@@ -358,6 +363,7 @@ public:
             row("Generate frames",choices.frameGeneration?"On":"Off",Kind::FGToggle,0,sessionFG?"Live":"");
             row("Frame generation method",fgNames[std::clamp(choices.lastFrameGeneration,1,4)],Kind::FGProvider,0,"");
             row("Frame pacing",xpfsr::pacing::profileNames[std::clamp(choices.fgPacing,0,2)],Kind::FGPacing,0,"");
+            row("Frame rate cap",xpfsr::pacing::capNames[std::clamp(choices.fgCap,0,xpfsr::pacing::capCount-1)],Kind::FGCap,0,"");
             section("03   /   NEURAL RENDERING",nrTiming);
             row("Enable neural rendering",valueName(choices.nr,Enabled),Kind::NRField,Enabled,"");
             row("Where to use NR",valueName(choices.nr,Scope),Kind::NRField,Scope,"");

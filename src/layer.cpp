@@ -303,6 +303,10 @@ struct Device {
     std::string fgRequested = requestedFrameGeneration();
     std::string fgPresenter = requestedFGPresenter();
     bool fgSynchronized = synchronizedFGPresentation();
+    // v2 base frame-rate cap for real frames while FG is active (app present thread only).
+    xpfsr::pacing::FrameLimiter fgLimiter;
+    std::atomic<bool> fgLimiterArmed{false};
+    uint64_t fgLimiterWaits{}, fgLimiterWaitNs{};
     bool fgFailed{}, fgLiveEnabled = true, panelOpen{},fgResumeReset{};
     app::PanelPresenceChannel panelPresence;
     uint32_t fgQueueBase = UINT32_MAX;

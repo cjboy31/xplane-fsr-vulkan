@@ -4,6 +4,8 @@
 
 - **Hover help:** point at any ? in the panel to read a short guide in place. Click to pin it; click again or press Esc to close. Help no longer takes you to a separate page.
 - **Frame pacing:** new choice under Frame generation: Smooth (AMD default), Recover after heavy scenes (AMD tuning set B) or Power saver. Applies after restart. The session log explains when AMD's driver-assisted pacing (RX 9000 + Adrenalin 26.10.1+) can take over.
+- **Frame rate cap:** new choice under Frame generation. Auto keeps real frames just under half your refresh rate (AMD's recommendation for smooth frame generation); you can also pick a fixed rate or Off. Applies after restart.
+- **Pacing check:** the session log now says whether AMD's driver-assisted pacing can engage on your PC and, if not, exactly why (GPU, driver, VSync, fullscreen).
 - **Easier install:** setup finds X-Plane 12 automatically and uses plain step-by-step wording.
 - **Clearer channels:** Release Candidates (tested and verified) and Betas (still being tested). Your saved channel is kept.
 - **Project renamed** to `xplane12-fsr-framegen`. Web links to the old name still open. The 0.7.x updater cannot follow the rename, so install 2.0 manually once; from 2.0 on, the updater accepts both names.
