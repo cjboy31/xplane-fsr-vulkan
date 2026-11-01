@@ -1,6 +1,6 @@
 <img src="assets/app-icon.png" width="96" alt="FSR aircraft icon">
 
-# FSR 3/4 + Frame Gen for X-Plane 12
+# FSR 3.1 / 4.1 + Frame Gen for X-Plane 12
 
 Choose smoother edges, upscaling, frame generation and optional neural rendering
 from a panel inside X-Plane. This is a community mod, not an official AMD or
@@ -8,20 +8,20 @@ Laminar Research product.
 
 ## Download and setup
 
-[Windows Normal — recommended](https://github.com/cjboy31/xplane-fsr-vulkan/releases/tag/v0.7.5-alpha)
+[Windows Normal — recommended](https://github.com/cjboy31/xplane-fsr-vulkan/releases/tag/v0.7.6-alpha)
 · [All releases](https://github.com/cjboy31/xplane-fsr-vulkan/releases)
 · [Join Discord](https://discord.gg/yh396QNgHZ)
 
 Close X-Plane, run setup, select your simulator folder and enable in-sim integration.
-Use your usual launcher afterward. Open **Plugins > FSR 3/4 + Frame Gen** for settings.
+Use your usual launcher afterward. Open **Plugins > FSR 3.1 / 4.1 + Frame Gen** for settings.
 Keep X-Plane's FXAA Off. Use Full input for Native AA, or a lower input setting for
 upscaling. Start with frame generation and neural rendering Off.
 
 ## Features
 
-- **FSR 3 and FSR 4 Native AA:** smooth edges at full input resolution.
+- **FSR 3.1.6 and 4.1.2 Native AA:** smooth edges at full input resolution.
 - **Upscaling:** build a larger picture from a smaller input. Lower inputs can improve speed but lose fine detail.
-- **Frame generation:** add frames for smoother displayed motion. It does not speed up the simulation. Optional compatibility modes are included.
+- **Frame generation 3.1.6 and 4.0.2:** add frames for smoother displayed motion. It does not speed up the simulation. Optional compatibility modes are included.
 - **Neural rendering:** adjust lighting, color and detail live. Choose outside-only or whole-scene use, and whether it runs before or after upscaling.
 - **Resolution and cloud presets:** choose a starting point, then adjust image quality. Changes marked for restart apply after you close X-Plane normally.
 - **Cockpit screen protection:** restore supported display areas after FSR. It needs frame generation Off and does not support every screen layout. Turn it off if alignment looks wrong.
@@ -35,8 +35,9 @@ always clearer. Visual results vary by aircraft, view, graphics card and display
 
 ## Updates and help
 
-Version 0.7.5 adds grouped in-sim controls, section timing labels and animated
-tab and switch transitions. The panel follows the Windows Animation effects setting.
+Version 0.7.6 reduces repeated image-buffer setup and improves startup recovery.
+Diagnostics provides easy access to fresh session logs. The grouped controls,
+help and transitions from 0.7.5 are retained.
 The separate **Plugin Updater** handles updates for FSR and Native AA. Open **Changelog**
 inside the simulator to read changes; startup videos are retired. An optional
 [shadow script](extras/shadows/README.txt) is included separately and starts Off.

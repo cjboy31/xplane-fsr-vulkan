@@ -65,7 +65,7 @@ if ($FeatureVideo) {
 }
 $channelSummary = if([version](($Version -split '-')[0]) -ge [version]'0.7.1' -and $result.nrModelsExcluded -eq 'PASS'){
     $channel=if($Version -match '-experimental\.'){'Experimental: future development track.'}else{'Normal: recommended current feature release.'}
-    "$channel Both 0.7.1 channels include FSR AA/upscaling, independent NR, frame generation and synchronized compatibility options. Update to Normal for all current features. NR and FG start Off; NR needs compatible Windows RDNA4 FP8 hardware and your own supported local model. NR + FG requires explicit opt-in and retains visual/pacing limits. No NVIDIA DLL or model weights are included."
+    "$channel Both channels include FSR AA/upscaling, independent NR, frame generation and synchronized compatibility options. Update to Normal for all current features. NR and FG start Off; NR needs compatible Windows RDNA4 FP8 hardware and your own supported local model. NR + FG requires explicit opt-in and retains visual/pacing limits. No NVIDIA DLL or model weights are included."
 }elseif($result.nrModelsExcluded -eq 'PASS'){
     'Experimental NR channel: optional independent neural rendering for compatible Windows RDNA4 FP8 hardware. NR starts Off; import your own supported model locally. This is not official NVIDIA DLSS 5 support. NR + FG requires explicit experimental opt-in and remains subject to visual/pacing limitations.'
 }elseif($Version -match '-experimental\.'){
@@ -117,7 +117,7 @@ version once. No archive extractor is needed for in-app installation.
 
 Choose XPlane-FSR3-4-FrameGen-$Version-Setup.exe for a direct download. The
 Ghosting-Fix-named setup is an identical compatibility copy for the 0.5.4 updater;
-it installs the newly named app. Ghosting Fix remains the cockpit feature's name.
+use the FSR3-4-FrameGen-named setup for a new installation.
 
 ### Validation and limits
 
@@ -129,7 +129,7 @@ are included under their binary redistribution terms; simulator source assets
 and user data are excluded. Any simulator visuals retain their owners' rights.
 Keep all supplied license notices.
 
-### Feature guide
+### Changelog
 
 $guideSection
 The separate Linux/Mac preview packages are unchanged.

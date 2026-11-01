@@ -15,8 +15,16 @@ int wmain(int argc, wchar_t **argv) {
         std::filesystem::path directory = argv[2];
         std::filesystem::create_directories(directory);
         std::string wanted = argc > 3 && std::wstring(argv[3]) == L"4.0.2" ? "4.0.2" : "3.1.6";
+        const bool captureTest=argc>3&&std::wstring(argv[3])==L"--capture-hook";
+        if(captureTest)SetEnvironmentVariableW(L"DISABLE_VULKAN_OBS_CAPTURE",nullptr);
         Vulkan vk;
         vk.open(true, 1);
+        const bool captureLoaded=GetModuleHandleW(L"graphics-hook64.dll")!=nullptr;
+        std::cout<<"Capture hook loaded="<<captureLoaded<<'\n';
+        require(!captureTest||captureLoaded,"Capture lifecycle test did not load the installed OBS layer");
+        wchar_t layerPath[32768]{};auto layer=GetModuleHandleW(L"XPFSR24Layer.dll");
+        require(layer&&GetModuleFileNameW(layer,layerPath,32768),"Presentation test did not load our renderer");
+        std::wcout<<L"Tested layer="<<layerPath<<L'\n';
         WNDCLASSW wc{};
         wc.lpfnWndProc = windowProc;
         wc.hInstance = GetModuleHandleW(nullptr);

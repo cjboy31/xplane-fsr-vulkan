@@ -2,6 +2,7 @@
 #pragma once
 #include "session_profile.hpp"
 #include "named_lock.hpp"
+#include "loader_order.hpp"
 namespace app {
 inline constexpr const wchar_t *implicitKey=L"SOFTWARE\\Khronos\\Vulkan\\ImplicitLayers";
 inline constexpr const wchar_t *integrationOwnerKey=L"SOFTWARE\\XPFSR24\\InSim";
@@ -31,7 +32,22 @@ public:
         NamedLock lock(lockName(ownerKey));
         if(repairOnly)graphics::require(launcher::readSetting(root/L"settings.ini",L"InSim",L"Enabled",L"0")==L"1","Automatic integration is disabled. Use the installation package to enable it first");
         auto previous=registryString(hive,ownerKey.c_str(),L"Manifest");
-        graphics::require(previous.empty()||!_wcsicmp(previous.c_str(),m.c_str()),"Another app installation owns automatic activation. Disable it there before switching installations");
+        if(!previous.empty()&&_wcsicmp(previous.c_str(),m.c_str())){
+            // An interrupted move/update can leave discovery pointing at an
+            // installation whose inner gate is already Off. Adopt only that
+            // recognizable disabled installation for the SAME simulator.
+            // Never switch away from an enabled or unverified owner.
+            const std::filesystem::path oldManifest=previous;
+            const auto oldRoot=oldManifest.parent_path().parent_path();
+            const auto current=launcher::load(root/L"settings.ini");
+            graphics::require(oldManifest.is_absolute()&&oldManifest.filename()==L"XPFSR24Implicit.json"&&oldManifest.parent_path().filename()==L"auto"&&
+                std::filesystem::is_regular_file(oldManifest)&&std::filesystem::is_regular_file(oldRoot/L"settings.ini")&&
+                launcher::readSetting(oldRoot/L"settings.ini",L"InSim",L"Enabled",L"unknown")==L"0"&&
+                exactSimulator(std::filesystem::path(current.simulator)/L"X-Plane.exe",launcher::load(oldRoot/L"settings.ini")),
+                "Another enabled or unverified installation owns activation. Disable it there before switching installations");
+            disable(oldRoot); // Same recursive per-user mutex; removes only its owned values.
+        }
+        LoaderOrderRegistration(hive,layerKey==implicitKey?L"SOFTWARE\\Khronos\\Vulkan\\LoaderSettings":layerKey+L"\\LoaderSettings",ownerKey).enable(root,std::filesystem::path(launcher::load(root/L"settings.ini").simulator)/L"X-Plane.exe");
         HKEY key{};checked(RegCreateKeyExW(hive,ownerKey.c_str(),0,nullptr,0,KEY_SET_VALUE,nullptr,&key,nullptr));
         auto rc=RegSetValueExW(key,L"Manifest",0,REG_SZ,reinterpret_cast<const BYTE*>(m.c_str()),DWORD((m.wstring().size()+1)*sizeof(wchar_t)));RegCloseKey(key);checked(rc);
         // Profile flag is the inner gate, so a stale registration never activates
@@ -43,6 +59,7 @@ public:
     void disable(const std::filesystem::path &root){
         graphics::require(root.is_absolute(),"Installation path must be absolute");
         NamedLock lock(lockName(ownerKey));auto m=manifest(root);
+        LoaderOrderRegistration(hive,layerKey==implicitKey?L"SOFTWARE\\Khronos\\Vulkan\\LoaderSettings":layerKey+L"\\LoaderSettings",ownerKey).disable(root);
         HKEY key{};auto rc=RegOpenKeyExW(hive,layerKey.c_str(),0,KEY_SET_VALUE,&key);
         if(rc==ERROR_SUCCESS){rc=RegDeleteValueW(key,m.c_str());RegCloseKey(key);if(rc!=ERROR_FILE_NOT_FOUND)checked(rc);}
         else if(rc!=ERROR_FILE_NOT_FOUND&&rc!=ERROR_PATH_NOT_FOUND)checked(rc);

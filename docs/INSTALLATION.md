@@ -1,4 +1,4 @@
-FSR 3/4 + FRAME GEN FOR X-PLANE 12 — 0.7.5-alpha
+FSR 3/4 + FRAME GEN FOR X-PLANE 12 — 0.7.6-alpha
 
 INSTALL OR UPDATE
 1. Close X-Plane normally. Close any plugin updater or test windows.
@@ -76,3 +76,18 @@ It starts Off; choose 2K, 4K or 8K from FlyWithLua Macros while flying.
 4K is the starting point. 8K can use much more graphics memory. It only works
 when the simulator offers the needed live control. It is not installed or
 enabled automatically, and it does not fix every moving shadow artifact.
+
+STARTUP AND SESSION LOGS
+First setup starts with a blank simulator path. Choose your own X-Plane folder.
+If the panel recovers your settings but says the renderer did not load, use
+Repair startup link when offered, then close X-Plane normally and reopen it.
+Missing files still require the full installation package.
+
+Open Diagnostics > Open log folder to get a current copy. After X-Plane exits,
+the session log is saved to Output/FSR-Logs/renderer.log inside your simulator
+folder. renderer.previous.log keeps the preceding exported session. No log is
+uploaded automatically. Share a fresh log when asking for help.
+
+This release reduces repeated buffer setup, including in sessions that started
+with FG enabled. It does not guarantee that every aircraft, scenery or graphics
+combination is stutter-free. Compare the same view with NR and FG Off first.

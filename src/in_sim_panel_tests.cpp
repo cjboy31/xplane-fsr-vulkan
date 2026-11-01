@@ -8,6 +8,8 @@ static void check(bool value,const char*why){if(!value)throw std::runtime_error(
 int wmain(int argc,wchar_t**argv){try{
     check(argc==2,"Fresh fixture required");std::filesystem::path root=argv[1];check(!std::filesystem::exists(root),"Fixture exists");std::filesystem::create_directories(root);
     auto file=root/L"settings.ini";launcher::Preferences initial;initial.mode=2;launcher::save(file,initial);
+    insim::Panel selector;
+    check(selector.choiceOptions({insim::Kind::Renderer}).size()==3,"Renderer dropdown still offers Automatic");
     insim::Panel disconnected;
     check(disconnected.maxScroll(480)==0,"Unlinked setup displayed an empty scrolling viewport");
     for(auto size:{std::pair{640,480},std::pair{880,740}}){for(const auto &item:disconnected.view(size.first,size.second)){
@@ -26,6 +28,20 @@ int wmain(int argc,wchar_t**argv){try{
     launcher::writeSetting(L"InSim",L"Enabled",L"1",installedFile.c_str());
     auto missingManifest=installed/L"gone/auto/XPFSR24Implicit.json";
     check(insim::resolveSettings(sim/L"X-Plane.exe",{},{},missingManifest).reason.find("manifest is missing")!=std::string::npos,"Missing manifest lost its diagnostic reason");
+    std::filesystem::create_directories(installed/L"plugin/64");std::filesystem::create_directories(sim/L"Resources/plugins/XPFSR24/64");
+    graphics::write(installed/L"plugin/64/win.xpl","owned plugin fixture");graphics::write(sim/L"Resources/plugins/XPFSR24/64/win.xpl","owned plugin fixture");
+    auto pluginHash=app::fileHash(installed/L"plugin/64/win.xpl");std::wstring pluginWide(pluginHash.begin(),pluginHash.end());
+    launcher::writeSetting(L"InSim",L"PluginSHA256",pluginWide.c_str(),installedFile.c_str());
+    app::writeInstallationLink(installed,sim);
+    check(insim::resolveSettings(sim/L"X-Plane.exe",{},{},{}).file==std::filesystem::weakly_canonical(installedFile),"Missing registry did not recover the verified installed link");
+    const auto staleRoot=root/L"stale",staleManifest=staleRoot/L"auto/XPFSR24Implicit.json",staleFile=staleRoot/L"settings.ini";
+    std::filesystem::create_directories(staleManifest.parent_path());graphics::write(staleManifest,"fixture");launcher::save(staleFile,installChoices);launcher::writeSetting(L"InSim",L"Enabled",L"0",staleFile.c_str());
+    check(insim::resolveSettings(sim/L"X-Plane.exe",{},{},staleManifest).file==std::filesystem::weakly_canonical(installedFile),"Stale disabled registration hid the installed profile");
+    check(insim::resolveSettings(sim/L"X-Plane.exe",staleFile,{},manifest).file==std::filesystem::weakly_canonical(staleFile),"Recovery redirected an existing explicit session");
+    launcher::writeSetting(L"InSim",L"Enabled",L"0",installedFile.c_str());check(insim::resolveSettings(sim/L"X-Plane.exe",{},{},{}).file.empty(),"Installed link re-enabled an opted-out profile");launcher::writeSetting(L"InSim",L"Enabled",L"1",installedFile.c_str());
+    graphics::write(sim/L"Resources/plugins/XPFSR24/64/win.xpl","changed plugin");check(insim::resolveSettings(sim/L"X-Plane.exe",{},{},{}).file.empty(),"Setup recovery accepted a different installed plugin");graphics::write(sim/L"Resources/plugins/XPFSR24/64/win.xpl","owned plugin fixture");
+    const auto link=app::installationLinkFile(sim);graphics::write(link,"keep this unknown link");bool unknownKept=false;try{app::writeInstallationLink(installed,sim);}catch(...){unknownKept=true;}app::removeInstallationLink(installed,sim);check(unknownKept&&graphics::read(link)=="keep this unknown link","Unknown setup link was overwritten or removed");
+    graphics::write(link,app::installationLinkContents(installed,pluginHash));app::removeInstallationLink(installed,sim);check(!std::filesystem::exists(link),"Owned setup link was not removed");
     std::filesystem::create_directories(installed/L"logs");graphics::write(installed/L"logs/renderer.log","old renderer sentinel");
     insim::ConfigurationSession only;auto onlyToken=only.open(installed);auto fresh=graphics::read(installed/L"logs/renderer.log");check(graphics::read(installed/L"logs/renderer.log.previous")=="old renderer sentinel"&&fresh.find("plugin-only")!=std::string::npos&&fresh.find(onlyToken)!=std::string::npos,"Plugin-only session retained stale renderer logs");
     insim::ConfigurationSession second;check(second.open(installed)!=onlyToken&&graphics::read(installed/L"logs/renderer.log")==fresh&&only.open(installed)==onlyToken,"A second configuration session or repeated poll erased active diagnostics");
@@ -38,6 +54,9 @@ int wmain(int argc,wchar_t**argv){try{
     check(launcher::serialized(launcher::load(installedFile))==beforeRenderer,"Renderer switch reset FSR, NR, FG or graphics choices");
     insim::Panel reopenedRenderer;reopenedRenderer.bind(installedFile,nullptr,false,false);
     check(reopenedRenderer.choiceCurrent({insim::Kind::Renderer})==1,"Renderer dropdown did not restore selection");
+    int repairs=0;disconnected.repairSupport([&]{++repairs;});
+    for(auto size:{std::pair{640,480},std::pair{880,740}}){disconnected.act({insim::Kind::Tab,0});bool repairButton=false;for(const auto& item:disconnected.view(size.first,size.second))repairButton|=item.button&&item.action.kind==insim::Kind::RepairStartup;check(repairButton,"Repair startup is hidden in a supported viewport");}
+    disconnected.act({insim::Kind::RepairStartup});check(repairs==1&&launcher::serialized(launcher::load(installedFile))==beforeRenderer&&disconnected.notice.find("Repairing")!=std::string::npos,"Repair has no click feedback or changed saved choices");disconnected.repairSupport({});
     insim::ConfigurationSession aaSession;auto aaToken=aaSession.open(root/L"aa-session","Native AA owns this session. FSR intentionally inactive.");
     check(graphics::read(root/L"aa-session/logs/renderer.log").find("intentionally inactive")!=std::string::npos&&graphics::read(root/L"aa-session/logs/renderer.log").find("Restart is required")==std::string::npos&&!aaToken.empty(),"Intentional renderer selection was logged as a startup fault");
     disconnected.configurationOnly("Startup bypass: actual activation failure",true);disconnected.observe(absent,1200);
@@ -56,7 +75,7 @@ int wmain(int argc,wchar_t**argv){try{
     for(auto size:{std::pair{640,480},std::pair{880,740}}){panel.act({insim::Kind::Tab,2});bool openLog=false;
         for(const auto& item:panel.view(size.first,size.second))openLog|=item.button&&item.action.kind==insim::Kind::Logs;
         check(openLog,"Log folder button is hidden in a supported viewport");}
-    panel.act({insim::Kind::Logs});check(logOpens==1&&panel.notice.find("logs folder")!=std::string::npos,"Log button has no action or location feedback");panel.act({insim::Kind::Tab,0});
+    panel.act({insim::Kind::Logs});check(logOpens==1&&panel.notice.find("FSR-Logs")!=std::string::npos,"Log button has no action or location feedback");panel.act({insim::Kind::Tab,0});
     auto staleDesktop=launcher::load(file);
     for(auto field:{xpfsr::nr::Enabled,xpfsr::nr::Order,xpfsr::nr::Scope})panel.act({insim::Kind::NRField,field,1});
     xpfsr::nr::Controls live;check(reader.read(live)&&live[xpfsr::nr::Enabled]&&live[xpfsr::nr::Order]&&live[xpfsr::nr::Scope],"Live NR changes did not reach renderer IPC");
@@ -126,6 +145,19 @@ int wmain(int argc,wchar_t**argv){try{
         check(cloud&&clarity&&applyCloud,"Cloud controls or Apply cannot be reached in a supported viewport");}
     app::Telemetry status{};status.active=1;status.recordings=100;panel.observe(status,1000);check(panel.activity.find("FSR ACTIVE")==std::string::npos,"Static telemetry falsely confirmed activity");
     status.recordings=101;panel.observe(status,1016);check(panel.activity.find("FSR ACTIVE")!=std::string::npos,"Advancing renderer not confirmed");panel.observe(status,5000);check(panel.activity.find("WAITING")!=std::string::npos,"Stale activity stayed green");
+    insim::Panel fgLive;bool liveFG=false;
+    fgLive.bind(file,&writer,true,true,[&](const auto&p){liveFG=p.frameGeneration!=0;});
+    fgLive.act({insim::Kind::FGToggle,0,-1});
+    fgLive.act({insim::Kind::FGToggle,0,1});check(liveFG&&fgLive.notice.find("Close this panel")!=std::string::npos,"FG On did not publish its live state or explain panel pause");
+    check(fgLive.frameGenerationStatus().find("Waiting")!=std::string::npos,"Saved FG On falsely proved generation");
+    app::Telemetry fgStatus{};fgStatus.active=1;fgStatus.fgActive=1;fgStatus.recordings=1;fgLive.observe(fgStatus,1000);fgStatus.recordings=2;fgLive.observe(fgStatus,1016);
+    check(fgLive.frameGenerationStatus().find("Starting")!=std::string::npos,"FG active flag without generated/presented frames was called running");
+    fgStatus.fgGenerated=8;fgStatus.displayedPresents=16;++fgStatus.recordings;fgLive.observe(fgStatus,1032);check(fgLive.frameGenerationStatus().find("Running")!=std::string::npos,"Confirmed FG counters did not report running");
+    fgStatus.fgActive=0;strcpy(fgStatus.fgReason,"FG paused while in-sim setup is visible; selection retained");++fgStatus.recordings;fgLive.observe(fgStatus,1048);check(fgLive.frameGenerationStatus().find("Paused")!=std::string::npos,"Panel pause falsely reported running");
+    strcpy(fgStatus.fgReason,"No three spare graphics queues for FG");++fgStatus.recordings;fgLive.observe(fgStatus,1064);check(fgLive.frameGenerationStatus().find("queues")!=std::string::npos,"FG startup error was hidden");
+    fgStatus.fgActive=1;fgLive.observe(fgStatus,5000);check(fgLive.frameGenerationStatus().find("Waiting")!=std::string::npos,"Stale FG counters stayed running");
+    fgLive.act({insim::Kind::FGToggle,0,-1});check(!liveFG&&fgLive.frameGenerationStatus().find("Off")==0&&fgLive.notice.find("live")!=std::string::npos,"FG Off was only saved or kept reporting active");
+    fgReopened.act({insim::Kind::FGToggle,0,1});check(fgReopened.frameGenerationStatus().find("Restart needed")==0&&fgReopened.notice.find("not running yet")!=std::string::npos,"Session started without FG falsely advertised live enable");
     insim::Panel fgPanel;fgPanel.bind(file,&writer,true,true);
     app::Telemetry fgSample{};fgSample.active=1;fgSample.fgActive=1;fgSample.recordings=1;
     fgPanel.observe(fgSample,1000);++fgSample.recordings;fgPanel.observe(fgSample,1020);

@@ -4,6 +4,8 @@
 #include "frame_sequence.hpp"
 #include "framegen_callback_state.hpp"
 #include "startup_readiness.hpp"
+#include "frame_diagnostics.hpp"
+#include "render_safety.hpp"
 #include <atomic>
 #include <iostream>
 #include <stdexcept>
@@ -14,6 +16,32 @@ static void expect(bool value, const char *name) {
 }
 int main() {
     try {
+        xpfsr::AllocationBackoff backoff;
+        expect(backoff.allowed(100),"Initial allocation blocked");backoff.failed(100);
+        expect(!backoff.allowed(101)&&!backoff.allowed(3099)&&backoff.allowed(3100),"Failed allocation retried at frame rate or never recovered");
+        backoff.failed(UINT64_MAX-10);expect(!backoff.allowed(UINT64_MAX-1),"Retry timestamp overflowed");backoff.recovered();expect(backoff.allowed(0),"Allocation recovery remained blocked");
+        expect(!xpfsr::presenterFinished(2,1)&&xpfsr::presenterFinished(2,2)&&xpfsr::presenterFinished(0,0),"Application completion substituted for SDK ownership");
+        expect(!xpfsr::coldPresent(10,130)&&xpfsr::coldPresent(10,131)&&!xpfsr::coldPresent(UINT64_MAX,1),"Cold resource age overflowed or evicted active images");
+        xpfsr::FrameDiagnostics resetLog;
+        uint64_t detailed{}, resetCount{}, suppressedCount{};
+        for (uint64_t i=1;i<=60000;++i) {
+            if (resetLog.record(i,true,i*16)) {
+                ++detailed;
+                resetCount += resetLog.reportedResets;
+                suppressedCount += resetLog.reportedSuppressed;
+            }
+        }
+        expect(detailed<550,"Reset diagnostics wrote at frame rate");
+        expect(resetCount+resetLog.resets==60000,"Rate-limited diagnostics lost reset counts");
+        expect(suppressedCount+resetLog.suppressed==60000-detailed,"Suppressed reset detail count is wrong");
+        xpfsr::FrameDiagnostics ordinary;
+        expect(ordinary.record(1,false,0)&&!ordinary.record(5,false,1),"Normal diagnostic cadence changed");
+        expect(ordinary.record(1000,false,2),"Periodic diagnostics were suppressed");
+        expect(!ordinary.record(1001,true,3)&&ordinary.record(1002,true,2002),"Reset detail interval is wrong");
+        expect(ordinary.reportedResets==2&&ordinary.reportedSuppressed==1,"Reset summary is incomplete");
+        expect(ordinary.record(1003,true,1),"A clock discontinuity suppressed diagnostics forever");
+        xpfsr::FrameDiagnostics otherDevice;
+        expect(otherDevice.record(7,true,3),"Another device inherited the diagnostic throttle");
         double p[16] = {2, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, -1, 0, 0, .1, 0};
         app::Camera before{}, after{};
         app::StartupReadiness startup;

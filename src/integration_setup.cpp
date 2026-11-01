@@ -2,7 +2,9 @@
 // Installer/background support. No desktop dashboard or special launch step.
 #include "layer_registration.hpp"
 #include "plugin_install.hpp"
+#include "installation_link.hpp"
 #include "deferred_graphics.hpp"
+#include "session_export.hpp"
 #include "nr_import_setup.hpp"
 #include "installer_cleanup.hpp"
 #include <iostream>
@@ -24,6 +26,7 @@ int wmain(int argc,wchar_t **argv){
             app::verifyRuntime(root/L"runtime",true);
             graphics::require(app::fileHash(root/L"plugin/64/win.xpl")==app::fileHash(std::filesystem::path(p.simulator)/L"Resources/plugins/XPFSR24/64/win.xpl"),"The installed plugin does not match this package. Close X-Plane and use the installer to update it");
             registration.repair(root);
+            app::writeInstallationLink(root,p.simulator);
             session::write(root/L"logs/integration-repair.txt","Registration repaired in this desktop user's registry view. Saved choices retained. Restart X-Plane using the usual shortcut.\n");
             if(argc==1)MessageBoxW(nullptr,L"In-sim integration registration repaired.\n\nClose X-Plane normally, then reopen it using your usual shortcut. Your saved settings and models were retained.",L"FSR in-sim integration",MB_OK|MB_ICONINFORMATION);
             return 0;
@@ -38,6 +41,11 @@ int wmain(int argc,wchar_t **argv){
             graphics::require(used==wcslen(argv[2])&&pid<=MAXDWORD,"Invalid simulator PID");
             app::waitAndApplyGraphics(root,DWORD(pid),argv[3]);return 0;
         }
+        if(action==L"--finish-session"){
+            graphics::require(argc==4,"Simulator PID and session token required");size_t used{};auto pid=std::stoul(argv[2],&used);
+            graphics::require(used==wcslen(argv[2])&&pid<=MAXDWORD,"Invalid simulator PID");
+            app::finishSession(root,DWORD(pid),argv[3]);return 0;
+        }
         graphics::require(argc<=3,"Unexpected integration setup argument");
         if(action==L"--uninstall-integration"){
             graphics::require(argc==2,"Uninstall uses this installation's saved simulator only");
@@ -50,9 +58,11 @@ int wmain(int argc,wchar_t **argv){
         graphics::ensureSimulatorClosed();
         auto p=launcher::load(root/L"settings.ini");if(argc==3){auto before=p;p.simulator=argv[2];p=launcher::transactChoices(root/L"settings.ini",before,p);}
         graphics::require(std::filesystem::is_regular_file(std::filesystem::path(p.simulator)/L"X-Plane.exe"),"Select the folder containing X-Plane.exe");
-        auto previous=app::registryString(HKEY_CURRENT_USER,app::integrationOwnerKey,L"Manifest");
-        graphics::require(previous.empty()||!_wcsicmp(previous.c_str(),app::LayerRegistration::manifest(root).c_str()),"Disable automatic activation in the other app installation before enabling it here");
-        app::verifyRuntime(root/L"runtime",true);app::installPlugin(root,p.simulator);registration.enable(root);
+        app::verifyRuntime(root/L"runtime",true);
+        if(!std::filesystem::exists(xp_renderer::file(p.simulator)))xp_renderer::save(p.simulator,xp_renderer::Choice::fsr);
+        app::synchronizeInput(root);
+        app::installPlugin(root,p.simulator);registration.enable(root);
+        app::writeInstallationLink(root,p.simulator);
         return 0;
     }catch(const std::exception&e){
         OutputDebugStringA(e.what());std::error_code ec;std::filesystem::create_directories(root/L"logs",ec);

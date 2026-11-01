@@ -9,6 +9,9 @@ inline launcher::Preferences runningProfile(const launcher::Preferences &saved,c
     // preserving the provider family, saved intent and simulator preferences.
     p.manualPending=false;
     if(p.mode>=1&&p.mode<=4)p.mode=(p.mode>=3?3:1)+(current.scale>0?1:0);
+    // The original scene's display restore cannot be applied to interpolated
+    // frames. Pause that feature for this FG session, keeping its saved choice.
+    if(p.frameGeneration){p.cockpitRestore=false;p.alignmentTint=false;}
     return p;
 }
 inline std::wstring runningGraphicsNotice(const launcher::Preferences &saved,const launcher::Preferences &running){

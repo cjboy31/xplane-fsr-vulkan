@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 #pragma once
 #include "update_feed.hpp"
+#include "named_lock.hpp"
 #include <cstdio>
 #include <windows.h>
 #include <bcrypt.h>
@@ -50,6 +51,7 @@ inline std::string header(const std::string &token, const char *component) {
            "\nstarted_utc=" + utc() + "\n";
 }
 inline std::string prepare(const fs::path &directory, const std::string &choices) {
+    app::NamedLock snapshotLock(app::lockName(fs::absolute(directory).lexically_normal().wstring())+L"-log-snapshot",2000);
     fs::create_directories(directory);
     const auto token = id();
     // Copy every previous diagnostic first. Only these owned, known filenames
@@ -107,6 +109,7 @@ inline std::string logTail(const fs::path&path,const std::string&expectedToken,
                            size_t limit=256*1024) {
     std::ifstream in(path,std::ios::binary);if(!in)return "Renderer log is not available yet.\r\n";
     std::string headerLine;std::getline(in,headerLine);
+    if(!headerLine.empty()&&headerLine.back()=='\r')headerLine.pop_back();
     if(!expectedToken.empty()&&headerLine!="XPFSR24 session="+expectedToken)
         return "Waiting for this simulator session's log. Older-session data is hidden.\r\n";
     in.clear();in.seekg(0,std::ios::end);auto length=in.tellg();

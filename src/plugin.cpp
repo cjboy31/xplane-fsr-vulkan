@@ -228,7 +228,7 @@ static void command(void *, void *item) {
     }
 }
 PLUGIN_API int XPluginStart(char *name, char *signature, char *description) {
-    strcpy(name, "FSR 3/4 + Frame Gen for X-Plane");
+    strcpy(name, product::pluginName);
     strcpy(signature, "org.xpfsr24.alpha");
     strcpy(description, "FSR anti-aliasing, upscaling, frame generation and live settings");
     auto key = app::mappingName(GetCurrentProcessId());
@@ -252,8 +252,8 @@ PLUGIN_API int XPluginStart(char *name, char *signature, char *description) {
         try{auto settings=setupEnvironment(L"XPFSR24_SETTINGS");if(!settings.empty())shared->enabled=launcher::load(settings).enabled?1:0;}catch(...){}
     }
     setupPresence.create(GetCurrentProcessId());
-    int item = XPLMAppendMenuItem(XPLMFindPluginsMenu(), "FSR 3/4 + Frame Gen", nullptr, 0);
-    menu = XPLMCreateMenu("FSR 3/4 + Frame Gen", XPLMFindPluginsMenu(), item, command, nullptr);
+    int item = XPLMAppendMenuItem(XPLMFindPluginsMenu(), product::menu, nullptr, 0);
+    menu = XPLMCreateMenu(product::menu, XPLMFindPluginsMenu(), item, command, nullptr);
     XPLMAppendMenuItem(menu,"Open settings",reinterpret_cast<void*>(1),0);
     XPLMAppendMenuItem(menu,"View changelog",reinterpret_cast<void*>(2),0);
     XPLMAppendMenuItem(menu, "Enable / disable temporal upscaling", nullptr, 0);

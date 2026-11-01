@@ -28,7 +28,7 @@ inline constexpr Setting settings[Count] = {
  {L"NRGrade",L"Style color finish",L"Add the color finish for Natural or Cinematic style. Standard is unchanged. Turn this off if you prefer the original colors.",0,1,1},
  {L"NRAllowFG",L"Allow NR with frame generation",L"Allow both effects together. This uses more graphics time and may show visual errors. Start with frame generation off, then compare. The frame-generation choice needs a restart.",0,1,0},
  {L"NRScope",L"Where to use NR",L"Outside only pauses NR in the cockpit. Whole scene includes the cockpit. This changes live. Low strength is a good starting point because NR can change small display text.",0,1,0},
- {L"NROrder",L"When to apply NR",L"Before upscaling is recommended: NR works on the smaller picture first, which usually costs less graphics time. After upscaling processes the larger picture. Changes apply live once preparation finishes.",0,1,0}
+ {L"NROrder",L"When to apply NR",L"Before upscaling usually costs less when FSR enlarges a smaller input. With Native AA, the input is already full size, so this does not reduce NR's image size. Use Balanced 50% and one pass to start. Changes apply live once preparation finishes.",0,1,0}
 };
 struct Controls {
  std::array<int32_t,Count> value{};

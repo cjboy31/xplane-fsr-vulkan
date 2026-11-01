@@ -46,7 +46,10 @@ int wmain(int argc,wchar_t **argv){try{
     const auto guideTextHash=app::fileHash(root/L"media/TRANSCRIPT.txt");
     graphics::write(root/L"old-payload.json","{\"product\":\"FSR 3/4 + Frame Gen for X-Plane 12 (Experimental)\",\"files\":[{\"path\":\"media/TRANSCRIPT.txt\",\"sha256\":\""+guideTextHash+"\"},{\"path\":\"media/user.txt\",\"sha256\":\""+std::string(64,'0')+"\"}]}");
     check(app::retireOwnedMedia(root,root/L"old-payload.json")==1&&!std::filesystem::exists(root/L"media/TRANSCRIPT.txt")&&graphics::read(root/L"media/user.txt")=="user change","Old guide cleanup removed modified data or retained unchanged owned media");
-    auto protectedProfile=app::automaticCaptureProfile(p,true);check(protectedProfile.frameGeneration==0&&p.frameGeneration==3&&protectedProfile.mode==p.mode&&protectedProfile.neuralRendering==p.neuralRendering,"Capture guard changed saved choices or other processing");
+    auto protectedProfile=app::automaticCaptureProfile(p,true);check(protectedProfile.frameGeneration==3&&p.frameGeneration==3&&protectedProfile.mode==p.mode&&protectedProfile.neuralRendering==p.neuralRendering,"Capture compatibility changed saved choices or other processing");
+    for(int selection=0;selection<=4;++selection){auto saved=p;saved.frameGeneration=selection;auto running=app::automaticCaptureProfile(saved,true);
+        check(running.frameGeneration==(selection==1?4:selection==2?3:selection),"Capture compatibility silently disabled or changed the FG algorithm");
+        check(saved.frameGeneration==selection,"Capture compatibility rewrote saved FG");}
     check(app::automaticCaptureProfile(p,false).frameGeneration==3,"Capture-free profile lost FG");
     auto pending=p;pending.manualPending=true;pending.mode=3;
     auto running=app::runningProfile(pending,graphics::Options{1,0,2,0,0},false);
@@ -62,8 +65,12 @@ int wmain(int argc,wchar_t **argv){try{
         check(launcher::serialized(saved)==before,"Runtime adaptation mutated saved intent");
         auto notice=app::runningGraphicsNotice(saved,actual);
         check(!notice.empty()==(queued||mode!=expected),"Runtime adaptation did not explain its effective mode");
-        check(app::runningProfile(saved,graphics::Options{1,0,scale,0,0},true).frameGeneration==0,"Input adaptation bypassed capture guard");
+        check(app::runningProfile(saved,graphics::Options{1,0,scale,0,0},true).frameGeneration==3,"Input adaptation lost compatible frame generation");
     }
+    auto screens=p;screens.cockpitRestore=true;screens.alignmentTint=true;
+    auto compatibleScreens=app::runningProfile(screens,graphics::Options{},true);
+    check(!compatibleScreens.cockpitRestore&&!compatibleScreens.alignmentTint&&screens.cockpitRestore&&screens.alignmentTint,"FG session screen protection changed saved choices or remained incompatible");
+    screens.frameGeneration=0;check(app::runningProfile(screens,graphics::Options{},true).cockpitRestore,"FG-Off session unnecessarily lost cockpit screen protection");
     for(int mode:{-1,5}){auto invalid=p;invalid.mode=mode;rejects([&]{app::validateSessionProfile(app::runningProfile(invalid,graphics::Options{},false));});}
     for(auto name:{L"DISABLE_XPFSR24",L"VK_INSTANCE_LAYERS",L"XPFSR24_RUNTIME",L"XPFSR24_SETTINGS"})SetEnvironmentVariableW(name,nullptr);
     check(!app::automaticHost(root,root/L"sim/X-Plane.exe"),"Activation enabled without opt-in");
@@ -105,6 +112,20 @@ int wmain(int argc,wchar_t **argv){try{
     for(auto dir:{root,root/L"second"}){std::filesystem::create_directories(dir/L"auto");std::filesystem::create_directories(dir/L"layer");graphics::write(dir/L"auto/XPFSR24Implicit.json","fixture");graphics::write(dir/L"layer/XPFSR24Layer.dll","fixture");launcher::save(dir/L"settings.ini",p);}
     HKEY key{};check(RegCreateKeyExW(HKEY_CURRENT_USER,layers.c_str(),0,nullptr,0,KEY_SET_VALUE,nullptr,&key,nullptr)==ERROR_SUCCESS,"Fixture registry setup");DWORD value=7;RegSetValueExW(key,L"Other-layer.json",0,REG_DWORD,reinterpret_cast<BYTE*>(&value),sizeof(value));RegCloseKey(key);
     registration.enable(root);DWORD enabled=99,bytes=sizeof(enabled);check(RegGetValueW(HKEY_CURRENT_USER,layers.c_str(),app::LayerRegistration::manifest(root).c_str(),RRF_RT_REG_DWORD,nullptr,&enabled,&bytes)==ERROR_SUCCESS&&enabled==0,"Implicit registration must use DWORD zero");
+    const auto loaderKey=layers+L"\\LoaderSettings";const auto orderFile=app::loaderOrderFile(root);
+    const auto orderText=graphics::read(orderFile);
+    check(orderText.find("\"app_keys\":["+app::loaderJsonString(std::filesystem::weakly_canonical(root/L"sim/X-Plane.exe").wstring())+"]")!=std::string::npos&&orderText.find("unordered_layer_location")!=std::string::npos,"Loader order is not exact-application scoped or discarded other layers");
+    check(app::loaderJsonString(L"C:\\Sim \"test\"\\\u98de.exe")=="\"C:\\\\Sim \\\"test\\\"\\\\\xe9\xa3\x9e.exe\"","Unicode or quote escaping changed the loader target");
+    DWORD orderValue=1;bytes=sizeof(orderValue);check(RegGetValueW(HKEY_CURRENT_USER,loaderKey.c_str(),orderFile.c_str(),RRF_RT_REG_DWORD,nullptr,&orderValue,&bytes)==ERROR_SUCCESS&&orderValue==0,"Application-specific loader order was not registered");
+    graphics::write(orderFile,orderText+" ");rejects([&]{registration.repair(root);});
+    check(graphics::read(orderFile)==orderText+" ","Repair overwrote an edited loader profile");
+    app::LoaderOrderRegistration orderRegistration(HKEY_CURRENT_USER,loaderKey,owner);orderRegistration.disable(root);
+    check(graphics::read(orderFile)==orderText+" ","Removal deleted an edited loader profile");
+    graphics::write(orderFile,orderText);registration.repair(root);
+    const auto foreignOrder=root/L"other-loader/vk_loader_settings.json";std::filesystem::create_directories(foreignOrder.parent_path());graphics::write(foreignOrder,"unrelated loader fixture");
+    check(RegOpenKeyExW(HKEY_CURRENT_USER,loaderKey.c_str(),0,KEY_SET_VALUE,&key)==ERROR_SUCCESS,"Loader conflict fixture open");DWORD zero=0;check(RegSetValueExW(key,foreignOrder.c_str(),0,REG_DWORD,reinterpret_cast<BYTE*>(&zero),sizeof(zero))==ERROR_SUCCESS,"Loader conflict fixture write");RegCloseKey(key);
+    rejects([&]{registration.repair(root);});check(graphics::read(foreignOrder)=="unrelated loader fixture"&&graphics::read(orderFile)==orderText,"Conflicting loader profile was changed");
+    check(RegOpenKeyExW(HKEY_CURRENT_USER,loaderKey.c_str(),0,KEY_SET_VALUE,&key)==ERROR_SUCCESS,"Loader conflict fixture cleanup");RegDeleteValueW(key,foreignOrder.c_str());RegCloseKey(key);registration.repair(root);
     registration.repair(root);
     launcher::writeSetting(L"InSim",L"Enabled",L"0",(root/L"settings.ini").c_str());rejects([&]{registration.repair(root);});
     check(launcher::readSetting(root/L"settings.ini",L"InSim",L"Enabled")==L"0","Registration repair re-enabled an opted-out installation");registration.enable(root);
@@ -117,8 +138,15 @@ int wmain(int argc,wchar_t **argv){try{
     check(racingRepair.get().find("disabled")!=std::string::npos&&launcher::readSetting(root/L"settings.ini",L"InSim",L"Enabled")==L"0","Racing registration repair reversed an opt-out");registration.enable(root);
     launcher::writeSetting(L"InSim",L"Enabled",L"1",(root/L"second/settings.ini").c_str());rejects([&]{registration.repair(root/L"second");});
     rejects([&]{registration.enable(root/L"second");});registration.disable(root/L"second");check(!_wcsicmp(app::registryString(HKEY_CURRENT_USER,owner.c_str(),L"Manifest").c_str(),app::LayerRegistration::manifest(root).c_str()),"Another installation removed owner");
+    launcher::writeSetting(L"InSim",L"Enabled",L"0",(root/L"settings.ini").c_str());launcher::writeSetting(L"InSim",L"Enabled",L"1",(root/L"second/settings.ini").c_str());
+    auto foreign=p;foreign.simulator=(root/L"foreign-sim").wstring();std::filesystem::create_directories(root/L"foreign-sim");graphics::write(root/L"foreign-sim/X-Plane.exe","fixture");launcher::save(root/L"settings.ini",foreign);
+    rejects([&]{registration.repair(root/L"second");});check(!_wcsicmp(app::registryString(HKEY_CURRENT_USER,owner.c_str(),L"Manifest").c_str(),app::LayerRegistration::manifest(root).c_str()),"Repair adopted a disabled owner for another simulator");launcher::save(root/L"settings.ini",p);
+    registration.repair(root/L"second");check(!_wcsicmp(app::registryString(HKEY_CURRENT_USER,owner.c_str(),L"Manifest").c_str(),app::LayerRegistration::manifest(root/L"second").c_str())&&launcher::readSetting(root/L"settings.ini",L"InSim",L"Enabled")==L"0","Repair did not replace the stale disabled same-simulator owner safely");
+    bytes=sizeof(enabled);check(RegGetValueW(HKEY_CURRENT_USER,layers.c_str(),app::LayerRegistration::manifest(root).c_str(),RRF_RT_REG_DWORD,nullptr,&enabled,&bytes)==ERROR_FILE_NOT_FOUND,"Repair kept the stale implicit layer registered");
+    registration.disable(root/L"second");registration.enable(root);
     // Removal works without a connected simulator and leaves unrelated layers.
     std::filesystem::remove(root/L"sim/X-Plane.exe");registration.disable(root);bytes=sizeof(value);check(RegGetValueW(HKEY_CURRENT_USER,layers.c_str(),L"Other-layer.json",RRF_RT_REG_DWORD,nullptr,&value,&bytes)==ERROR_SUCCESS&&value==7,"Unrelated Vulkan layer changed");
     check(app::registryString(HKEY_CURRENT_USER,owner.c_str(),L"Manifest").empty()&&launcher::readSetting(root/L"settings.ini",L"InSim",L"Enabled")==L"0","Disable left activation owned/enabled");
+    check(!std::filesystem::exists(orderFile)&&graphics::read(foreignOrder)=="unrelated loader fixture","Uninstall retained the owned loader profile or removed unrelated data");
     std::cout<<"PASS: exact selected executable, opt-in/disable, inherited-profile rejection, fail-closed logs, shared provider/session mapping, registry ownership and disconnected-drive cleanup.\n";return 0;
 }catch(const std::exception&e){std::cerr<<"FAIL: "<<e.what()<<'\n';return 1;}}

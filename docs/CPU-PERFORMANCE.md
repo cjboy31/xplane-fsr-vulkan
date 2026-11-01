@@ -54,9 +54,8 @@ ten-second reporting window, with substantial depth setup and retirement cost.
 - Clear idle resources on processing Off, renderer/allocation failure or memory
   pressure. Remove idle frames holding NR scratch after NR Off. Device teardown
   drains work and clears both caches before destroying the Vulkan device.
-- Keep FG-presenter resources on their existing lifetime path. The new reuse
-  path is excluded when FG is requested because presentation can outlive the
-  source command's fence.
+- Keep FG-presenter resources until both owners finish. See the follow-up below:
+  FG being configured does not itself forbid reuse after SDK completion.
 - Aggregate retirement logging instead of opening/flushing a file for every
   completed batch. New counters report intercepted CPU wall work, frame/depth
   setup cost and reuse hits/misses. These are not simulator CPU/GPU timings.
@@ -109,3 +108,44 @@ The scene was reloaded between builds, so this is a local development comparison
 with a paired bypass control, not a universal FPS guarantee or a fully
 uninstalled native baseline. GPU allocation/readback tests and these stationary
 measurements do not certify moving-camera, all-aircraft or NR/FG visual quality.
+
+## Configured-FG allocation regression
+
+A later 4K-output flight still stuttered with NR and live FG Off. FG had been
+configured at startup. The blanket FG cache exclusion was still active, and a
+changed borrowed-depth view forced a full private-frame rebuild. In representative
+ten-second windows this created 150–179 frame sets and 514–577 depth copies.
+Frame setup took 774–916 ms, depth setup 580–666 ms and retirement 455–539 ms
+per window. These are intercepted CPU wall costs, not scanout or X-Plane's
+CPU/GPU columns. Source-present p95 remained about 35–39 ms with live FG Off.
+
+Compatible frame/depth allocations can now be reused when both the application
+recording and the presenter's monotonic lease have completed. Changing only the
+borrowed-depth view updates that completed frame's view/descriptor instead of
+allocating all its images. An SDK-owned old recording is moved to a separate
+owner list after a legal application Begin/free, so the next recording cannot
+overwrite its images. It enters the bounded idle cache only after SDK completion.
+Explicit idle/context-drain operations also publish the completion they proved;
+they do not advance beyond the lease captured before the wait.
+
+There is no new per-frame wait. Existing memory admission, texture reserve,
+idle byte/count bounds, source matching and FG synchronization remain in place.
+The owner list is not an idle cache: pending SDK work cannot be freed to meet
+an idle limit. Its image bytes are reported separately. The existing presenter
+memory-pressure drain still governs the asynchronous path.
+
+The production GPU fixture now checks 128 fenced readbacks with FG absent and
+configured, including reusing actual 2953×1661 input / 3840×2160 output
+allocations. Each run creates one frame set and one depth allocation, reusing
+both 127 times. It also calls the production Begin/End hooks while the SDK
+lease is pending, checks retention through live Off, then cache admission after
+completion. These are ownership/content checks, not a measured simulator FPS
+improvement. Application fences and GPU readbacks are real; presenter leases
+in the resource fixture are simulated. The separate SDK test also passed both
+FG providers in UNORM/sRGB, generated-frame readbacks and the updated layer's
+swapchain create/acquire/present/recreate/idle/destruction lifecycle. The full
+Windows CPU/settings/startup/updater/panel regression suite passed. Fresh
+moving-flight and FG-on pacing validation remains required.
+
+References: [Vulkan command-buffer lifetime](https://docs.vulkan.org/spec/latest/chapters/cmdbuffers.html)
+and [AMD's frame-generation API ownership guidance](https://gpuopen.com/manuals/fsr_sdk/techniques/frame-interpolation-api/).
