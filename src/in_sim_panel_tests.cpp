@@ -130,11 +130,6 @@ int wmain(int argc,wchar_t**argv){try{
     {const int fgBefore=panel.choices.frameGeneration;panel.act({insim::Kind::FGCap,0,1});check(panel.choices.fgCap==1&&panel.choices.frameGeneration==fgBefore,"Cap choice changed FG or was not saved");
      check(launcher::load(file).fgCap==1,"Cap choice not persisted");panel.act({insim::Kind::FGCap,0,99});check(panel.choices.fgCap==xpfsr::pacing::capCount-1,"Cap choice not clamped");
      panel.act({insim::Kind::FGCap,0,-99});check(panel.choices.fgCap==0,"Cap could not return to Off");}
-    // v2 per-frame CPU timers (ABI 5) shown in Diagnostics.
-    {insim::Panel timers;check(timers.cpuSummary().find("Waiting")==0&&timers.simSummary().find("not available")!=std::string::npos,"Timers shown before data");
-     app::Telemetry t{};t.recordings=1;t.cpuWorkUs=1250;t.cpuWaitUs=0;t.presentCallUs=8000;t.frameIntervalUs=25000;timers.observe(t,1000);
-     check(timers.cpuSummary().find("Mod work 1.25 ms")==0&&timers.cpuSummary().find("frame 25.00 ms")!=std::string::npos,"CPU timer summary wrong");
-     timers.simFrameMs=25;timers.simGpuMs=12;check(timers.simSummary().find("40 FPS")!=std::string::npos&&timers.simSummary().find("CPU is the limit")!=std::string::npos,"X-Plane timing summary wrong");}
     // v2 motion source (shared motion contract v1): saved, clamped, reloaded, FG untouched; help card present.
     {const int fgBefore=panel.choices.frameGeneration;check(panel.choices.motionSource==0,"Motion source must default to Camera");
      panel.act({insim::Kind::MotionSource,0,1});check(panel.choices.motionSource==1&&panel.choices.frameGeneration==fgBefore&&launcher::load(file).motionSource==1,"Native motion choice not saved or changed FG");
@@ -171,6 +166,13 @@ int wmain(int argc,wchar_t**argv){try{
         check(cloud&&clarity&&applyCloud,"Cloud controls or Apply cannot be reached in a supported viewport");}
     app::Telemetry status{};status.active=1;status.recordings=100;panel.observe(status,1000);check(panel.activity.find("FSR ACTIVE")==std::string::npos,"Static telemetry falsely confirmed activity");
     status.recordings=101;panel.observe(status,1016);check(panel.activity.find("FSR ACTIVE")!=std::string::npos,"Advancing renderer not confirmed");panel.observe(status,5000);check(panel.activity.find("WAITING")!=std::string::npos,"Stale activity stayed green");
+    // v2 per-frame CPU timers (ABI 5) shown in Diagnostics (connected renderer).
+    {insim::Panel timers;check(timers.cpuSummary().find("Waiting")==0&&timers.simSummary().find("not available")!=std::string::npos,"Timers shown before data");
+     timers.bind(file,&writer,true,true);
+     app::Telemetry t{};t.recordings=1;t.cpuWorkUs=1250;t.cpuWaitUs=0;t.presentCallUs=8000;t.frameIntervalUs=25000;timers.observe(t,1000);
+     check(timers.cpuSummary().find("Mod work 1.25 ms")==0&&timers.cpuSummary().find("frame 25.00 ms")!=std::string::npos,"CPU timer summary wrong");
+     t.frameIntervalUs=0;timers.observe(t,1016);check(timers.cpuSummary().find("Waiting")==0,"Timer summary shown without a frame interval");
+     timers.simFrameMs=25;timers.simGpuMs=12;check(timers.simSummary().find("40 FPS")!=std::string::npos&&timers.simSummary().find("CPU is the limit")!=std::string::npos,"X-Plane timing summary wrong");}
     insim::Panel fgLive;bool liveFG=false;
     fgLive.bind(file,&writer,true,true,[&](const auto&p){liveFG=p.frameGeneration!=0;});
     fgLive.act({insim::Kind::FGToggle,0,-1});
