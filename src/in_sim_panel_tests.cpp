@@ -172,6 +172,9 @@ int wmain(int argc,wchar_t**argv){try{
      app::Telemetry t{};t.recordings=1;t.cpuWorkUs=1250;t.cpuWaitUs=0;t.presentCallUs=8000;t.frameIntervalUs=25000;timers.observe(t,1000);
      check(timers.cpuSummary().find("Mod work 1.25 ms")==0&&timers.cpuSummary().find("frame 25.00 ms")!=std::string::npos,"CPU timer summary wrong");
      t.frameIntervalUs=0;timers.observe(t,1016);check(timers.cpuSummary().find("Waiting")==0,"Timer summary shown without a frame interval");
+     check(timers.pacingSummary().find("after frame generation")!=std::string::npos,"Pacing shown before a check");
+     snprintf(t.pacingCheck,sizeof(t.pacingCheck),"0turn VSync off");timers.observe(t,1032);check(timers.pacingSummary()=="Not available: turn VSync off.","Pacing blockers not shown");
+     snprintf(t.pacingCheck,sizeof(t.pacingCheck),"1");timers.observe(t,1048);check(timers.pacingSummary().find("driver decides")!=std::string::npos,"Met pacing claimed active or hidden");
      timers.simFrameMs=25;timers.simGpuMs=12;check(timers.simSummary().find("40 FPS")!=std::string::npos&&timers.simSummary().find("CPU is the limit")!=std::string::npos,"X-Plane timing summary wrong");}
     insim::Panel fgLive;bool liveFG=false;
     fgLive.bind(file,&writer,true,true,[&](const auto&p){liveFG=p.frameGeneration!=0;});

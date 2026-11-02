@@ -131,6 +131,8 @@ static void reportPacingSetup(Device &d, const VkSwapchainCreateInfoKHR &info) {
     std::string reasons;
     for (const auto &b : blockers)
         reasons += (reasons.empty() ? "" : "; ") + b;
+    snprintf(d.status.pacingCheck, sizeof(d.status.pacingCheck), "%c%s", reasons.empty() ? '1' : '0',
+             reasons.empty() ? "" : reasons.c_str());
     log("Driver-assisted pacing check (%s, driver '%s', present mode %u, swapchain %ux%u, monitor %ux%u): %s",
         properties.properties.deviceName, driver.driverInfo, unsigned(info.presentMode), info.imageExtent.width,
         info.imageExtent.height, monitorWidth, monitorHeight,

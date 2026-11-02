@@ -33,6 +33,9 @@ struct Telemetry {
     // (frame cap, synchronized FG drain), time inside the present call
     // (driver / SDK pacing) and the present-to-present interval. Microseconds.
     uint32_t cpuWorkUs{}, cpuWaitUs{}, presentCallUs{}, frameIntervalUs{};
+    // v2: driver-assisted pacing check for the FG swapchain ('1' met, '0' not;
+    // then the reasons). Empty until an FG swapchain is created.
+    char pacingCheck[240]{};
 };
 struct Shared {
     uint32_t tag{}, version{};

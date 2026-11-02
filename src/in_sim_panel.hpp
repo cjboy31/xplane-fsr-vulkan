@@ -68,6 +68,14 @@ public:
             " - frame "+ms(telemetry.frameIntervalUs);
         return text+". Waits come from the frame rate cap and synchronized frame generation. The present call is the time spent handing the frame to the graphics driver.";
     }
+    // Driver-assisted pacing (AMD, RX 9000 + Adrenalin 26.10.1+): what the
+    // layer found for this session's FG swapchain. Never claims it is active.
+    std::string pacingSummary()const{
+        if(!sawStatus||!telemetry.pacingCheck[0])return "Shown after frame generation starts.";
+        const std::string reasons(telemetry.pacingCheck+1,strnlen(telemetry.pacingCheck+1,sizeof(telemetry.pacingCheck)-1));
+        if(telemetry.pacingCheck[0]=='1')return "Requirements look met. AMD's driver decides whether to pace frames.";
+        return "Not available: "+reasons+".";
+    }
     std::string simSummary()const{
         if(simFrameMs<=0)return "X-Plane frame time not available.";
         char b[160];
@@ -256,7 +264,7 @@ public:
     int maxScroll(int height)const{
         if(!configured())return 0;
         const int lengths[]={3*sectionHeight+12*rowHeight+68,2*sectionHeight+modelSetupHeight+Count*rowHeight,
-                             144+3*sectionHeight+62+61+48+75+75+48+75+75,3*sectionHeight+10*rowHeight+44};
+                             144+3*sectionHeight+62+61+48+75+75+75+48+75+75,3*sectionHeight+10*rowHeight+44};
         return std::max(0,lengths[tab]+(tab==0&&needsStartupRepair()?44:0)+8-std::max(1,height-contentTop-footerHeight));
     }
     int maxDropdownScroll(int height)const{return std::max(0,int(choiceOptions(dropdown).size())*36-std::max(1,height-contentTop-footerHeight-68));}
@@ -459,6 +467,7 @@ public:
             info("Renderer",activity,61);
             info("Image size","Input "+std::to_string(telemetry.renderWidth)+" x "+std::to_string(telemetry.renderHeight)+"   /   Output "+std::to_string(telemetry.outputWidth)+" x "+std::to_string(telemetry.outputHeight),48);
             info("Frame generation",frameGenerationStatus(),75);
+            info("Driver pacing",pacingSummary(),75);
             info("Neural rendering",nrStatus,75);
             info("Log location","X-Plane / Output / FSR-Logs. A fresh copy is also saved after exit.",48);
             section("03   /   PERFORMANCE PER FRAME");

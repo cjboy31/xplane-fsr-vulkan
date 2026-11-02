@@ -65,7 +65,7 @@ Native AA's TAA and warping in frame generation at once. Full plan:
 
 | P | Item | Why / evidence | Notes |
 | --- | --- | --- | --- |
-| P2 | Show the driver-pacing check in the panel, not only the session log | The v2 log line already names each blocker | Needs a status field from the layer to the panel |
+| P2 | Show the driver-pacing check in the panel, not only the session log | The v2 log line already names each blocker | **In Test**: Diagnostics *Driver pacing* row (telemetry `pacingCheck`); lists each blocker or says the requirements look met, never that pacing is active |
 | P2 | AMD Anti-Lag 2 through `VK_AMD_anti_lag` when the driver exposes it | Lower input latency with FG; Mesa/RADV now implement it natively on Linux | Must not fight the SDK pacer; measure with PresentMon on Windows |
 | P2 | CPU frame time much higher than GPU time (now tracked under *Sim performance and multithreading*) | Owner report; see [CPU-PERFORMANCE](docs/developer/CPU-PERFORMANCE.md) | Compare bypass / FSR / NR / FG in one scene first |
 | P2 | Zink audit: run the layer with `--zink` and `--no_zink` and confirm no false bypass | Laminar plans Zink as the only plugin GL path | Native AA already fixed a Zink push-descriptor false bypass (0.3.3) |
