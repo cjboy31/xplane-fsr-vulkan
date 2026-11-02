@@ -34,6 +34,15 @@ Better vectors improve all three at once, so this item ranks above new AA modes.
 - **Each stage ships on its own** through Test → Betas → Release Candidates,
   with camera-derived motion still selectable.
 
+## Progress (2026-11-01)
+
+| Stage | Status | Delivered |
+| --- | --- | --- |
+| A | In Test | `motion_contract.hpp` / `.glsl` / `_tests.cpp` are byte-identical in both repositories and pinned by `tools/check_motion_contract.py`; CI runs it in both. FSR's packing shader, the native shader and Native AA's TAA all use the shared GLSL helpers with the same math. Native AA's TAA still builds its motion inline. It switches to reading a contract motion image together with its own native capture (stage B for Native AA). |
+| B (FSR) | In Test | **Motion source: Native (experimental)** in the in-sim panel, ported from `experimental/native-motion-vectors` onto v2. It falls back to camera-derived motion per frame, logs why, and resets history once on a source change. See [NATIVE-MOTION-EXPERIMENT](NATIVE-MOTION-EXPERIMENT.md). |
+| B (Native AA) | Queued | Same SSR capture inside the AA layer, writing contract images that TAA reads. |
+| C | In Test | Opt-in layer capture (`XPFSR24_MOTION_CAPTURE`) plus `tools/motion_quality.py`: warp-and-compare gain per region. The self-test runs in CI with synthetic captures. |
+
 ## Stages
 
 | Stage | P | What | Done when |

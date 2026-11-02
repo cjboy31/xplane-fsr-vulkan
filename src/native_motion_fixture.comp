@@ -1,0 +1,34 @@
+// SPDX-License-Identifier: MIT
+// Original stand-in for the documented SSR interface; no simulator shader code.
+#version 450
+#extension GL_EXT_samplerless_texture_functions : require
+layout(local_size_x=8,local_size_y=8) in;
+#if INPUT_ARRAY
+layout(set=0,binding=3) uniform texture2DArray gbuffer_pos;
+layout(set=0,binding=4) uniform utexture2DArray gbuffer_vel;
+#define FETCH(t,p) texelFetch(t,ivec3(p,0),0)
+#else
+layout(set=0,binding=3) uniform texture2D gbuffer_pos;
+layout(set=0,binding=4) uniform utexture2D gbuffer_vel;
+#define FETCH(t,p) texelFetch(t,p,0)
+#endif
+layout(set=0,binding=11,std140) uniform u_gbuffer_data {
+    vec4 u_viewport_size;
+    vec4 u_gbuffer_size;
+    vec4 u_proj_coefficients[2];
+    vec4 u_clip_info[2];
+    vec2 u_sample_offset;
+    mat4 u_head_to_eye[2];
+};
+layout(set=0,binding=12,std140) uniform u_ssr_data {
+    mat4 u_proj[2];
+    mat4 u_reproj[2];
+    mat4 u_local_reproj[2];
+};
+layout(set=0,binding=15,r32f) writeonly uniform image2D scratch;
+void main() {
+    ivec2 p=ivec2(gl_GlobalInvocationID.xy);
+    if(any(greaterThanEqual(p,imageSize(scratch)))) return;
+    imageStore(scratch,p,vec4(FETCH(gbuffer_pos,p).x+float(FETCH(gbuffer_vel,p).x)*
+        u_viewport_size.z+u_proj[0][0][0]*0.001));
+}

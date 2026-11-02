@@ -130,6 +130,12 @@ int wmain(int argc,wchar_t**argv){try{
     {const int fgBefore=panel.choices.frameGeneration;panel.act({insim::Kind::FGCap,0,1});check(panel.choices.fgCap==1&&panel.choices.frameGeneration==fgBefore,"Cap choice changed FG or was not saved");
      check(launcher::load(file).fgCap==1,"Cap choice not persisted");panel.act({insim::Kind::FGCap,0,99});check(panel.choices.fgCap==xpfsr::pacing::capCount-1,"Cap choice not clamped");
      panel.act({insim::Kind::FGCap,0,-99});check(panel.choices.fgCap==0,"Cap could not return to Off");}
+    // v2 motion source (shared motion contract v1): saved, clamped, reloaded, FG untouched; help card present.
+    {const int fgBefore=panel.choices.frameGeneration;check(panel.choices.motionSource==0,"Motion source must default to Camera");
+     panel.act({insim::Kind::MotionSource,0,1});check(panel.choices.motionSource==1&&panel.choices.frameGeneration==fgBefore&&launcher::load(file).motionSource==1,"Native motion choice not saved or changed FG");
+     panel.act({insim::Kind::MotionSource,0,9});check(panel.choices.motionSource==1,"Motion source not clamped");
+     check(panel.helpTitle(211)=="Motion source"&&panel.helpText(211).find("experimental")!=std::string::npos&&panel.helpText(211).find("MSAA")!=std::string::npos,"Motion source help missing");
+     panel.act({insim::Kind::MotionSource,0,-1});check(panel.choices.motionSource==0&&launcher::load(file).motionSource==0,"Motion source could not return to Camera");}
     insim::Panel fgReopened;fgReopened.bind(file,&writer,true,false);check(fgReopened.choices.lastFrameGeneration==2,"Reopening lost the last FG provider");fgReopened.act({insim::Kind::FGToggle,0,1});check(fgReopened.choices.frameGeneration==2,"FG On did not restore the remembered provider");
     panel.act({insim::Kind::Tab,1});widgets=panel.view(640,480);bool importVisible=false;int firstTabY=0;
     for(const auto &item:widgets){importVisible|=item.action.kind==insim::Kind::ImportModel; if(item.action.kind==insim::Kind::Tab)firstTabY=item.rect.y;}

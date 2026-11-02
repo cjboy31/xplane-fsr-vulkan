@@ -122,8 +122,12 @@ int wmain(int argc,wchar_t **argv){try{
     xpfsr::nr::ControlChannel channel,reader;auto token=app::prepareSessionProfile(root,p,channel);xpfsr::nr::Controls live;
     check(token.size()==32&&reader.open(app::environment(L"XPFSR24_NR_CONTROL").c_str())&&reader.read(live)&&live[xpfsr::nr::Enabled]&&live[xpfsr::nr::AllowFG],"Shared live controls missing");
     check(app::environment(L"XPFSR24_PROVIDER")==L"4.1.2"&&app::environment(L"XPFSR24_FG")==L"4.0.2"&&app::environment(L"XPFSR24_FG_PRESENTER")==L"3.1.7"&&app::environment(L"XPFSR24_FG_SYNCHRONIZED")==L"1","Provider/compatibility mapping changed");
+    check(app::environment(L"XPFSR24_MOTION").empty(),"Camera-derived motion must not set a native request");
     check(graphics::read(root/L"logs/renderer.log.previous")==firstLog&&graphics::read(root/L"logs/renderer-control.txt")=="1","Fresh logs/processing configuration failed");
     auto native=app::prepareSessionProfile(root,p,channel,true);check(native!=token&&app::environment(L"XPFSR24_NR_CONTROL").empty()&&app::environment(L"XPFSR24_FG").empty()&&app::environment(L"XPFSR24_MODE")==L"observe","Native session retained renderer requests");
+    {auto withNative=p;withNative.motionSource=1;xpfsr::nr::ControlChannel motionChannel;app::prepareSessionProfile(root,withNative,motionChannel);
+     check(app::environment(L"XPFSR24_MOTION")==L"native-renderer","Native motion choice not passed to the renderer");
+     app::prepareSessionProfile(root,withNative,motionChannel,true);check(app::environment(L"XPFSR24_MOTION").empty(),"Native comparison session kept a motion request");}
     auto registry=L"Software\\XPFSR24\\Tests\\Activation-"+std::to_wstring(GetCurrentProcessId())+L"-"+std::to_wstring(GetTickCount64());
     struct Cleanup{std::wstring key;~Cleanup(){RegDeleteTreeW(HKEY_CURRENT_USER,key.c_str());}}cleanup{registry};
     const auto layers=registry+L"\\Layers",owner=registry+L"\\Owner";

@@ -11,6 +11,8 @@
 - **Project renamed** to `xplane12-fsr-framegen`. Web links to the old name still open. The 0.7.x updater cannot follow the rename, so install 2.0 manually once; from 2.0 on, the updater accepts both names.
 - Repository clean-up: retired feature-video tooling and old per-version install notes removed; developer notes moved to `docs/developer/`.
 - Includes the 0.7.10 scene-copy and background file-worker performance corrections.
+- **Motion source (experimental, in Test):** a new choice under Image processing. Native reads the motion X-Plane works out for its own reflections, so your aircraft can trail less when you turn or zoom. It needs MSAA, frame generation and the cockpit screen fix Off. Otherwise the normal Camera motion is used and Diagnostics says why. Camera stays the default.
+- Developer: shared motion contract v1, the same motion format and rules as Native AA (`src/motion_contract.*`, pinned in both repositories). Also an opt-in motion-quality capture and `tools/motion_quality.py`, which gives a measured gain per region.
 - Not yet verified in live flights; this is why it is a Beta.
 
 ## 0.7.10

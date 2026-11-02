@@ -39,6 +39,12 @@ failure. `DISABLE_XPFSR24=1` cannot isolate the FSR candidate: it disables expli
 candidate processing as well. The fixture clears it while isolating implicit
 discovery with `VK_IMPLICIT_LAYER_PATH` and `VK_LOADER_LAYERS_DISABLE=~implicit~`.
 
+Native renderer motion: run `Test-NativeMotion.ps1` (capture and restore with
+stand-in shaders), then, after `Test.ps1`, `Test-NativeMotion.ps1 -Integration`.
+It uses the same candidate isolation. The `native-missing` case must log the
+camera-derived fallback and must never claim native motion. Details are in
+[NATIVE-MOTION-EXPERIMENT](NATIVE-MOTION-EXPERIMENT.md).
+
 SDK generated-image readback, layer swapchain lifecycle and live simulator
 generation are separate results. An accepted pacing profile or lifecycle pass
 does not establish generated frames, scanout quality or stutter-free flight.
@@ -65,6 +71,10 @@ access to this repository), because drafts are private.
 | 5 | 2-minute pan over a busy airport, then fly away | No device lost / crash; note min/avg FPS and any stutter |
 | 6 | Updater: switch Release Candidates ↔ Betas | Saved choice survives a restart; no test build is offered |
 | 7 | Uninstall, then reinstall | Saved image settings are kept; X-Plane starts normally without the mod after uninstall |
+| 8 | **Motion source: Native (experimental)** with MSAA, frame generation and the cockpit screen fix Off; restart | Status reads `EXPERIMENTAL native renderer motion (SSR)`. The log has `Native renderer motion captured` and `Motion source now native renderer`. No crash or black frames |
+| 9 | Same flight, Camera vs Native: 30 s slow turn with the external view, then the cockpit view while turning | Note which trails less around the airframe and cockpit edges. Note any new smearing of scenery |
+| 10 | Native selected but frame generation On | FSR still works. Status says **Camera-derived motion used**; the log names `frame generation is on` |
+| 11 | Motion-quality capture: set `XPFSR24_MOTION_CAPTURE` to an empty folder, pan steadily, once with Camera and once with Native | `python tools/motion_quality.py <folder>` prints a gain for each region. Report both outputs. Clear the variable afterwards |
 
 5. Collect `Output/FSR-Logs` (Diagnostics > Open log folder) and X-Plane's `Log.txt`.
 
@@ -74,7 +84,8 @@ access to this repository), because drafts are private.
 Build: test-<version>.<n>   Commit: <sha>
 System: GPU + driver, CPU, RAM, Windows version, monitor resolution + refresh, VRR on/off
 X-Plane: version, aircraft, airport, weather
-Results: 1 PASS/FAIL ... 7 PASS/FAIL (one line each, with numbers where asked)
+Results: 1 PASS/FAIL ... 11 PASS/FAIL (one line each, with numbers where asked)
+Motion quality: Camera gains (sky/aircraft/near/far) vs Native gains
 Problems: what you saw, when, and how to repeat it
 Logs: attached / link
 Verdict: PROMOTE TO BETAS  or  NEEDS FIX

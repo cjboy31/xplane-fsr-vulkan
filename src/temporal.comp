@@ -1,4 +1,6 @@
 #version 450
+#extension GL_GOOGLE_include_directive : require
+#include "motion_contract.glsl"
 layout(local_size_x=8,local_size_y=8)in;
 layout(set=0,binding=0,std140)uniform Params{
     mat4 reprojection;
@@ -55,12 +57,9 @@ void main(){
     vec4 previous=(body?p.bodyReprojection:p.reprojection)*clip;
     bool invalidProjection=previous.w<=1e-7||any(isnan(previous))||any(isinf(previous))||invalidEye;
     vec2 motion=vec2(0);
-    if(!invalidProjection){
-        vec2 oldUv=previous.xy/previous.w;
-        oldUv.y*=p.jitter.z;oldUv=oldUv*0.5+0.5;
-        motion=(oldUv-unjittered)*vec2(size);
-    }
-    float reactive=invalidDepth?1.0:body?.05:cockpit?1.0:0.0;
+    if(!invalidProjection)motion=xpm_motion(previous,unjittered,vec2(size),p.jitter.z);
+    float reactive=invalidDepth?XPM_REACTIVE_INVALID:body?XPM_REACTIVE_RIGID_CABIN:
+        cockpit?XPM_REACTIVE_UNKNOWN_CABIN:0.0;
     // A radius around the aircraft also contains runway/terrain in external
     // views. It cannot identify aircraft pixels, so never discard world history
     // using that sphere. Keep scenery/sky reconstruction continuous while panning.
@@ -68,11 +67,11 @@ void main(){
     // lack reliable per-pixel motion in this capture. Prefer fresh samples in
     // these regions; this is a broad heuristic, not cockpit-screen extraction.
     if(p.planes.z>0.5){
-        if(cockpit)reactive=max(reactive,0.2);
-        if(sky)reactive=max(reactive,0.15);
+        if(cockpit)reactive=max(reactive,XPM_REACTIVE_CABIN_GHOSTING);
+        if(sky)reactive=max(reactive,XPM_REACTIVE_SKY_GHOSTING);
     }
-    if(any(isnan(motion))||any(isinf(motion))||invalidProjection||invalidDepth||
-       any(greaterThan(abs(motion),vec2(size)*2.0))){motion=vec2(0);reactive=1;}
-    imageStore(depthOut,xy,vec4(depth));imageStore(motionOut,xy,vec4(clamp(motion,vec2(-32700),vec2(32700)),0,0));
+    if(xpm_motion_invalid(motion,vec2(size))||invalidProjection||invalidDepth){
+        motion=vec2(0);reactive=XPM_REACTIVE_INVALID;}
+    imageStore(depthOut,xy,vec4(depth));imageStore(motionOut,xy,vec4(xpm_store(motion),0,0));
     imageStore(reactiveOut,xy,vec4(reactive));
 }

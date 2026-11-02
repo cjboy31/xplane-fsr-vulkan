@@ -19,6 +19,7 @@ static std::vector<uint32_t> loadSpv(const wchar_t *path) {
     fclose(f);
     return result;
 }
+#include "native_ssr_fixture.hpp"
 int wmain(int argc, wchar_t **argv) {
     std::cout.setf(std::ios::unitbuf);
     try {
@@ -63,6 +64,16 @@ int wmain(int argc, wchar_t **argv) {
         shared->tag = app::magic;
         shared->version = app::abi;
         shared->enabled = 1;
+        // Native renderer motion fixture: native-2d / native-array record a stand-in
+        // for X-Plane's SSR pass; native-missing selects the source without one.
+        const bool nativeMotion = argc > 6 && (std::wstring(argv[6]) == L"native-2d" ||
+                                               std::wstring(argv[6]) == L"native-array" ||
+                                               std::wstring(argv[6]) == L"native-missing");
+        const bool missingNative = nativeMotion && std::wstring(argv[6]) == L"native-missing";
+        const bool nativeArray = nativeMotion && std::wstring(argv[6]) == L"native-array";
+        SetEnvironmentVariableW(L"XPFSR24_MOTION", nativeMotion ? L"native-renderer" : nullptr);
+        if (nativeMotion)
+            SetEnvironmentVariableW(L"XPFSR24_COCKPIT_RESTORE", L"0");
         Vulkan vk;
         vk.open();
         GpuImage finalColor(vk), auxColor(vk), auxDepth(vk), sceneColor(vk), color(vk), output(vk),
@@ -92,7 +103,8 @@ int wmain(int argc, wchar_t **argv) {
             dc.samples = count;
             dc.tiling = VK_IMAGE_TILING_OPTIMAL;
             dc.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT |
-                       VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+                       VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT |
+                       (nativeMotion ? VK_IMAGE_USAGE_SAMPLED_BIT : 0);
             vkcheck(vk.dev<PFN_vkCreateImage>("vkCreateImage")(vk.device, &dc, nullptr,
                                                                &depth.value.handle),
                     "Test depth image");
@@ -110,6 +122,13 @@ int wmain(int argc, wchar_t **argv) {
         };
         createDepth(depth, samples);
         createDepth(auxDepth);
+        std::unique_ptr<NativeSsrFixture> nativeSsr;
+        if (nativeMotion)
+            nativeSsr = std::make_unique<NativeSsrFixture>(
+                vk, depth.value.handle, nativeArray,
+                std::filesystem::path(argv[2]).parent_path() /
+                    (nativeArray ? L"native-motion-fixture-1.spv"
+                                 : L"native-motion-fixture-0.spv"));
         auto view = [&](VkImage image, VkFormat format, VkImageAspectFlags aspect,
                         VkImageViewType type) {
             VkImageView result{};
@@ -606,6 +625,8 @@ int wmain(int argc, wchar_t **argv) {
                     vk.dev<PFN_vkCmdResolveImage2>("vkCmdResolveImage2")(cb, &info);
                 }
             }
+            if (nativeSsr && !missingNative)
+                nativeSsr->record(cb, depth);
             barrier(depth, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_ASPECT_DEPTH_BIT);
             VkClearDepthStencilValue discardedDepth{0, 0};
             VkImageSubresourceRange discardedRange{VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, 0, 1};
@@ -669,7 +690,7 @@ int wmain(int argc, wchar_t **argv) {
                     "Map output");
             auto *pixel = static_cast<uint16_t *>(mapped) + ((OH / 2) * OW + OW / 2) * 4;
             float rgb[] = {half(pixel[0]), half(pixel[1]), half(pixel[2])};
-            if (!nrOrder && frame == 18 && nativeAA) {
+            if (!nrOrder && frame == 18 && nativeAA && !missingNative) {
                 double rawError = 0, aaError = 0;
                 unsigned samples = 0;
                 auto *image = static_cast<uint16_t *>(mapped);
