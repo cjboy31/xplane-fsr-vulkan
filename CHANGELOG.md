@@ -13,6 +13,7 @@
 - **Project renamed** to `xplane12-fsr-framegen`. Web links to the old name still open. The 0.7.x updater cannot follow the rename, so install 2.0 manually once; from 2.0 on, the updater accepts both names.
 - Repository clean-up: retired feature-video tooling and old per-version install notes removed; developer notes moved to `docs/developer/`.
 - Includes the 0.7.10 scene-copy and background file-worker performance corrections.
+- **Two-GPU frame generation (experimental, in Test):** a new *Frame generation GPU* choice. With *Second GPU*, your main card renders X-Plane and a second card (with the monitor plugged into it) makes the extra frames and shows them. If the second card cannot run AMD's frame generation, it shows the real frames and Diagnostics says why.
 - **Texture detail (in Test, off by default):** a new choice under Image processing. AMD recommends one step sharper textures for its newer FSR than for the simple FSR X-Plane uses; *AMD recommended* applies that, *Sharper* half of it. Only ground, runway and building textures change. Applies after restart.
 - **Smoother panel:** when you change tabs, the rows now slide in from top to bottom. Turning off animations in Windows turns this off too.
 - **Anti-Lag 2 (experimental, Off by default):** a new choice under Frame generation for AMD Radeon cards whose driver offers it for Vulkan. It can make the controls feel quicker. Diagnostics says whether your driver supports it.

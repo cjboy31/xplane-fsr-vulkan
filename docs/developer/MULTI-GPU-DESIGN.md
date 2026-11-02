@@ -1,8 +1,23 @@
 # Multi-GPU processing design
 
-Experimental development direction; no cross-GPU rendering is implemented in
-the Windows release or this in-sim test build. The owner's priority is to begin
-this work after the current NR memory correction is tested.
+**Stage 1 is in Test** (`src/dual_gpu.inc`, setting *Frame generation GPU*):
+frame generation on a second GPU with the monitor on that GPU.
+
+- X-Plane renders on GPU A as usual; its swapchain is replaced by a virtual one
+  (images we own on A). Present copies the image to a host-visible buffer; FSR's
+  depth and motion for the same frame are copied there from X-Plane's command
+  buffer at the FSR boundary.
+- A private device on GPU B is created through the system loader on X-Plane's
+  instance (our own vkCreateDevice hook passes it through untouched), so it can
+  present to X-Plane's window surface. Four queues are picked across B's
+  families for AMD's FG swapchain; if that swapchain cannot be created, a plain
+  swapchain on B shows the real frames.
+- A worker thread waits for A's readback, copies host to host (baseline;
+  zero-copy `VK_EXT_external_memory_host` import is next), uploads to B, records
+  FSR FG PrepareV2 on B and presents through the FG swapchain.
+- Three frames may be in flight; if B falls behind, frames go without generation
+  rather than stalling X-Plane. Any set-up failure falls back to single-GPU FG
+  for the session, with the reason in Diagnostics and the log.
 
 Lossless Scaling exposes a preferred processing GPU while the game keeps its
 own rendering adapter. Its [publisher announcements](https://steamcommunity.com/app/993090/allnews/?l=english)
