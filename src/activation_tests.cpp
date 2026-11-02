@@ -128,6 +128,10 @@ int wmain(int argc,wchar_t **argv){try{
     {auto withNative=p;withNative.motionSource=1;xpfsr::nr::ControlChannel motionChannel;app::prepareSessionProfile(root,withNative,motionChannel);
      check(app::environment(L"XPFSR24_MOTION")==L"native-renderer","Native motion choice not passed to the renderer");
      app::prepareSessionProfile(root,withNative,motionChannel,true);check(app::environment(L"XPFSR24_MOTION").empty(),"Native comparison session kept a motion request");}
+    {check(app::environment(L"XPFSR24_CPU_SCHEDULING").empty(),"CPU scheduling helper must be Off by default");
+     auto helper=p;helper.cpuScheduling=1;xpfsr::nr::ControlChannel helperChannel;app::prepareSessionProfile(root,helper,helperChannel);
+     check(app::environment(L"XPFSR24_CPU_SCHEDULING")==L"1","CPU scheduling choice not passed to the renderer");
+     app::prepareSessionProfile(root,helper,helperChannel,true);check(app::environment(L"XPFSR24_CPU_SCHEDULING").empty(),"Native comparison session kept the CPU helper");}
     auto registry=L"Software\\XPFSR24\\Tests\\Activation-"+std::to_wstring(GetCurrentProcessId())+L"-"+std::to_wstring(GetTickCount64());
     struct Cleanup{std::wstring key;~Cleanup(){RegDeleteTreeW(HKEY_CURRENT_USER,key.c_str());}}cleanup{registry};
     const auto layers=registry+L"\\Layers",owner=registry+L"\\Owner";

@@ -79,6 +79,7 @@ access to this repository), because drafts are private.
 | 13 | Live-test fixes: (a) pin a help card, press Esc; (b) 2 minutes of straight airborne flight with FSR + FG; (c) the same 30 s ground pan with *FSR FG 4.0.2* and with *FSR FG 4.0.2 synchronized* | (a) The card closes and X-Plane's menu does not open; other keys still reach X-Plane. (b) Camera resets are rare in cruise (report the count, as in the last test). (c) Report source FPS for each and the log's `sync-drain-avg-ms` |
 | 14 | Diagnostics > **PERFORMANCE PER FRAME** in the same scene with: FSR only; FSR + FG (SDK paced); FSR + FG synchronized | *This mod (CPU)* and *X-Plane* lines show numbers within a few seconds. Report all four mod numbers and X-Plane's frame and GPU times for each. The log's `per-frame-us:` line should match |
 | 15 | Diagnostics > **Driver pacing** with frame generation On | Shows the same reasons as the log's `Driver-assisted pacing check` line, or "Requirements look met". Turning VSync on and restarting adds "turn VSync off" |
+| 16 | **CPU scheduling: Helper (experimental)**, restart, same 2-minute flight as check 14; then Windows decides, restart, repeat | Diagnostics > *CPU scheduling* names your processor type and what changed (or "left to Windows"). Report average FPS and 1% lows for both runs and the CPU model. X-Plane closes normally; the log ends with `restored Windows defaults` |
 
 5. Collect `Output/FSR-Logs` (Diagnostics > Open log folder) and X-Plane's `Log.txt`.
 

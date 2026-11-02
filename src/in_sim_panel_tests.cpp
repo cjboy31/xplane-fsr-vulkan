@@ -136,6 +136,13 @@ int wmain(int argc,wchar_t**argv){try{
      panel.act({insim::Kind::MotionSource,0,9});check(panel.choices.motionSource==1,"Motion source not clamped");
      check(panel.helpTitle(211)=="Motion source"&&panel.helpText(211).find("experimental")!=std::string::npos&&panel.helpText(211).find("frame generation")!=std::string::npos,"Motion source help missing");
      panel.act({insim::Kind::MotionSource,0,-1});check(panel.choices.motionSource==0&&launcher::load(file).motionSource==0,"Motion source could not return to Camera");}
+    // v2 opt-in CPU scheduling helper: Off by default, saved, clamped, reloaded; help present.
+    {check(panel.choices.cpuScheduling==0,"CPU scheduling must default to Windows decides");
+     panel.act({insim::Kind::CpuScheduling,0,1});check(panel.choices.cpuScheduling==1&&launcher::load(file).cpuScheduling==1&&panel.notice.find("undone")!=std::string::npos,"CPU scheduling not saved");
+     panel.act({insim::Kind::CpuScheduling,0,5});check(panel.choices.cpuScheduling==1,"CPU scheduling not clamped");
+     check(panel.helpTitle(212)=="CPU scheduling"&&panel.helpText(212).find("P-cores")!=std::string::npos&&panel.helpText(212).find("X3D")!=std::string::npos,"CPU scheduling help missing");
+     check(panel.cpuSchedulingSummary().find("restart")!=std::string::npos||panel.cpuSchedulingSummary().find("after the renderer")!=std::string::npos,"CPU scheduling summary before a session");
+     panel.act({insim::Kind::CpuScheduling,0,-1});check(panel.choices.cpuScheduling==0&&launcher::load(file).cpuScheduling==0,"CPU scheduling could not return to Windows decides");}
     insim::Panel fgReopened;fgReopened.bind(file,&writer,true,false);check(fgReopened.choices.lastFrameGeneration==2,"Reopening lost the last FG provider");fgReopened.act({insim::Kind::FGToggle,0,1});check(fgReopened.choices.frameGeneration==2,"FG On did not restore the remembered provider");
     panel.act({insim::Kind::Tab,1});widgets=panel.view(640,480);bool importVisible=false;int firstTabY=0;
     for(const auto &item:widgets){importVisible|=item.action.kind==insim::Kind::ImportModel; if(item.action.kind==insim::Kind::Tab)firstTabY=item.rect.y;}

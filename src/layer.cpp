@@ -36,6 +36,7 @@
 #include "native_motion_spv.hpp"
 #include "native_motion/shader_classify.cpp"
 #include "motion_contract.hpp"
+#include "cpu_scheduling.hpp"
 #include <algorithm>
 #include <array>
 #include <bcrypt.h>
@@ -1488,6 +1489,7 @@ void setupFrame(Device &d, FrameResources &f, uint32_t rw, uint32_t rh, uint32_t
     f.ready=true;
 }
 #include "native_motion.inc"
+#include "cpu_scheduling.inc"
 #include "motion_capture.inc"
 void restoreCockpit(Device &d, VkCommandBuffer cb, FrameResources &f, uint32_t rw, uint32_t rh,
                     uint32_t ow, uint32_t oh, float jitterX, float jitterY, float ySign) {
@@ -2556,6 +2558,8 @@ static VKAPI_ATTR VkResult VKAPI_CALL L_CreateDevice(VkPhysicalDevice physical,
     state->neural.features(neuralSupported);
     state->mode = selectedMode();
     setupMotionCapture(*state);
+    cpusched::apply();
+    {const auto cpu=cpusched::status();strncpy(state->status.cpuScheduling,cpu.empty()?"0":("1"+cpu).c_str(),sizeof(state->status.cpuScheduling)-1);}
     state->motionSurvey = app::environment(L"XPFSR24_MOTION_SURVEY") == L"1";
     if (state->motionSurvey)
         log("Motion survey on: logging shader interfaces with motion-related names (names only)");
@@ -2729,6 +2733,9 @@ static VKAPI_ATTR void VKAPI_CALL L_DestroyDevice(VkDevice device,
     }
     destroy(device, allocator);
     log("Device destroyed");
+    bool last;
+    {std::lock_guard<std::mutex> l(registryLock);last=devices.empty();}
+    if(last)cpusched::restore();
 }
 #include "layer_framegen.inc"
 static VKAPI_ATTR void VKAPI_CALL L_GetDeviceQueue(VkDevice device, uint32_t family, uint32_t index,

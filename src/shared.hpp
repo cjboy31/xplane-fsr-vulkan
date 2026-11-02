@@ -36,6 +36,8 @@ struct Telemetry {
     // v2: driver-assisted pacing check for the FG swapchain ('1' met, '0' not;
     // then the reasons). Empty until an FG swapchain is created.
     char pacingCheck[240]{};
+    // v2: opt-in CPU scheduling helper ('0' off; '1' then what it did).
+    char cpuScheduling[200]{};
 };
 struct Shared {
     uint32_t tag{}, version{};

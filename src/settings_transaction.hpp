@@ -9,7 +9,7 @@ namespace launcher {
 inline Preferences mergeChoices(const Preferences &latest,const Preferences &baseline,const Preferences &proposed){
     auto result=latest;
 #define PATCH(field) if(proposed.field!=baseline.field)result.field=proposed.field
-    PATCH(simulator);PATCH(arguments);PATCH(presetId);PATCH(mode);PATCH(frameGeneration);PATCH(lastFrameGeneration);PATCH(fgPacing);PATCH(fgCap);PATCH(motionSource);PATCH(neuralRendering);
+    PATCH(simulator);PATCH(arguments);PATCH(presetId);PATCH(mode);PATCH(frameGeneration);PATCH(lastFrameGeneration);PATCH(fgPacing);PATCH(fgCap);PATCH(motionSource);PATCH(cpuScheduling);PATCH(neuralRendering);
     PATCH(keepSimUISize);PATCH(enabled);PATCH(ghostReduction);PATCH(cockpitRestore);PATCH(alignmentTint);
     PATCH(manual.msaa);PATCH(manual.fxaa);PATCH(manual.scale);PATCH(manual.outputWidth);PATCH(manual.outputHeight);
     PATCH(manual.cloudQuality);

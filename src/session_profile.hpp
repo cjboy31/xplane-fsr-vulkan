@@ -39,7 +39,8 @@ inline std::string prepareSessionProfile(const std::filesystem::path &root,const
     const int mode=native?0:p.mode,fg=native?0:effectiveFrameGeneration(p.frameGeneration),nr=native?0:effectiveNeuralRendering(p.neuralRendering);
     std::ostringstream choices;choices<<"requested_mode="<<mode<<" provider="<<(mode>=3?"4.1.2":"3.1.6")
         <<" frame_generation="<<fg<<" neural_rendering="<<nr<<" native_comparison="<<native
-        <<" motion_source="<<(!native&&mode&&p.motionSource==1?"native-renderer":"camera");
+        <<" motion_source="<<(!native&&mode&&p.motionSource==1?"native-renderer":"camera")
+        <<" cpu_scheduling="<<(!native&&p.cpuScheduling==1?"helper":"windows");
     auto token=session::prepare(root/L"logs",choices.str());
     channel.close();
     std::wstring name;
@@ -65,6 +66,8 @@ inline std::string prepareSessionProfile(const std::filesystem::path &root,const
     setEnvironment(L"XPFSR24_FG_CAP",provider?std::to_wstring(xpfsr::pacing::capSettings[std::clamp(p.fgCap,0,xpfsr::pacing::capCount-1)]):L"");
     // Shared motion contract v1 token; only a reconstruction session uses it.
     setEnvironment(L"XPFSR24_MOTION",!native&&mode&&p.motionSource==1?L"native-renderer":L"");
+    // Opt-in CPU scheduling helper; a native comparison session never uses it.
+    setEnvironment(L"XPFSR24_CPU_SCHEDULING",!native&&p.cpuScheduling==1?L"1":L"");
     setEnvironment(L"XPFSR24_MODE",mode==1||mode==3?L"native-aa":mode==2||mode==4?L"upscale":L"observe");
     setEnvironment(L"XPFSR24_PROVIDER",mode>=3?L"4.1.2":L"3.1.6");
     setEnvironment(L"XPFSR24_RUNTIME",(root/L"runtime").wstring());

@@ -19,6 +19,7 @@ inline std::string utf8(const std::wstring&s){int n=WideCharToMultiByte(CP_UTF8,
 inline constexpr auto &fsrNames=product::fsrModes;
 inline constexpr auto &fgNames=product::fgModes;
 inline constexpr const char *motionSourceNames[]={"Camera","Native (experimental)"};
+inline constexpr const char *cpuSchedulingNames[]={"Windows decides","Helper (experimental)"};
 inline std::string valueName(const Controls &c,Field f){
     int value=c[f];
     if(f==Enabled||f==Mask||f==Grade||f==AllowFG)return value?"On":"Off";
@@ -33,7 +34,7 @@ inline std::string valueName(const Controls &c,Field f){
     return std::to_string(value)+"%";
 }
 struct Rect {int x{},y{},w{},h{};bool contains(int a,int b)const{return a>=x&&a<x+w&&b>=y&&b<y+h;}};
-enum class Kind {Tab,Processing,Mode,FrameGen,NRField,Budget,Help,Close,Preset,Graphics,ApplyGraphics,OpenChoice,ChooseOption,CloseChoice,FGToggle,FGProvider,ImportModel,CloudPreset,Renderer,Changelog,Updates,Logs,RepairStartup,Report,FGPacing,FGCap,MotionSource};
+enum class Kind {Tab,Processing,Mode,FrameGen,NRField,Budget,Help,Close,Preset,Graphics,ApplyGraphics,OpenChoice,ChooseOption,CloseChoice,FGToggle,FGProvider,ImportModel,CloudPreset,Renderer,Changelog,Updates,Logs,RepairStartup,Report,FGPacing,FGCap,MotionSource,CpuScheduling};
 inline constexpr int contentTop=162, footerHeight=82, modelSetupHeight=96, sectionHeight=32, rowHeight=46;
 inline Rect footerNotice(int width,int height){return {28,height-78,width-56,51};}
 inline Rect footerGuidance(int width,int height){return {28,height-23,width-56,17};}
@@ -75,6 +76,11 @@ public:
         const std::string reasons(telemetry.pacingCheck+1,strnlen(telemetry.pacingCheck+1,sizeof(telemetry.pacingCheck)-1));
         if(telemetry.pacingCheck[0]=='1')return "Requirements look met. AMD's driver decides whether to pace frames.";
         return "Not available: "+reasons+".";
+    }
+    std::string cpuSchedulingSummary()const{
+        if(!sawStatus)return "Shown after the renderer starts.";
+        if(telemetry.cpuScheduling[0]!='1')return choices.cpuScheduling?"Helper selected; it starts after you restart X-Plane.":"Off. Windows decides which processor cores X-Plane uses.";
+        return std::string(telemetry.cpuScheduling+1,strnlen(telemetry.cpuScheduling+1,sizeof(telemetry.cpuScheduling)-1))+".";
     }
     std::string simSummary()const{
         if(simFrameMs<=0)return "X-Plane frame time not available.";
@@ -125,6 +131,7 @@ public:
         if(a.kind==Kind::FGPacing)return {std::begin(xpfsr::pacing::profileNames),std::end(xpfsr::pacing::profileNames)};
         if(a.kind==Kind::FGCap)return {std::begin(xpfsr::pacing::capNames),std::end(xpfsr::pacing::capNames)};
         if(a.kind==Kind::MotionSource)return {std::begin(motionSourceNames),std::end(motionSourceNames)};
+        if(a.kind==Kind::CpuScheduling)return {std::begin(cpuSchedulingNames),std::end(cpuSchedulingNames)};
         if(a.kind==Kind::CloudPreset)return {"Keep current choices","Cloud clarity - Ultra Quality source","Cloud clarity - Native AA source (highest cost)"};
         if(a.kind==Kind::Preset){std::vector<std::string> names{"Custom"};for(auto p:displayPresets)names.push_back(utf8(p->label));return names;}
         if(a.kind==Kind::NRField){std::vector<std::string> result;auto c=choices.nr;for(int i=settings[a.field].minimum;i<=settings[a.field].maximum;++i){c[Field(a.field)]=i;result.push_back(valueName(c,Field(a.field)));}return result;}
@@ -138,6 +145,7 @@ public:
         if(a.kind==Kind::FGPacing)return std::clamp(choices.fgPacing,0,2);
         if(a.kind==Kind::FGCap)return std::clamp(choices.fgCap,0,xpfsr::pacing::capCount-1);
         if(a.kind==Kind::MotionSource)return std::clamp(choices.motionSource,0,1);
+        if(a.kind==Kind::CpuScheduling)return std::clamp(choices.cpuScheduling,0,1);
         if(a.kind==Kind::CloudPreset)return 0;
         if(a.kind==Kind::NRField)return choices.nr[Field(a.field)]-settings[a.field].minimum;
         if(a.kind==Kind::Preset){for(size_t i=0;i<displayPresets.size();++i)if(choices.presetId==displayPresets[i]->id)return int(i)+1;return 0;}
@@ -215,6 +223,7 @@ public:
         if(action.kind==Kind::FGPacing)p.fgPacing=std::clamp(p.fgPacing+action.delta,0,2);
         if(action.kind==Kind::FGCap)p.fgCap=std::clamp(p.fgCap+action.delta,0,xpfsr::pacing::capCount-1);
         if(action.kind==Kind::MotionSource)p.motionSource=std::clamp(p.motionSource+action.delta,0,1);
+        if(action.kind==Kind::CpuScheduling)p.cpuScheduling=std::clamp(p.cpuScheduling+action.delta,0,1);
         if(action.kind==Kind::Budget)performanceProfile(p.nr,std::clamp(action.field,0,2));
         if(action.kind==Kind::CloudPreset){
             if(action.delta==0){notice="Cloud clarity choices unchanged.";return;}
@@ -256,6 +265,7 @@ public:
         if(action.kind==Kind::FGProvider)notice="Frame generation method saved. The new method applies after restarting X-Plane. The current method is retained for this flight.";
         if(action.kind==Kind::FGCap)notice=std::string("Frame rate cap saved: ")+xpfsr::pacing::capNames[std::clamp(choices.fgCap,0,xpfsr::pacing::capCount-1)]+". It limits real frames while frame generation runs, after you restart X-Plane.";
         if(action.kind==Kind::MotionSource)notice=choices.motionSource?"Motion source saved: Native (experimental). After you restart X-Plane, FSR uses X-Plane's own motion data when it can. It also works with MSAA, frame generation and the cockpit screen fix. If it cannot run, the normal motion is used and Diagnostics says why.":"Motion source saved: Camera. This is the normal motion. It applies after you restart X-Plane.";
+        if(action.kind==Kind::CpuScheduling)notice=choices.cpuScheduling?"CPU scheduling helper saved. After you restart X-Plane, Diagnostics shows what it changed. It only affects X-Plane, only while FSR runs, and is undone when X-Plane closes.":"CPU scheduling saved: Windows decides. This applies after you restart X-Plane.";
         if(action.kind==Kind::FGPacing)notice=std::string("Frame pacing saved: ")+xpfsr::pacing::profileNames[std::clamp(choices.fgPacing,0,2)]+". It applies the next time X-Plane starts with frame generation.";
         if(action.kind==Kind::Budget)notice=budgetSelectionMessage(action.field);
         if(action.kind==Kind::CloudPreset)notice="Cloud clarity setup saved: Maximum clouds with "+std::string(action.delta==1?"Ultra Quality input.":"full input and Native AA.")+" Select Apply graphics after exit, then restart. Higher source resolution costs GPU time; distant cloud detail remains limited by X-Plane's cloud pass.";
@@ -263,8 +273,8 @@ public:
     }
     int maxScroll(int height)const{
         if(!configured())return 0;
-        const int lengths[]={3*sectionHeight+12*rowHeight+68,2*sectionHeight+modelSetupHeight+Count*rowHeight,
-                             144+3*sectionHeight+62+61+48+75+75+75+48+75+75,3*sectionHeight+10*rowHeight+44};
+        const int lengths[]={3*sectionHeight+13*rowHeight+68,2*sectionHeight+modelSetupHeight+Count*rowHeight,
+                             144+3*sectionHeight+62+61+48+75+75+75+48+75+75+75,3*sectionHeight+10*rowHeight+44};
         return std::max(0,lengths[tab]+(tab==0&&needsStartupRepair()?44:0)+8-std::max(1,height-contentTop-footerHeight));
     }
     int maxDropdownScroll(int height)const{return std::max(0,int(choiceOptions(dropdown).size())*36-std::max(1,height-contentTop-footerHeight-68));}
@@ -275,7 +285,7 @@ public:
         if(f>=0&&f<Count)return utf8(settings[f].label);
         switch(f){case 100:return "MSAA";case 101:return "FXAA";case 102:return "Input detail";case 103:return "Output resolution";case 104:return "Menu size";case 105:return "FSR 3 trail reduction";
             case 106:return "Cockpit screen protection";case 107:return "Protection tint";case 108:return "Cloud quality";case 200:return "FSR mode";case 201:return "Frame generation";case 202:return "Resolution preset";
-            case 203:return "Import NR model";case 204:return "Cloud presets";case 205:return "Renderer";case 206:return "FSR processing";case 207:return "NR quick setting";case 208:return "Repair startup";case 209:return "Frame pacing";case 210:return "Frame rate cap";case 211:return "Motion source";default:return "Setting guide";}
+            case 203:return "Import NR model";case 204:return "Cloud presets";case 205:return "Renderer";case 206:return "FSR processing";case 207:return "NR quick setting";case 208:return "Repair startup";case 209:return "Frame pacing";case 210:return "Frame rate cap";case 211:return "Motion source";case 212:return "CPU scheduling";default:return "Setting guide";}
     }
     std::string helpText(int f)const{
         if(f==300)return changelogText();
@@ -299,6 +309,7 @@ public:
         if(f==208)return "Repair startup fixes the Windows link used to load this mod. Your image settings stay saved. Close X-Plane normally and reopen it after repair. It does not turn on an installation you disabled or switch away from another enabled installation. Use the installation package if files are missing.";
         if(f==209)return "Frame pacing decides when each real and generated picture is shown. Smooth uses AMD's default timing. Recover after heavy scenes gets your frame rate back sooner after busy airports or thick clouds, with slightly less even timing. Power saver lets the CPU rest instead of waiting in a busy loop. For the smoothest result, keep your real frame rate a little below half your monitor's refresh rate, use fullscreen or borderless, and turn VSync off with FreeSync on. Applies after restart.";
         if(f==211)return "Motion source decides how FSR learns which way each pixel moved. Camera is the normal choice and works with everything. Native (experimental) reads motion that X-Plane itself works out for its reflections. It knows which pixels belong to your own aircraft, so the cockpit and airframe can trail less when you turn or zoom. It works with MSAA, frame generation and the cockpit screen fix, and feeds all of them. If it cannot run on a frame, the normal motion is used and Diagnostics says why. It does not yet cover other traffic, propellers or clouds. Applies after restart.";
+        if(f==212)return "CPU scheduling (experimental) can help X-Plane run more steadily on some processors. On Intel processors with P-cores and E-cores, it keeps X-Plane on the faster P-cores. On Ryzen X3D processors with two chiplets, it keeps X-Plane on the chiplet with the extra cache. It also stops Windows from slowing X-Plane down to save power. It changes only X-Plane, only while FSR runs, and is undone when X-Plane closes. Other processors are left alone. Diagnostics shows what it did. Compare your frame times with it On and Off. It applies after restart.";
         if(f==210)return "Frame rate cap limits how many real frames X-Plane draws while frame generation runs. Frame generation is smoothest when real frames come at an even rate a little below half your monitor's refresh rate. Auto picks that for you (for example 71 FPS on a 144 Hz screen). Off lets X-Plane run free. Applies after restart.";
         if(f==206)return "Turn FSR image processing on or off during your flight. Off shows the current simulator picture without FSR processing. The FSR and frame-generation methods still need a restart when changed.";
         if(f==207)return "Choose a quick NR speed and detail setting. Performance uses a smaller model picture. Quality uses a larger one. Each uses one pass. Your lighting and color choices stay saved. Wait for the NR status to confirm the change.";
@@ -361,7 +372,7 @@ public:
             }
             const int help=kind==Kind::Renderer?205:kind==Kind::Processing?206:kind==Kind::NRField?field:
                 kind==Kind::Graphics?100+field:kind==Kind::CloudPreset?204:kind==Kind::Mode?200:
-                kind==Kind::FGToggle||kind==Kind::FGProvider?201:kind==Kind::FGPacing?209:kind==Kind::FGCap?210:kind==Kind::MotionSource?211:202;
+                kind==Kind::FGToggle||kind==Kind::FGProvider?201:kind==Kind::FGPacing?209:kind==Kind::FGCap?210:kind==Kind::MotionSource?211:kind==Kind::CpuScheduling?212:202;
             button({helpX,y+7,32,32},"?",{Kind::Help,help});
         };
         const char *next="After restart",*nrTiming=liveNR?"Live":next;
@@ -398,6 +409,7 @@ public:
             row("Frame generation method",fgNames[std::clamp(choices.lastFrameGeneration,1,4)],Kind::FGProvider,0,"");
             row("Frame pacing",xpfsr::pacing::profileNames[std::clamp(choices.fgPacing,0,2)],Kind::FGPacing,0,"");
             row("Frame rate cap",xpfsr::pacing::capNames[std::clamp(choices.fgCap,0,xpfsr::pacing::capCount-1)],Kind::FGCap,0,"");
+            row("CPU scheduling",cpuSchedulingNames[std::clamp(choices.cpuScheduling,0,1)],Kind::CpuScheduling,0,"");
             section("03   /   NEURAL RENDERING",nrTiming);
             row("Enable neural rendering",valueName(choices.nr,Enabled),Kind::NRField,Enabled,"");
             row("Where to use NR",valueName(choices.nr,Scope),Kind::NRField,Scope,"");
@@ -473,6 +485,7 @@ public:
             section("03   /   PERFORMANCE PER FRAME");
             info("This mod (CPU)",cpuSummary(),75);
             info("X-Plane",simSummary(),75);
+            info("CPU scheduling",cpuSchedulingSummary(),75);
         }
         out.erase(std::remove_if(out.begin(),out.end(),[&](const Item&i){
             const auto &r=i.rect;
