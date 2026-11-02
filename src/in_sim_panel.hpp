@@ -8,6 +8,7 @@
 #include "renderer_selection.hpp"
 #include "frame_pacing.hpp"
 #include <algorithm>
+#include <cstdio>
 #include <fstream>
 #include <functional>
 #include <sstream>
@@ -56,6 +57,24 @@ public:
     launcher::Preferences choices;
     xp_renderer::Choice rendererChoice{xp_renderer::Choice::fsr};
     app::Telemetry telemetry{};
+    // X-Plane's own frame period and approximate GPU time (seconds datarefs,
+    // read by the plugin); negative when unavailable.
+    float simFrameMs{-1},simGpuMs{-1};
+    // Plain-language per-frame CPU summary for Diagnostics (shared with tests).
+    std::string cpuSummary()const{
+        if(!sawStatus||!telemetry.frameIntervalUs)return "Waiting for frames. Shown after about 2 seconds of rendering.";
+        auto ms=[](double us){char b[32];snprintf(b,sizeof(b),"%.2f ms",us/1000.0);return std::string(b);};
+        std::string text="Mod work "+ms(telemetry.cpuWorkUs)+" - mod waits "+ms(telemetry.cpuWaitUs)+" - present call "+ms(telemetry.presentCallUs)+
+            " - frame "+ms(telemetry.frameIntervalUs);
+        return text+". Waits come from the frame rate cap and synchronized frame generation. The present call is the time spent handing the frame to the graphics driver.";
+    }
+    std::string simSummary()const{
+        if(simFrameMs<=0)return "X-Plane frame time not available.";
+        char b[160];
+        if(simGpuMs>0)snprintf(b,sizeof(b),"Frame %.1f ms (%.0f FPS) - GPU about %.1f ms. If the frame is much longer than GPU time, the CPU is the limit.",simFrameMs,1000.0/simFrameMs,simGpuMs);
+        else snprintf(b,sizeof(b),"Frame %.1f ms (%.0f FPS).",simFrameMs,1000.0/simFrameMs);
+        return b;
+    }
     int tab{},scroll{},helpField{-1},helpScroll{},pinnedHelp{-1};std::string notice,activity="PLUGIN LOADED - renderer not confirmed",nrStatus="NR status not available";
     bool dropdownOpen{};Action dropdown{Kind::Mode};int dropdownScroll{};
     bool modelImportBusy{};std::string modelImportStatus="Import your own nvngx_dlssnr.dll 310.9.16 or 310.8.0. Models are not included.";
@@ -237,7 +256,7 @@ public:
     int maxScroll(int height)const{
         if(!configured())return 0;
         const int lengths[]={3*sectionHeight+12*rowHeight+68,2*sectionHeight+modelSetupHeight+Count*rowHeight,
-                             144+2*sectionHeight+62+61+48+75+75+48,3*sectionHeight+10*rowHeight+44};
+                             144+3*sectionHeight+62+61+48+75+75+48+75+75,3*sectionHeight+10*rowHeight+44};
         return std::max(0,lengths[tab]+(tab==0&&needsStartupRepair()?44:0)+8-std::max(1,height-contentTop-footerHeight));
     }
     int maxDropdownScroll(int height)const{return std::max(0,int(choiceOptions(dropdown).size())*36-std::max(1,height-contentTop-footerHeight-68));}
@@ -442,6 +461,9 @@ public:
             info("Frame generation",frameGenerationStatus(),75);
             info("Neural rendering",nrStatus,75);
             info("Log location","X-Plane / Output / FSR-Logs. A fresh copy is also saved after exit.",48);
+            section("03   /   PERFORMANCE PER FRAME");
+            info("This mod (CPU)",cpuSummary(),75);
+            info("X-Plane",simSummary(),75);
         }
         out.erase(std::remove_if(out.begin(),out.end(),[&](const Item&i){
             const auto &r=i.rect;

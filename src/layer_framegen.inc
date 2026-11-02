@@ -451,7 +451,9 @@ static VkResult presentFrame(Device &d, VkQueue queue, const VkPresentInfoKHR *i
         auto proxy = generation->presentation->handle();
         auto present = *info;
         present.pSwapchains = &proxy;
+        const int64_t callStart = qpcNow();
         result = generation->presentation->functions.pOutQueuePresentKHR(queue, &present);
+        d.presentCallTicks += qpcNow() - callStart;
         {
             std::lock_guard<std::mutex> limiterGuard(d.fgLimiterLock);
             const bool arm = d.status.fgActive && d.fgLimiter.enabled();
@@ -481,8 +483,47 @@ static VkResult presentFrame(Device &d, VkQueue queue, const VkPresentInfoKHR *i
             }
         }
     } else
+    {
+        const int64_t callStart = qpcNow();
         result = native(queue, info);
+        d.presentCallTicks += qpcNow() - callStart;
+    }
     QueryPerformanceCounter(&presentEnd);
+    {
+        // Per-frame CPU timers: present bookkeeping is our work; the present
+        // call itself and the synchronized drain are reported separately.
+        const int64_t total = presentEnd.QuadPart - presentStart.QuadPart;
+        static thread_local int64_t lastCall = 0;
+        static thread_local uint64_t lastDrainNs = 0;
+        const int64_t call = d.presentCallTicks - lastCall;
+        const double drainNs = double(d.fgDrainNs - lastDrainNs);
+        lastCall = d.presentCallTicks;
+        lastDrainNs = d.fgDrainNs;
+        const double ownNs = qpcToNs(total - call) - drainNs;
+        if (ownNs > 0)
+            d.layerWorkTicks += int64_t(ownNs / std::max(1e-9, qpcToNs(1)));
+        ++d.cpuWindowPresents;
+        const int64_t now = presentEnd.QuadPart;
+        if (!d.cpuWindowStart) {
+            d.cpuWindowStart = now;
+            d.cpuWindowWork = d.layerWorkTicks.load();
+            d.cpuWindowCall = d.presentCallTicks;
+            d.cpuWindowWaitNs = d.fgLimiterWaitNs + d.fgDrainNs;
+            d.cpuWindowPresents = 0;
+        } else if (qpcToNs(now - d.cpuWindowStart) >= 2e9 && d.cpuWindowPresents) {
+            const double n = double(d.cpuWindowPresents);
+            const auto us = [&](double ns) { return uint32_t(std::min(ns / n / 1000.0, 4e9)); };
+            d.status.cpuWorkUs = us(qpcToNs(d.layerWorkTicks.load() - d.cpuWindowWork));
+            d.status.presentCallUs = us(qpcToNs(d.presentCallTicks - d.cpuWindowCall));
+            d.status.cpuWaitUs = us(double(d.fgLimiterWaitNs + d.fgDrainNs - d.cpuWindowWaitNs));
+            d.status.frameIntervalUs = us(qpcToNs(now - d.cpuWindowStart));
+            d.cpuWindowStart = now;
+            d.cpuWindowWork = d.layerWorkTicks.load();
+            d.cpuWindowCall = d.presentCallTicks;
+            d.cpuWindowWaitNs = d.fgLimiterWaitNs + d.fgDrainNs;
+            d.cpuWindowPresents = 0;
+        }
+    }
     {
         std::lock_guard<std::recursive_mutex> lock(d.lock);
         if (clockFrequency.QuadPart > 0) {
@@ -533,14 +574,16 @@ static VkResult presentFrame(Device &d, VkQueue queue, const VkPresentInfoKHR *i
         if (d.status.presents < 5 || d.status.presents % 500 == 0)
             log("Presentation counters: rendered=%llu FG-prepared=%llu generated=%llu "
                 "SDK-presents=%llu FG-active=%u cap-waits=%llu cap-wait-ms=%.1f "
-                "sync-drains=%llu sync-drain-avg-ms=%.2f sync-drain-max-ms=%.2f",
+                "sync-drains=%llu sync-drain-avg-ms=%.2f sync-drain-max-ms=%.2f "
+                "per-frame-us: mod-work=%u mod-waits=%u present-call=%u frame=%u",
                 (unsigned long long)d.status.presents, (unsigned long long)d.status.fgPrepared,
                 (unsigned long long)d.status.fgGenerated,
                 (unsigned long long)d.status.displayedPresents, d.status.fgActive,
                 (unsigned long long)d.fgLimiterWaits, double(d.fgLimiterWaitNs) / 1e6,
                 (unsigned long long)d.fgDrains,
                 d.fgDrains ? double(d.fgDrainNs) / 1e6 / double(d.fgDrains) : 0.0,
-                double(d.fgDrainMaxNs) / 1e6);
+                double(d.fgDrainMaxNs) / 1e6, d.status.cpuWorkUs, d.status.cpuWaitUs,
+                d.status.presentCallUs, d.status.frameIntervalUs);
         if (!d.enabled) {
             d.status.active = 0;
             d.publish("Disabled; native simulator upscaling active");

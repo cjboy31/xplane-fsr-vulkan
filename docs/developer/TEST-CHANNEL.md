@@ -77,6 +77,7 @@ access to this repository), because drafts are private.
 | 11 | Motion-quality capture: set `XPFSR24_MOTION_CAPTURE` to an empty folder, pan steadily, once with Camera and once with Native | `python tools/motion_quality.py <folder>` prints a gain for each region. Report both outputs. Clear the variable afterwards |
 | 12 | Motion survey (stage E groundwork): set `XPFSR24_MOTION_SURVEY=1`, fly 1 minute (cockpit + external, near traffic, props turning), then clear it | The log has `Motion survey:` lines and a `Motion survey summary:` line. Attach those lines |
 | 13 | Live-test fixes: (a) pin a help card, press Esc; (b) 2 minutes of straight airborne flight with FSR + FG; (c) the same 30 s ground pan with *FSR FG 4.0.2* and with *FSR FG 4.0.2 synchronized* | (a) The card closes and X-Plane's menu does not open; other keys still reach X-Plane. (b) Camera resets are rare in cruise (report the count, as in the last test). (c) Report source FPS for each and the log's `sync-drain-avg-ms` |
+| 14 | Diagnostics > **PERFORMANCE PER FRAME** in the same scene with: FSR only; FSR + FG (SDK paced); FSR + FG synchronized | *This mod (CPU)* and *X-Plane* lines show numbers within a few seconds. Report all four mod numbers and X-Plane's frame and GPU times for each. The log's `per-frame-us:` line should match |
 
 5. Collect `Output/FSR-Logs` (Diagnostics > Open log folder) and X-Plane's `Log.txt`.
 

@@ -81,7 +81,7 @@ buffer our layer works inside. Plan and validation rules:
 
 | P | Item | Why | Notes |
 | --- | --- | --- | --- |
-| P1 | Per-frame timers for the layer's own CPU work on X-Plane's render thread, shown in Diagnostics next to X-Plane's frame time | Measure before optimizing; answers the "CPU time much higher than GPU time" report | Separates capture, record, submit and waits |
+| P1 | Per-frame timers for the layer's own CPU work on X-Plane's render thread, shown in Diagnostics next to X-Plane's frame time | Measure before optimizing; answers the "CPU time much higher than GPU time" report | **In Test**: Diagnostics *PERFORMANCE PER FRAME* shows mod work, mod waits (FG drains), present call and frame interval (2 s averages, telemetry ABI 5) beside X-Plane's frame and GPU time; same numbers in the log (`per-frame-us:`). TEST-CHANNEL check 14 |
 | P2 | Move remaining mod CPU work off X-Plane's render thread (workers, pre-built descriptors) | Every ms we add there is sim frame time | Only where the P1 timers show it matters |
 | P2 | Opt-in CPU scheduling helper (Windows): keep X-Plane off E-cores on Intel hybrid and on the V-cache CCD of dual-CCD X3D; no power throttling | Steadier main-thread frame time on those CPUs | Off by default, restored at exit, measured per CPU type; little effect expected on single-CCD CPUs |
 | P2 | Pipeline/shader warm-up on a worker thread with a validated cache | Removes first-use hitches | Reject caches after driver changes |
@@ -101,8 +101,8 @@ buffer our layer works inside. Plan and validation rules:
 
 | P | Item | Notes |
 | --- | --- | --- |
-| P1 | Linux one-click installer that finds X-Plane via `~/.x-plane/x-plane_install_12.txt` | Mirror the Windows auto-detect |
-| P1 | Mac installer that clearly says "diagnostics only" and finds X-Plane via `~/Library/Preferences/x-plane_install_12.txt` | Never imply Mac rendering works |
+| P1 | Linux one-click installer that finds X-Plane via `~/.x-plane/x-plane_install_12.txt` | **In Test** on `experimental/native-platforms` (e95e3ab): launcher fills the folder when none is saved and labels it "found automatically" |
+| P1 | Mac installer that clearly says "diagnostics only" and finds X-Plane via `~/Library/Preferences/x-plane_install_12.txt` | **In Test** on the same branch: same detection; the Mac screen and guide still say diagnostics only |
 | P2 | Remove the retired intro-video code from the desktop updater | Deferred: it touches updater startup and five tests for little user benefit; do it with a Windows test run |
 | P2 | More panel motion: animated section reveal | Status lamp pulse shipped; keep `SPI_GETCLIENTAREAANIMATION` respected |
 

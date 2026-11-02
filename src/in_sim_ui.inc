@@ -182,6 +182,10 @@ static void setupPoll(){
         setupPollImport();
         setupPollRepair();
         setupPanel.refresh();app::Telemetry status{};if(shared&&app::readStatus(shared,status))setupPanel.observe(status,now);
+        {
+            static XPLMDataRef period=XPLMFindDataRef("sim/time/framerate_period"),gpu=XPLMFindDataRef("sim/time/gpu_time_per_frame_sec_approx");
+            setupPanel.simFrameMs=period?XPLMGetDataf(period)*1000.f:-1.f;setupPanel.simGpuMs=gpu?XPLMGetDataf(gpu)*1000.f:-1.f;
+        }
         if(!setupRoot.empty()&&app::validSessionToken(setupToken)){
             const auto folder=setupRoot/L"logs/reports";auto file=folder/(setupToken+L".status.txt");bool previous=false;
             if(!std::filesystem::exists(file)){file=folder/L"last-status.txt";previous=true;}

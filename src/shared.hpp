@@ -6,7 +6,7 @@
 #include <string>
 #include <windows.h>
 namespace app {
-constexpr uint32_t magic = 0x34524658, abi = 4;
+constexpr uint32_t magic = 0x34524658, abi = 5;
 struct Camera {
     uint64_t frame{}, ticks{};
     float reprojection[16]{}, inverseProjection[16]{};
@@ -28,6 +28,11 @@ struct Telemetry {
     uint64_t cockpitRecordings{};
     uint32_t cockpitActive{}, cockpitScreens{};
     char cockpitReason[160]{};
+    // v2 (ABI 5) per-frame CPU timers, averaged over about 2 s of presents:
+    // the layer's own work on X-Plane's render thread, its deliberate waits
+    // (frame cap, synchronized FG drain), time inside the present call
+    // (driver / SDK pacing) and the present-to-present interval. Microseconds.
+    uint32_t cpuWorkUs{}, cpuWaitUs{}, presentCallUs{}, frameIntervalUs{};
 };
 struct Shared {
     uint32_t tag{}, version{};
@@ -36,7 +41,7 @@ struct Shared {
     Telemetry status{};
 };
 inline std::wstring mappingName(DWORD process) {
-    return L"Local\\XPlaneFSR24_ABI4_" + std::to_wstring(process);
+    return L"Local\\XPlaneFSR24_ABI5_" + std::to_wstring(process);
 }
 inline bool readCamera(Shared *shared, Camera &result) {
     if (!shared || shared->tag != magic || shared->version != abi)

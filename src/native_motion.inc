@@ -142,6 +142,7 @@ void captureNativeMotion(Device &d, VkCommandBuffer cb, Command &command) {
     const bool msaa = role->second == ShaderRole::SsrSceneMsaa;
     if (role->second != ShaderRole::SsrScene2D && role->second != ShaderRole::SsrSceneArray && !msaa)
         return;
+    WorkTimer work{d.layerWorkTicks};
     // Initial experiment is deliberately constrained to one application graphics
     // queue and one-time primary command buffers. No cross-buffer resource guess.
     if (d.mode == Mode::Observe || d.groundCameraActive() || command.secondary ||

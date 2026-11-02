@@ -235,6 +235,19 @@ struct Command {
     std::vector<std::shared_ptr<MotionCapture>> motionCaptures; // pending fence submission
 };
 struct CpuCost {uint64_t calls{},microseconds{},maximum{};};
+// v2 per-frame CPU timers (P1 sim performance): cheap QPC scopes around the
+// layer's heavier work on X-Plane's render thread. Summed atomically.
+inline int64_t qpcNow() {LARGE_INTEGER c{};QueryPerformanceCounter(&c);return c.QuadPart;}
+inline double qpcToNs(int64_t ticks) {
+    static const double scale = [] {LARGE_INTEGER f{};QueryPerformanceFrequency(&f);return f.QuadPart ? 1e9 / double(f.QuadPart) : 0.0;}();
+    return double(ticks) * scale;
+}
+struct WorkTimer {
+    std::atomic<int64_t> &sum;
+    int64_t start = qpcNow();
+    explicit WorkTimer(std::atomic<int64_t> &target) : sum(target) {}
+    ~WorkTimer() { sum += qpcNow() - start; }
+};
 struct CpuScope {
     CpuCost &cost;std::chrono::steady_clock::time_point start=std::chrono::steady_clock::now();
     ~CpuScope(){auto us=uint64_t(std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now()-start).count());++cost.calls;cost.microseconds+=us;cost.maximum=std::max(cost.maximum,us);}
@@ -349,6 +362,9 @@ struct Device {
     // Synchronized compatibility FG drains every present on the CPU; measure it
     // so its cost to the real frame rate is visible in the session log.
     uint64_t fgDrains{}, fgDrainNs{}, fgDrainMaxNs{};
+    std::atomic<int64_t> layerWorkTicks{0};
+    int64_t presentCallTicks{}, cpuWindowStart{}, cpuWindowWork{}, cpuWindowCall{};
+    uint64_t cpuWindowPresents{}, cpuWindowWaitNs{};
     bool fgFailed{}, fgLiveEnabled = true, panelOpen{},fgResumeReset{};
     app::PanelPresenceChannel panelPresence;
     uint32_t fgQueueBase = UINT32_MAX;
@@ -944,6 +960,7 @@ void transition(Device &d, VkCommandBuffer cb, OwnedImage &image, VkImageLayout 
     image.value.layout = to;
 }
 void captureDepth(Device &d, VkCommandBuffer cb, Command &command) {
+    WorkTimer work{d.layerWorkTicks};
     if (!command.activeCaptureEligible || !command.activeDepth || !d.enabled || d.mode==Mode::Observe || d.runtimeFailed)
         return;
     if(d.shared&&!d.startup.observe(d.camera.frame,d.camera.milliseconds,GetTickCount64()))return;
@@ -1532,6 +1549,7 @@ bool replace(Device &d, VkCommandBuffer cb, Command &command) {
     if (pipeline == d.pipelines.end() || !pipeline->second)
         return false;
     CpuScope timing{d.interceptionCost};
+    WorkTimer work{d.layerWorkTicks};
     d.attach();
     app::Camera latest{};
     if (app::readCamera(d.shared, latest)) {
@@ -4336,6 +4354,7 @@ static VKAPI_ATTR VkResult VKAPI_CALL L_QueueSubmit(VkQueue queue, uint32_t coun
     auto result = fn(queue, count, submits, fence);
     if (result == VK_SUCCESS) {
         std::lock_guard<std::recursive_mutex> l(d->lock);
+        WorkTimer work{d->layerWorkTicks};
         std::vector<VkCommandBuffer> commands;
         for (uint32_t i = 0; i < count; ++i)
             for (uint32_t n = 0; n < submits[i].commandBufferCount; ++n)
@@ -4357,6 +4376,7 @@ static VKAPI_ATTR VkResult VKAPI_CALL L_QueueSubmit2(VkQueue queue, uint32_t cou
     auto result = fn(queue, count, submits, fence);
     if (result == VK_SUCCESS) {
         std::lock_guard<std::recursive_mutex> l(d->lock);
+        WorkTimer work{d->layerWorkTicks};
         std::vector<VkCommandBuffer> commands;
         for (uint32_t i = 0; i < count; ++i)
             for (uint32_t n = 0; n < submits[i].commandBufferInfoCount; ++n)
