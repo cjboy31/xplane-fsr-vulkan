@@ -42,6 +42,7 @@ inline std::string prepareSessionProfile(const std::filesystem::path &root,const
         <<" motion_source="<<(!native&&mode&&p.motionSource==1?"native-renderer":"camera")
         <<" cpu_scheduling="<<(!native&&p.cpuScheduling==1?"helper":"windows")
         <<" anti_lag="<<(!native&&mode&&p.antiLag==1?"on":"off")
+        <<" fg_gpu="<<(!native&&fg&&p.fgGpu==1?"second":"same")
         <<" texture_bias="<<(!native&&mode?std::clamp(p.textureBias,0,2):0);
     auto token=session::prepare(root/L"logs",choices.str());
     channel.close();
@@ -72,6 +73,8 @@ inline std::string prepareSessionProfile(const std::filesystem::path &root,const
     setEnvironment(L"XPFSR24_CPU_SCHEDULING",!native&&p.cpuScheduling==1?L"1":L"");
     // Opt-in AMD Anti-Lag 2; only an FSR session with the layer active uses it.
     setEnvironment(L"XPFSR24_ANTI_LAG",!native&&mode&&p.antiLag==1?L"1":L"");
+    // v2 two-GPU frame generation (monitor on the second GPU); FG sessions only.
+    setEnvironment(L"XPFSR24_FG_GPU",!native&&fg&&p.fgGpu==1?L"second":L"");
     // Opt-in texture detail bias; only an FSR session (which replaces X-Plane's FSR) uses it.
     setEnvironment(L"XPFSR24_LOD_BIAS",!native&&mode&&p.textureBias>0?std::to_wstring(std::clamp(p.textureBias,1,2)):L"");
     setEnvironment(L"XPFSR24_MODE",mode==1||mode==3?L"native-aa":mode==2||mode==4?L"upscale":L"observe");

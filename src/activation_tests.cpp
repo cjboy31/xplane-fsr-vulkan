@@ -132,6 +132,10 @@ int wmain(int argc,wchar_t **argv){try{
      auto helper=p;helper.cpuScheduling=1;xpfsr::nr::ControlChannel helperChannel;app::prepareSessionProfile(root,helper,helperChannel);
      check(app::environment(L"XPFSR24_CPU_SCHEDULING")==L"1","CPU scheduling choice not passed to the renderer");
      app::prepareSessionProfile(root,helper,helperChannel,true);check(app::environment(L"XPFSR24_CPU_SCHEDULING").empty(),"Native comparison session kept the CPU helper");}
+    {check(app::environment(L"XPFSR24_FG_GPU").empty(),"Second-GPU FG must be off by default");
+     auto two=p;two.fgGpu=1;xpfsr::nr::ControlChannel twoChannel;app::prepareSessionProfile(root,two,twoChannel);
+     check(app::environment(L"XPFSR24_FG_GPU")==(app::effectiveFrameGeneration(two.frameGeneration)?std::wstring(L"second"):std::wstring()),"Second-GPU FG not passed to an FG session");
+     app::prepareSessionProfile(root,two,twoChannel,true);check(app::environment(L"XPFSR24_FG_GPU").empty(),"Native comparison session kept second-GPU FG");}
     {check(app::environment(L"XPFSR24_LOD_BIAS").empty(),"Texture detail must be X-Plane's own by default");
      auto bias=p;bias.textureBias=2;xpfsr::nr::ControlChannel biasChannel;app::prepareSessionProfile(root,bias,biasChannel);
      check(app::environment(L"XPFSR24_LOD_BIAS")==(bias.mode?std::wstring(L"2"):std::wstring()),"Texture detail not passed to an FSR session");

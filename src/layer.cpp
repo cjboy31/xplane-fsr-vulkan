@@ -70,11 +70,13 @@ bool hostActive(){
     return activation.active;
 }
 thread_local unsigned sdkNesting = 0;
+thread_local bool creatingPrivateDevice = false;  // set by dual_gpu.inc around its own vkCreateDevice
 struct SdkScope {
     SdkScope() { ++sdkNesting; }
     ~SdkScope() { --sdkNesting; }
 };
 #include "nr_layer.inc"
+struct DualSwapchain;  // dual_gpu.inc: frame generation on a second GPU
 struct SwapchainGeneration {
     std::shared_ptr<xpfsr::Presentation> presentation;
     uint32_t width{}, height{};
@@ -395,6 +397,10 @@ struct Device {
     }
     std::set<VkSwapchainKHR> nativeSwapchains;
     std::shared_ptr<SwapchainGeneration> fgCurrent;
+    // v2 (P3) two-GPU frame generation: X-Plane's swapchains that we made virtual.
+    std::map<VkSwapchainKHR, std::shared_ptr<DualSwapchain>> duals;
+    std::shared_ptr<DualSwapchain> dualCurrent;
+    bool dualFailed{};
     std::unique_ptr<xpfsr::FrameGenerator> frameGenerator;
     uint64_t fgIssuedLease{},fgPreparedLease{},fgCompletedLease{};
     std::array<uint32_t, 6> fgKey{};
@@ -518,6 +524,11 @@ std::mutex registryLock;
 std::map<void *, std::shared_ptr<Instance>> instances;
 std::map<void *, std::shared_ptr<Device>> devices;
 std::map<void *, PFN_vkGetDeviceProcAddr> passiveDevices;
+// A device we pass through untouched inside an active host (the second-GPU device).
+bool passiveDevice(VkDevice device) {
+    std::lock_guard<std::mutex> lock(registryLock);
+    return passiveDevices.count(key(device)) != 0;
+}
 std::shared_ptr<Instance> instanceFor(VkInstance i) {
     std::lock_guard<std::mutex> l(registryLock);
     auto p = instances.find(key(i));
@@ -1327,11 +1338,17 @@ void stopGenerator(Device &d) {
     d.fgSequence = {};
     d.status.fgActive = 0;
 }
+#include "dual_gpu.inc"
 void prepareGeneration(Device &d, VkCommandBuffer cb, Command &command, const xpfsr::Frame &frame,
                        uint32_t rw, uint32_t rh, uint32_t ow, uint32_t oh) {
     if (d.fgRequested.empty() || d.fgFailed)return;
     if(!d.fgLiveEnabled){strncpy(d.status.fgReason,"FG Off - live switch disabled",159);return;}
     if(d.panelOpen){strncpy(d.status.fgReason,"FG paused while in-sim setup is visible; selection retained",159);return;}
+    if(d.dualCurrent){
+        // Two-GPU FG: the second GPU generates; capture this frame's guides.
+        if(d.startup.ready&&command.resources)dualCaptureGuides(d,*d.dualCurrent,cb,*command.resources,frame);
+        return;
+    }
     if(!d.fgCurrent){strncpy(d.status.fgReason,"FG waiting for a compatible presentation surface",159);return;}
     if(!d.startup.ready){
         strncpy(d.status.fgReason,"FG waiting for initial scene stabilization; real frames presented",159);
@@ -2352,7 +2369,9 @@ static VKAPI_ATTR VkResult VKAPI_CALL L_CreateDevice(VkPhysicalDevice physical,
     link->u.pLayerInfo = link->u.pLayerInfo->pNext;
     auto create =
         reinterpret_cast<PFN_vkCreateDevice>(nextInstance(instance->handle, "vkCreateDevice"));
-    if(!hostActive()){
+    if(!hostActive()||creatingPrivateDevice){
+        // creatingPrivateDevice: the two-GPU module's own device on the second
+        // GPU is passed through untouched (no hooks, no feature changes).
         auto result=create(physical,ci,allocator,out);
         if(result==VK_SUCCESS){std::lock_guard<std::mutex> lock(registryLock);passiveDevices[key(*out)]=next;}
         return result;
@@ -2733,7 +2752,7 @@ static VKAPI_ATTR VkResult VKAPI_CALL L_CreateDevice(VkPhysicalDevice physical,
 }
 static VKAPI_ATTR void VKAPI_CALL L_DestroyDevice(VkDevice device,
                                                   const VkAllocationCallbacks *allocator) {
-    if(!hostActive()){
+    if(!hostActive()||passiveDevice(device)){
         PFN_vkGetDeviceProcAddr next{};
         {std::lock_guard<std::mutex> lock(registryLock);auto p=passiveDevices.find(key(device));if(p!=passiveDevices.end()){next=p->second;passiveDevices.erase(p);}}
         if(next)reinterpret_cast<PFN_vkDestroyDevice>(next(device,"vkDestroyDevice"))(device,allocator);
@@ -2742,6 +2761,8 @@ static VKAPI_ATTR void VKAPI_CALL L_DestroyDevice(VkDevice device,
     auto d = deviceFor(device);
     if (!d)
         return;
+    for (auto &entry : d->duals) dualDestroy(*d, *entry.second);
+    d->dualCurrent.reset();d->duals.clear();
     d->files.stop(); // file worker never calls Vulkan or takes the device lock
     d->neural.join();
     d->fn<PFN_vkDeviceWaitIdle>("vkDeviceWaitIdle")(device);
@@ -4508,6 +4529,16 @@ static void antiLagMark(Device &d, VkAntiLagStageAMD stage) {
 }
 static VKAPI_ATTR VkResult VKAPI_CALL L_QueuePresentKHR(VkQueue queue, const VkPresentInfoKHR *c) {
     auto &d = *deviceFor(queue);
+    if (!sdkNesting && c && c->swapchainCount == 1) {
+        std::lock_guard<std::recursive_mutex> lock(d.lock);
+        auto dual = d.duals.find(c->pSwapchains[0]);
+        if (dual != d.duals.end()) {
+            const auto r = dual->second == d.dualCurrent ? dualPresent(d, *dual->second, queue, *c, c->pImageIndices[0]) : VK_ERROR_OUT_OF_DATE_KHR;
+            if (c->pResults) c->pResults[0] = r;
+            if (d.antiLagUpdate) {++d.antiLagFrame;antiLagMark(d, VK_ANTI_LAG_STAGE_INPUT_AMD);}
+            return r;
+        }
+    }
     const bool real = d.antiLagUpdate && !sdkNesting && !(!d.fgRequested.empty() && d.fgQueues[0] && queue != d.fgQueues[0]);
     if (real) antiLagMark(d, VK_ANTI_LAG_STAGE_PRESENT_AMD);
     const auto result = presentFrame(d, queue, c);
@@ -4527,7 +4558,7 @@ extern "C" __declspec(dllexport) VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL
 XP_GetDeviceProcAddr(VkDevice device, const char *name) {
     if (!name)
         return nullptr;
-    if(!hostActive()){
+    if(!hostActive()||passiveDevice(device)){
         if(!strcmp(name,"vkGetDeviceProcAddr"))return reinterpret_cast<PFN_vkVoidFunction>(XP_GetDeviceProcAddr);
         if(!strcmp(name,"vkDestroyDevice"))return reinterpret_cast<PFN_vkVoidFunction>(L_DestroyDevice);
         PFN_vkGetDeviceProcAddr next{};

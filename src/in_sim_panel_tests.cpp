@@ -147,6 +147,10 @@ int wmain(int argc,wchar_t**argv){try{
      panel.act({insim::Kind::CpuScheduling,0,5});check(panel.choices.cpuScheduling==1,"CPU scheduling not clamped");
      check(panel.helpTitle(212)=="CPU scheduling"&&panel.helpText(212).find("P-cores")!=std::string::npos&&panel.helpText(212).find("X3D")!=std::string::npos,"CPU scheduling help missing");
      check(panel.cpuSchedulingSummary().find("restart")!=std::string::npos||panel.cpuSchedulingSummary().find("after the renderer")!=std::string::npos,"CPU scheduling summary before a session");
+     check(panel.choices.fgGpu==0,"Frame generation GPU must default to the same GPU");
+     panel.act({insim::Kind::FGGpu,0,1});check(panel.choices.fgGpu==1&&launcher::load(file).fgGpu==1&&panel.notice.find("monitor")!=std::string::npos,"Second-GPU FG not saved");
+     check(panel.helpTitle(216)=="Frame generation GPU"&&panel.helpText(216).find("second")!=std::string::npos,"Frame generation GPU help missing");
+     panel.act({insim::Kind::FGGpu,0,-1});check(panel.choices.fgGpu==0,"Frame generation GPU could not return to same");
      check(panel.choices.textureBias==0,"Texture detail must default to X-Plane's own");
      panel.act({insim::Kind::TextureBias,0,2});check(panel.choices.textureBias==2&&launcher::load(file).textureBias==2,"Texture detail not saved");
      panel.act({insim::Kind::TextureBias,0,5});check(panel.choices.textureBias==2,"Texture detail not clamped");

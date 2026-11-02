@@ -183,6 +183,27 @@ static VKAPI_ATTR VkResult VKAPI_CALL L_CreateSwapchainKHR(VkDevice device,
         info->presentMode,
         info->pNext ? int(static_cast<const VkBaseInStructure *>(info->pNext)->sType) : 0,
         info->imageUsage, d->fgRequested.c_str());
+    // v2 two-GPU FG: X-Plane's swapchain becomes virtual; the second GPU presents.
+    if (info->oldSwapchain) {
+        auto old = d->duals.find(info->oldSwapchain);
+        if (old != d->duals.end() && old->second == d->dualCurrent) {
+            // Only one swapchain per window: close the old second-GPU side first.
+            // Its virtual images stay valid until X-Plane destroys the old swapchain.
+            dualCloseSecond(*d, *old->second);d->dualCurrent.reset();
+        }
+    }
+    if (dualRequested(*d) && !d->dualFailed && !allocator && !d->fgCurrent) {
+        try {
+            auto dual = dualCreate(*d, *info);
+            *output = reinterpret_cast<VkSwapchainKHR>(dual.get());
+            d->duals[*output] = dual;d->dualCurrent = dual;
+            return VK_SUCCESS;
+        } catch (const std::exception &e) {
+            d->dualFailed = true;
+            snprintf(d->status.fgReason, sizeof(d->status.fgReason), "Two-GPU FG unavailable: %s", e.what());
+            log("Two-GPU FG unavailable, using this GPU instead: %s", e.what());
+        }
+    }
     auto previous = d->findFGSwapchain(info->oldSwapchain);
     try {
         if (previous) {
@@ -264,6 +285,16 @@ static VKAPI_ATTR void VKAPI_CALL L_DestroySwapchainKHR(VkDevice device, VkSwapc
         d->fn<PFN_vkDestroySwapchainKHR>("vkDestroySwapchainKHR")(device, swapchain, allocator);
         return;
     }
+    {
+        std::lock_guard<std::recursive_mutex> lock(d->lock);
+        auto dual = d->duals.find(swapchain);
+        if (dual != d->duals.end()) {
+            if (dual->second == d->dualCurrent) {dualDestroy(*d, *dual->second);d->dualCurrent.reset();}
+            else dualReleaseFirst(*d, *dual->second);  // retired: second GPU already closed
+            d->duals.erase(dual);
+            return;
+        }
+    }
     std::shared_ptr<SwapchainGeneration> generation;
     {
         std::lock_guard<std::recursive_mutex> lock(d->lock);
@@ -287,6 +318,11 @@ static VKAPI_ATTR VkResult VKAPI_CALL L_GetSwapchainImagesKHR(VkDevice device,
                                                               VkSwapchainKHR swapchain,
                                                               uint32_t *count, VkImage *images) {
     auto d = deviceFor(device);
+    {
+        std::lock_guard<std::recursive_mutex> lock(d->lock);
+        auto dual = d->duals.find(swapchain);
+        if (dual != d->duals.end()) return dualImages(*dual->second, count, images);
+    }
     auto generation=d->findFGSwapchain(swapchain);
     if (generation) {
         SdkScope sdk;
@@ -307,6 +343,12 @@ static VKAPI_ATTR VkResult VKAPI_CALL L_AcquireNextImageKHR(VkDevice device,
                                                             uint64_t timeout, VkSemaphore semaphore,
                                                             VkFence fence, uint32_t *index) {
     auto d = deviceFor(device);
+    {
+        std::lock_guard<std::recursive_mutex> lock(d->lock);
+        auto dual = d->duals.find(swapchain);
+        if (dual != d->duals.end())
+            return dual->second == d->dualCurrent ? dualAcquire(*d, *dual->second, timeout, semaphore, fence, index) : VK_ERROR_OUT_OF_DATE_KHR;
+    }
     auto generation=d->findFGSwapchain(swapchain);
     if (generation) {
         SdkScope sdk;
@@ -325,6 +367,11 @@ static VKAPI_ATTR VkResult VKAPI_CALL L_AcquireNextImage2KHR(VkDevice device,
                                                              const VkAcquireNextImageInfoKHR *info,
                                                              uint32_t *index) {
     auto d = deviceFor(device);
+    {
+        std::lock_guard<std::recursive_mutex> lock(d->lock);
+        if (d->duals.count(info->swapchain))
+            return L_AcquireNextImageKHR(device, info->swapchain, info->timeout, info->semaphore, info->fence, index);
+    }
     auto generation=d->findFGSwapchain(info->swapchain);
     if (generation) {
             if (info->deviceMask != 1 || info->pNext)
@@ -341,6 +388,7 @@ static VKAPI_ATTR void VKAPI_CALL L_SetHdrMetadataEXT(VkDevice device, uint32_t 
                                                       const VkHdrMetadataEXT *metadata) {
     auto d = deviceFor(device);
     for (uint32_t i = 0; i < count; ++i) {
+        {std::lock_guard<std::recursive_mutex> lock(d->lock);if (d->duals.count(chains[i])) continue;}  // two-GPU: no HDR yet
         auto generation=d->findFGSwapchain(chains[i]);
         if (generation) {
             SdkScope sdk;
