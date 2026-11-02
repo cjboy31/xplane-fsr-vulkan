@@ -1,0 +1,133 @@
+// SPDX-License-Identifier: MIT
+// Scene SSR reconstruction adapted from JonathanOrr/xplane-fsr3 inputs.comp.
+// Copyright (c) 2026 JonathanOrr. MIT notice: licenses/xplane-fsr3-MIT.txt (FSR mod),
+// third_party/xplane-fsr3/LICENSE.txt (Native AA).
+#version 450
+#extension GL_EXT_samplerless_texture_functions : require
+#extension GL_GOOGLE_include_directive : require
+// Output follows the shared motion contract v1 (motion_contract.glsl/.hpp).
+#include "motion_contract.glsl"
+#ifdef HISTORY_UPDATE
+layout(local_size_x=1) in;
+#else
+layout(local_size_x=8,local_size_y=8) in;
+#endif
+// Binding plan. The FSR mod copies X-Plane's SSR inputs into its own set 0.
+// Native AA (XPLANE_SET=1) binds X-Plane's own SSR descriptor set unchanged as
+// set 0 (the bindings its SSR shader uses) and puts its outputs in set 1, so
+// it needs no descriptor-content tracking. This file is shared by both mods.
+#if XPLANE_SET
+#define B_POS 3
+#define B_VEL 4
+#define B_GB 11
+#define B_SSR 12
+#define OUT_SET 1
+#define B_DEPTH 0
+#define B_MOTION 1
+#define B_REACTIVE 2
+#define B_HISTORY 3
+#else
+#define B_POS 0
+#define B_VEL 1
+#define B_GB 2
+#define B_SSR 3
+#define OUT_SET 0
+#define B_DEPTH 4
+#define B_MOTION 5
+#define B_REACTIVE 6
+#define B_HISTORY 7
+#endif
+#if INPUT_MS
+// v2 stage D: X-Plane's MSAA scene SSR inputs. Original sample selection below.
+layout(set=0,binding=B_POS) uniform texture2DMS gbuffer_pos;
+layout(set=0,binding=B_VEL) uniform utexture2DMS gbuffer_vel;
+#elif INPUT_ARRAY
+layout(set=0,binding=B_POS) uniform texture2DArray gbuffer_pos;
+layout(set=0,binding=B_VEL) uniform utexture2DArray gbuffer_vel;
+#define FETCH(t,p) texelFetch(t,ivec3(p,0),0)
+#else
+layout(set=0,binding=B_POS) uniform texture2D gbuffer_pos;
+layout(set=0,binding=B_VEL) uniform utexture2D gbuffer_vel;
+#define FETCH(t,p) texelFetch(t,p,0)
+#endif
+layout(set=0,binding=B_GB,std140) uniform GBufferData {
+    layout(offset=0) vec4 u_viewport_size;
+    layout(offset=16) vec4 u_gbuffer_size;
+    layout(offset=32) vec4 u_proj_coefficients[2];
+    layout(offset=64) vec4 u_clip_info[2];
+    layout(offset=96) vec2 u_sample_offset;
+    layout(offset=112) mat4 u_head_to_eye[2];
+} g;
+layout(set=0,binding=B_SSR,std140) uniform SsrData {
+    layout(offset=0) mat4 u_proj[2];
+    layout(offset=128) mat4 u_reproj[2];
+    layout(offset=256) mat4 u_local_reproj[2];
+} s;
+layout(set=OUT_SET,binding=B_DEPTH,r32f) writeonly uniform image2D depthOut;
+layout(set=OUT_SET,binding=B_MOTION,rg16f) writeonly uniform image2D motionOut;
+layout(set=OUT_SET,binding=B_REACTIVE,r8) writeonly uniform image2D reactiveOut;
+layout(set=OUT_SET,binding=B_HISTORY,std430) buffer History { mat4 projection; uvec4 info; } h;
+layout(push_constant) uniform Push {
+    ivec2 size;
+    vec2 jitter;
+    uint frame;
+    uint reset;
+    uint reduceGhosting;
+    uint reserved;
+} pc;
+bool invalid(vec4 v) { return any(isnan(v)) || any(isinf(v)); }
+void main() {
+#ifdef HISTORY_UPDATE
+    // Separate dispatch: every input invocation finishes reading the old
+    // projection before it is replaced. No per-pixel atomic counters/readback.
+    h.projection=s.u_proj[0];
+    h.info=uvec4(pc.size,pc.frame,1u);
+#else
+    ivec2 p=ivec2(gl_GlobalInvocationID.xy);
+    if(any(greaterThanEqual(p,pc.size))) return;
+#if INPUT_MS
+    // Nearest covered geometry across samples (reversed Z: larger is closer),
+    // never an average of unrelated surfaces; its own aircraft flag goes with it.
+    // Same rule as the camera path's MSAA depth resolve.
+    float d=-1.0;uint flags=0u; // stays -1 (invalid) when no sample is valid
+    for(int i=0;i<textureSamples(gbuffer_pos);++i){
+        float z=texelFetch(gbuffer_pos,p,i).x;
+        if(isnan(z)||isinf(z)||z<0.0||z>1.0)continue;
+        if(z>=d){d=z;flags=texelFetch(gbuffer_vel,p,i).x;}
+    }
+#else
+    float d=FETCH(gbuffer_pos,p).x;
+    uint flags=FETCH(gbuffer_vel,p).x;
+#endif
+    bool bad=isnan(d)||isinf(d)||d<0.0||d>1.0;
+    bool sky=d==0.0;
+    bool local=(flags&4u)!=0u && !sky;
+    bool history=pc.reset==0u && h.info.w==1u &&
+        all(equal(h.info.xy,uvec2(pc.size))) && pc.frame>h.info.z && pc.frame-h.info.z<16u;
+    vec2 ray=(vec2(p)+0.5-pc.jitter)*g.u_viewport_size.zw*g.u_proj_coefficients[0].xy+
+        g.u_proj_coefficients[0].zw;
+    vec4 ci=g.u_clip_info[0];
+    float denominator=d*ci.z+ci.w;
+    float z=sky?-1.0:(d*ci.x+ci.y)/denominator;
+    vec4 view=sky?vec4(ray,-1.0,0.0):vec4(ray*-z,z,1.0);
+    vec4 current=s.u_proj[0]*view;
+    mat4 reproj=local?s.u_local_reproj[0]:s.u_reproj[0];
+    vec4 previous=(history?h.projection:s.u_proj[0])*(reproj*view);
+    bad=bad||(!sky && (abs(denominator)<1e-12||z>=0.0))||invalid(view)||
+        invalid(current)||invalid(previous)||current.w<=1e-7||previous.w<=1e-7||
+        any(greaterThan(abs(g.u_viewport_size.xy-vec2(pc.size)),vec2(1.0)));
+    vec2 motion=vec2(0.0);
+    if(!bad && history) motion=(previous.xy/previous.w-current.xy/current.w)*0.5*vec2(pc.size);
+    if(xpm_motion_invalid(motion,vec2(pc.size))) {
+        motion=vec2(0.0); bad=true;
+    }
+    // The SSR aircraft flag replaces the camera path's 4 m cabin heuristic.
+    float reactive=local?XPM_REACTIVE_RIGID_CABIN:0.0;
+    if(pc.reduceGhosting!=0u)
+        reactive=max(reactive,sky?XPM_REACTIVE_SKY_GHOSTING:local?XPM_REACTIVE_CABIN_GHOSTING:0.0);
+    if(bad||!history) reactive=XPM_REACTIVE_INVALID;
+    imageStore(depthOut,p,vec4(bad?0.0:d));
+    imageStore(motionOut,p,vec4(xpm_store(motion),0,0));
+    imageStore(reactiveOut,p,vec4(reactive));
+#endif
+}

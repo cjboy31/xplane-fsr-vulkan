@@ -6,6 +6,7 @@
 #include "shared.hpp"
 #include "ground_camera.hpp"
 #include "nr_controls.hpp"
+#include "test_layer_identity.hpp"
 #include <fstream>
 static std::vector<uint32_t> loadSpv(const wchar_t *path) {
     FILE *f = _wfopen(path, L"rb");
@@ -19,6 +20,7 @@ static std::vector<uint32_t> loadSpv(const wchar_t *path) {
     fclose(f);
     return result;
 }
+#include "native_ssr_fixture.hpp"
 int wmain(int argc, wchar_t **argv) {
     std::cout.setf(std::ios::unitbuf);
     try {
@@ -63,8 +65,19 @@ int wmain(int argc, wchar_t **argv) {
         shared->tag = app::magic;
         shared->version = app::abi;
         shared->enabled = 1;
+        // Native renderer motion fixture: native-2d / native-array record a stand-in
+        // for X-Plane's SSR pass; native-missing selects the source without one.
+        const bool nativeMotion = argc > 6 && (std::wstring(argv[6]) == L"native-2d" ||
+                                               std::wstring(argv[6]) == L"native-array" ||
+                                               std::wstring(argv[6]) == L"native-missing");
+        const bool missingNative = nativeMotion && std::wstring(argv[6]) == L"native-missing";
+        const bool nativeArray = nativeMotion && std::wstring(argv[6]) == L"native-array";
+        SetEnvironmentVariableW(L"XPFSR24_MOTION", nativeMotion ? L"native-renderer" : nullptr);
+        if (nativeMotion)
+            SetEnvironmentVariableW(L"XPFSR24_COCKPIT_RESTORE", L"0");
         Vulkan vk;
         vk.open();
+        fixture::verifyLayerIdentity();
         GpuImage finalColor(vk), auxColor(vk), auxDepth(vk), sceneColor(vk), color(vk), output(vk),
             depth(vk), msaaColor(vk);
         finalColor.create(OW, OH, VK_FORMAT_R16G16B16A16_SFLOAT);
@@ -92,7 +105,8 @@ int wmain(int argc, wchar_t **argv) {
             dc.samples = count;
             dc.tiling = VK_IMAGE_TILING_OPTIMAL;
             dc.usage = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT |
-                       VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+                       VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT |
+                       (nativeMotion ? VK_IMAGE_USAGE_SAMPLED_BIT : 0);
             vkcheck(vk.dev<PFN_vkCreateImage>("vkCreateImage")(vk.device, &dc, nullptr,
                                                                &depth.value.handle),
                     "Test depth image");
@@ -110,6 +124,13 @@ int wmain(int argc, wchar_t **argv) {
         };
         createDepth(depth, samples);
         createDepth(auxDepth);
+        std::unique_ptr<NativeSsrFixture> nativeSsr;
+        if (nativeMotion)
+            nativeSsr = std::make_unique<NativeSsrFixture>(
+                vk, depth.value.handle, nativeArray,
+                std::filesystem::path(argv[2]).parent_path() /
+                    (nativeArray ? L"native-motion-fixture-1.spv"
+                                 : L"native-motion-fixture-0.spv"));
         auto view = [&](VkImage image, VkFormat format, VkImageAspectFlags aspect,
                         VkImageViewType type) {
             VkImageView result{};
@@ -407,7 +428,17 @@ int wmain(int argc, wchar_t **argv) {
                 nullptr, 0, nullptr, 1, &b);
             image.value.layout = target;
         };
-        for (uint64_t frame = 1; frame <= (nrOrder?3000:18); ++frame) {
+        // Exercise the production startup gate instead of disabling it for tests.
+        // Forty coherent samples over four seconds precede the numbered cases.
+        uint64_t warmupRecordings = 0;
+        const uint64_t warmupStart = GetTickCount64();
+        // The FSR context is prepared on a worker thread (v2), so warm-up lasts
+        // until it is ready (bounded); every later count is unchanged.
+        uint64_t warmupFrames = 40;
+        for (uint64_t sourceFrame = 1; sourceFrame <= warmupFrames+(nrOrder?3000:18); ++sourceFrame) {
+            const bool warming = sourceFrame <= warmupFrames;
+            const uint64_t frame = warming ? 0 : sourceFrame - warmupFrames;
+            if (warming) Sleep(100);
             InterlockedExchange(&shared->enabled, !nrOrder&&(frame == 9 || frame == 10) ? 0 : 1);
             app::Camera camera{};
             camera.valid = 1;
@@ -415,7 +446,7 @@ int wmain(int argc, wchar_t **argv) {
             camera.bodyValid = 1;
             for (int i = 0; i < 16; ++i)
                 camera.bodyReprojection[i] = (i % 5) == 0;
-            camera.frame = frame;
+            camera.frame = sourceFrame;
             camera.width = OW;
             camera.height = OH;
             camera.nearPlane = .1f;
@@ -606,6 +637,8 @@ int wmain(int argc, wchar_t **argv) {
                     vk.dev<PFN_vkCmdResolveImage2>("vkCmdResolveImage2")(cb, &info);
                 }
             }
+            if (nativeSsr && !missingNative)
+                nativeSsr->record(cb, depth);
             barrier(depth, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_ASPECT_DEPTH_BIT);
             VkClearDepthStencilValue discardedDepth{0, 0};
             VkImageSubresourceRange discardedRange{VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, 0, 1};
@@ -669,7 +702,7 @@ int wmain(int argc, wchar_t **argv) {
                     "Map output");
             auto *pixel = static_cast<uint16_t *>(mapped) + ((OH / 2) * OW + OW / 2) * 4;
             float rgb[] = {half(pixel[0]), half(pixel[1]), half(pixel[2])};
-            if (!nrOrder && frame == 18 && nativeAA) {
+            if (!nrOrder && frame == 18 && nativeAA && !missingNative) {
                 double rawError = 0, aaError = 0;
                 unsigned samples = 0;
                 auto *image = static_cast<uint16_t *>(mapped);
@@ -700,6 +733,21 @@ int wmain(int argc, wchar_t **argv) {
                         std::abs(rgb[2] - .6f) < .05f,
                     "Layer output readback differs");
             app::Telemetry status{};
+            if(warming){
+                require(app::readStatus(shared,status),"Startup telemetry unavailable");
+                if(GetTickCount64()-warmupStart<3000)
+                    require(!status.active && status.recordings==0,"Reconstruction ran before scene stabilization");
+                warmupRecordings=status.recordings;
+                if(sourceFrame==warmupFrames&&!observe&&!status.active&&strstr(status.reason,"getting ready")&&warmupFrames<240){
+                    ++warmupFrames;continue;
+                }
+                if(sourceFrame==warmupFrames){
+                    require(observe || status.active,"Scene did not activate after coherent startup samples");
+                    std::cout<<"PASS: startup stabilization, baseline recordings="<<warmupRecordings<<'\n';
+                    phaseStart=GetTickCount64();
+                }
+                continue;
+            }
             uint64_t expected = observe ? 0 : frame <= 8 ? frame : frame <= 10 ? 8 : frame - 2;
             if(nrOrder)expected=frame;
             if (!observe && groundCamera && frame >= 12)
@@ -708,7 +756,7 @@ int wmain(int argc, wchar_t **argv) {
                 expected -= std::min<uint64_t>(frame - 11, 3);
             if (!observe && staleCamera && frame >= 12)
                 --expected;
-            require(app::readStatus(shared, status) && status.recordings == expected,
+            require(app::readStatus(shared, status) && status.recordings == expected+warmupRecordings,
                     "Layer replacement/toggle count differs");
             if (staleCamera && frame == 12 && !observe)
                 require(!status.active && strstr(status.reason, "camera frame mismatch"),

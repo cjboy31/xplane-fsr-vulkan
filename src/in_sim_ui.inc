@@ -6,6 +6,7 @@
 #include "session_logs.hpp"
 #include "in_sim_binding.hpp"
 #include "session_export.hpp"
+#include "frame_counter.hpp"
 #include <shellapi.h>
 #include <XPLMDisplay.h>
 #include <XPLMGraphics.h>
@@ -182,6 +183,10 @@ static void setupPoll(){
         setupPollImport();
         setupPollRepair();
         setupPanel.refresh();app::Telemetry status{};if(shared&&app::readStatus(shared,status))setupPanel.observe(status,now);
+        {
+            static XPLMDataRef period=XPLMFindDataRef("sim/time/framerate_period"),gpu=XPLMFindDataRef("sim/time/gpu_time_per_frame_sec_approx");
+            setupPanel.simFrameMs=period?XPLMGetDataf(period)*1000.f:-1.f;setupPanel.simGpuMs=gpu?XPLMGetDataf(gpu)*1000.f:-1.f;
+        }
         if(!setupRoot.empty()&&app::validSessionToken(setupToken)){
             const auto folder=setupRoot/L"logs/reports";auto file=folder/(setupToken+L".status.txt");bool previous=false;
             if(!std::filesystem::exists(file)){file=folder/L"last-status.txt";previous=true;}
@@ -291,6 +296,44 @@ static std::map<std::pair<int,int>,Sweep> switches;
 static bool motion=true;
 static ULONGLONG opened{},pageChanged{};
 static int page=-1;
+// Hover help cards. The panel model decides which card is pinned; hover is
+// purely visual and never changes settings, pages or input focus.
+static int tipShown=-1,tipFrame=-1;
+static insim::Rect tipShownAnchor{},tipFrameAnchor{};
+static ULONGLONG tipSince{};
+static void inkA(Ink c,float a){glColor4f(c.r,c.g,c.b,std::clamp(a,0.f,1.f));}
+static void solidA(float x,float y,float w,float h,Ink color,float a){
+    if(w<=0||h<=0||a<=0)return;
+    inkA(color,a);glBegin(GL_QUADS);glVertex2f(x,y);glVertex2f(x+w,y);glVertex2f(x+w,y-h);glVertex2f(x,y-h);glEnd();
+}
+static void card(int left,int top,int width,int height,ULONGLONG now){
+    const int which=tipFrame>=0?tipFrame:setupPanel.pinnedHelp;
+    const insim::Rect anchor=tipFrame>=0?tipFrameAnchor:tipShownAnchor;
+    if(which!=tipShown){tipShown=which;tipSince=now;}
+    tipShownAnchor=anchor;
+    if(tipShown<0)return;
+    const bool pinned=setupPanel.pinnedHelp==tipShown;
+    const ULONGLONG delay=pinned||!motion?0:140; // Avoid flashing while the pointer crosses rows.
+    if(now-tipSince<delay)return;
+    const float u=motion?ease(float(now-tipSince-delay)/190.f):1.f;
+    const std::string body=setupPanel.helpText(tipShown);
+    if(body.empty())return;
+    const int w=std::min(380,width-40);
+    const auto lines=wrap(w-28,body);
+    const int h=int(lines.size())*17+(pinned?66:50);
+    int x=std::clamp(left+anchor.x+anchor.w-w,left+16,left+width-16-w);
+    int y=top-anchor.y-anchor.h-6;
+    if(y-h<top-height+8)y=top-anchor.y+6+h; // Flip above the "?" near the footer.
+    y=std::min(y,top-8)-int((1-u)*8);       // Rise into place as it fades in.
+    solidA(float(x+4),float(y-4),float(w),float(h),Ink{0,0,0},.36f*u);
+    inkA(deck,.97f*u);
+    rounded(float(x),float(y),float(w),float(h),8,mix(canvas,deck,u));
+    rounded(float(x+1),float(y-1),float(w-2),float(h-2),7,mix(canvas,field,u));
+    solid(float(x+10),float(y-1),float((w-20)*u),2,ice);
+    text(x+14,y-22,w-28,setupPanel.helpTitle(tipShown),mix(field,ice,u));
+    for(int i=0;i<int(lines.size());++i)text(x+14,y-42-i*17,w-28,lines[i],mix(field,white,u));
+    if(pinned)text(x+14,y-h+12,w-28,"Pinned. Click ? again or press Esc to close.",mix(field,dim,u));
+}
 static void begin(){
     BOOL animated=TRUE;
     if(SystemParametersInfoW(SPI_GETCLIENTAREAANIMATION,0,&animated,0))motion=animated!=FALSE;
@@ -337,6 +380,10 @@ static void draw(XPLMWindowID h){
     const bool running=setupPanel.activity.rfind("FSR ACTIVE",0)==0;
     const bool bypass=setupPanel.activity.find("BYPASSED")!=std::string::npos;
     const Ink lamp=running?ice:bypass?amber:dim;
+    if(running&&motion){ // A slow breathing halo marks confirmed processing.
+        const float breath=.5f+.5f*std::sin(float(now%2400)/2400.f*6.2831853f);
+        rounded(left+21.5f-breath,top-63.5f+breath,14+2*breath,14+2*breath,7+breath,mix(deck,tint,.35f+.65f*breath));
+    }
     rounded(left+25,top-67,7,7,3.5f,lamp);
     solid(left+24,top-146,width-48,1,border);
     const float activeTab=nav.sample(float(setupPanel.tab),now,motion);
@@ -346,11 +393,17 @@ static void draw(XPLMWindowID h){
     const int foot=top-height+insim::footerHeight;
     solid(left,foot,width,insim::footerHeight,deck);solid(left+24,foot,width-48,1,border);
     const auto items=setupPanel.view(width,height);
+    tipFrame=-1;
     for(const auto& item:items){
-        const auto &r=item.rect;const int x=left+r.x,y=top-r.y;
-        const bool hover=item.button&&r.contains(mx-left,top-my);
+        const auto &r=item.rect;
         const bool content=r.y>=insim::contentTop&&r.y<height-insim::footerHeight;
-        auto shade=[&](Ink c){return content?mix(canvas,c,.52f+.48f*entering):c;};
+        // v2 section reveal: rows arrive top to bottom (up to 160 ms apart),
+        // each fading in and rising 6 px. Off when Windows animations are off.
+        const float reveal=!content||!motion?1.f:
+            ease((float(now-pageChanged)-std::min(160.f,float(r.y-insim::contentTop)*.3f))/200.f);
+        const int x=left+r.x,y=top-r.y-(content?int(6*(1-reveal)):0);
+        const bool hover=item.button&&r.contains(mx-left,top-my);
+        auto shade=[&](Ink c){return content?mix(canvas,c,.52f+.48f*std::min(entering,reveal)):c;};
         const auto kind=item.action.kind;
         const int baseline=y-(r.h/2+5);
         if(item.widget==insim::Widget::Rule){solid(x,y,r.w,1,rule);continue;}
@@ -393,9 +446,16 @@ static void draw(XPLMWindowID h){
             rounded(k-5,cy+6,10,12,4,shade(hover?white:ice));continue;
         }
         if(kind==insim::Kind::Help&&item.action.field>=0){
-            rounded(x+(r.w-20)/2,y-(r.h-20)/2,20,20,10,shade(hover?ice:border));
-            rounded(x+(r.w-18)/2,y-(r.h-18)/2,18,18,9,shade(hover?tint:canvas));
-            text(int(x+(r.w-measure("?"))/2),baseline,14,"?",shade(hover?ice:dim));continue;
+            const bool active=hover||setupPanel.pinnedHelp==item.action.field;
+            if(hover){tipFrame=item.action.field;tipFrameAnchor=r;}
+            if(setupPanel.pinnedHelp==item.action.field&&tipFrame<0)tipShownAnchor=r;
+            if(active){ // A soft pulse ring links the "?" to its card.
+                const float pulse=motion?.5f+.5f*std::sin(float(now%1400)/1400.f*6.2831853f):1.f;
+                rounded(x+(r.w-26)/2,y-(r.h-26)/2,26,26,13,shade(mix(canvas,tint,.55f+.25f*pulse)));
+            }
+            rounded(x+(r.w-20)/2,y-(r.h-20)/2,20,20,10,shade(active?ice:border));
+            rounded(x+(r.w-18)/2,y-(r.h-18)/2,18,18,9,shade(active?tint:canvas));
+            text(int(x+(r.w-measure("?"))/2),baseline,14,"?",shade(active?ice:dim));continue;
         }
         const bool utility=kind==insim::Kind::Changelog||kind==insim::Kind::Updates||kind==insim::Kind::Close;
         if(utility){
@@ -426,6 +486,7 @@ static void draw(XPLMWindowID h){
             rounded(right-11,top-insim::contentTop,3,track,1,rule);
             rounded(right-11,top-insim::contentTop-pos,3,thumb,1,mix(border,ice,.55f));
         }
+        card(left,top,width,height,now);
     }
 }
 }
@@ -447,7 +508,21 @@ static int setupMouse(XPLMWindowID h,int x,int y,XPLMMouseStatus mouse,void*) no
     if(mouse==xplm_MouseUp)setupDragField=-1;
     return 1;
 }catch(const std::exception&e){setupDragField=-1;setupPanel.notice=e.what();return 1;}catch(...){setupDragField=-1;return 1;}}
-static void setupKey(XPLMWindowID,char key,XPLMKeyFlags flags,char,void*,int losing) noexcept{if(!losing&&(flags&xplm_DownFlag)&&key==27){if(setupPanel.dropdownOpen)setupPanel.dropdownOpen=false;else if(setupPanel.helpField>=0)setupPanel.helpField=-1;else setupHide();}}
+// v2 fix (live test): the panel never takes keyboard focus, so Esc went to
+// X-Plane's menu and left a pinned help card open. A sniffer consumes Esc only
+// while one of our own transient states is open (dropdown or pinned card), and
+// the matching key-up. Every other key, and Esc otherwise, reaches X-Plane.
+static bool setupEscapeConsumed{};
+static int setupEscapeSniffer(char key,XPLMKeyFlags flags,char virtualKey,void*) noexcept{
+    const bool escape=static_cast<unsigned char>(virtualKey)==XPLM_VK_ESCAPE||key==27;
+    if(!escape)return 1;
+    if(flags&xplm_UpFlag){const bool consumed=setupEscapeConsumed;setupEscapeConsumed=false;return consumed?0:1;}
+    if(!(flags&xplm_DownFlag)||!setupVisible())return 1;
+    if(setupPanel.dropdownOpen){setupPanel.dropdownOpen=false;setupEscapeConsumed=true;return 0;}
+    if(setupPanel.pinnedHelp>=0){setupPanel.pinnedHelp=-1;setupEscapeConsumed=true;return 0;}
+    return 1;
+}
+static void setupKey(XPLMWindowID,char key,XPLMKeyFlags flags,char,void*,int losing) noexcept{if(!losing&&(flags&xplm_DownFlag)&&key==27){if(setupPanel.dropdownOpen)setupPanel.dropdownOpen=false;else if(setupPanel.pinnedHelp>=0)setupPanel.pinnedHelp=-1;else if(setupPanel.helpField>=0)setupPanel.helpField=-1;else setupHide();}}
 static XPLMCursorStatus setupCursor(XPLMWindowID,int,int,void*){return xplm_CursorDefault;}
 static int setupRightMouse(XPLMWindowID h,int x,int y,XPLMMouseStatus,void*) noexcept{int l,t,r,b;XPLMGetWindowGeometry(h,&l,&t,&r,&b);return x>=l&&x<r&&y>=b&&y<=t;}
 static int setupWheel(XPLMWindowID h,int x,int y,int wheel,int clicks,void*) noexcept{int left,top,right,bottom;XPLMGetWindowGeometry(h,&left,&top,&right,&bottom);if(x<left||x>=right||y<bottom||y>top)return 0;if(wheel==0){if(setupPanel.helpField>=0){const int rows=std::max(1,(top-bottom-insim::contentTop-insim::footerHeight-62)/17),maximum=std::max(0,int(setup_deck::wrap(right-left-48,setupPanel.help()).size())-rows);setupPanel.helpScroll=std::clamp(setupPanel.helpScroll-clicks*3,0,maximum);}else setupPanel.wheel(-clicks*46,top-bottom);}return 1;}
@@ -463,3 +538,60 @@ static void setupShow() noexcept{try{
     setupPresence.setVisible(true);setupLastPoll=0;setupPoll();XPLMBringWindowToFront(setupWindow);
 }catch(const std::exception&e){std::string text="XPFSR24: setup panel: ";text+=e.what();text+='\n';XPLMDebugString(text.c_str());}catch(...){}}
 static void setupStop(){setupHide();if(setupWindow)XPLMDestroyWindow(setupWindow);setupWindow=nullptr;setupNR.close();setupPresence.close();if(setupGraphicsJob)CloseHandle(setupGraphicsJob);setupGraphicsJob=nullptr;if(setupImportJob)CloseHandle(setupImportJob);setupImportJob=nullptr;if(setupLogJob)CloseHandle(setupLogJob);setupLogJob=nullptr;if(setupRepairJob)CloseHandle(setupRepairJob);setupRepairJob=nullptr;setupLogToken.clear();setupConfigurationSession.close();}
+
+// A separate, input-transparent XPLM overlay. It never marks the settings panel
+// visible (which intentionally pauses FG), takes keyboard focus or reads files
+// in its draw callback. IPC is sampled at most once a second when enabled.
+static XPLMWindowID frameCounterWindow{};
+static app::FrameCounter frameCounter;
+static bool frameCounterFailed{};
+static std::string frameCounterReal="REAL (RAW)    -- FPS",frameCounterGenerated="FG EXTRA      -- FPS";
+static int frameCounterMouse(XPLMWindowID,int,int,XPLMMouseStatus,void*){return 0;}
+static void frameCounterKey(XPLMWindowID,char,XPLMKeyFlags,char,void*,int){}
+static int frameCounterWheel(XPLMWindowID,int,int,int,int,void*){return 0;}
+static void frameCounterDraw(XPLMWindowID window,void*) noexcept{try{
+    int left,top,right,bottom;XPLMGetWindowGeometry(window,&left,&top,&right,&bottom);
+    XPLMSetGraphicsState(0,0,0,0,1,0,0);
+    setup_deck::rounded(left,top,right-left,top-bottom,5,setup_deck::canvas);
+    setup_deck::solid(left,top,3,top-bottom,setup_deck::ice);
+    setup_deck::text(left+14,top-23,right-left-26,frameCounterReal,setup_deck::white);
+    setup_deck::text(left+14,top-44,right-left-26,frameCounterGenerated,setup_deck::ice);
+}catch(...){}}
+static void frameCounterStop(){
+    if(frameCounterWindow)XPLMDestroyWindow(frameCounterWindow);
+    frameCounterWindow=nullptr;frameCounter.reset();
+    frameCounterReal="REAL (RAW)    -- FPS";frameCounterGenerated="FG EXTRA      -- FPS";
+}
+static void frameCounterTick(const app::Camera &camera) noexcept{try{
+    if(!setupPanel.configured()||!setupPanel.choices.showFrameCounter){
+        if(frameCounterWindow||frameCounter.seeded)frameCounterStop();
+        frameCounterFailed=false;return;
+    }
+    if(frameCounterFailed)return;
+    if(!camera.valid){
+        if(frameCounterWindow)XPLMSetWindowIsVisible(frameCounterWindow,0);
+        frameCounter.reset();frameCounterReal="REAL (RAW)    -- FPS";frameCounterGenerated="FG EXTRA      -- FPS";return;
+    }
+    if(!frameCounterWindow){
+        int left,top,right,bottom;XPLMGetScreenBoundsGlobal(&left,&top,&right,&bottom);
+        XPLMCreateWindow_t p{};p.structSize=sizeof(p);p.right=right-20;p.left=std::max(left,p.right-280);
+        p.top=top-42;p.bottom=p.top-58;p.visible=1;p.drawWindowFunc=frameCounterDraw;
+        p.handleMouseClickFunc=frameCounterMouse;p.handleRightClickFunc=frameCounterMouse;
+        p.handleKeyFunc=frameCounterKey;p.handleCursorFunc=setupCursor;p.handleMouseWheelFunc=frameCounterWheel;
+        p.decorateAsFloatingWindow=xplm_WindowDecorationNone;p.layer=xplm_WindowLayerFloatingWindows;
+        frameCounterWindow=XPLMCreateWindowEx(&p);
+        if(!frameCounterWindow)throw std::runtime_error("Could not create the frame counter");
+        XPLMSetWindowGravity(frameCounterWindow,1,1,1,1);
+    }else if(!XPLMGetWindowIsVisible(frameCounterWindow))XPLMSetWindowIsVisible(frameCounterWindow,1);
+    const auto now=GetTickCount64();
+    if(frameCounter.due(now)){
+        app::Telemetry status{};const bool known=app::readStatus(shared,status)&&status.presents>0;
+        frameCounter.sample(now,camera.frame,status.fgGenerated,known);
+        if(frameCounter.ready){
+            char line[96]{};snprintf(line,sizeof(line),"REAL (RAW)    %.1f FPS",frameCounter.realFPS);frameCounterReal=line;
+            if(frameCounter.rendererKnown)snprintf(line,sizeof(line),"FG EXTRA      %.1f FPS",frameCounter.generatedFPS);
+            else snprintf(line,sizeof(line),"FG EXTRA      unavailable");
+            frameCounterGenerated=line;
+        }
+    }
+}catch(const std::exception&e){frameCounterStop();frameCounterFailed=true;setupPanel.notice=e.what();XPLMDebugString("XPFSR24: frame counter unavailable; turn Off/On to retry.\n");}catch(...){frameCounterStop();frameCounterFailed=true;}}

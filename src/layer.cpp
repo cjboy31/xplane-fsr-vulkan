@@ -15,6 +15,7 @@
 #include "frame_diagnostics.hpp"
 #include <chrono>
 #include "nr_features.hpp"
+#include <future>
 #include <thread>
 #include <condition_variable>
 #include <optional>
@@ -33,6 +34,11 @@
 #include "implicit_activation.hpp"
 #include "temporal_spv.hpp"
 #include "temporal_msaa_spv.hpp"
+#include "native_motion_spv.hpp"
+#include "native_motion/shader_classify.cpp"
+#include "motion_contract.hpp"
+#include "cpu_scheduling.hpp"
+#include "texture_bias.hpp"
 #include <algorithm>
 #include <array>
 #include <bcrypt.h>
@@ -64,11 +70,13 @@ bool hostActive(){
     return activation.active;
 }
 thread_local unsigned sdkNesting = 0;
+thread_local bool creatingPrivateDevice = false;  // set by dual_gpu.inc around its own vkCreateDevice
 struct SdkScope {
     SdkScope() { ++sdkNesting; }
     ~SdkScope() { --sdkNesting; }
 };
 #include "nr_layer.inc"
+struct DualSwapchain;  // dual_gpu.inc: frame generation on a second GPU
 struct SwapchainGeneration {
     std::shared_ptr<xpfsr::Presentation> presentation;
     uint32_t width{}, height{};
@@ -141,6 +149,7 @@ struct Instance {
 struct Descriptor {
     VkDescriptorType type{};
     VkDescriptorImageInfo image{};
+    VkDescriptorBufferInfo buffer{}; // uniform buffers: tracked only for native renderer motion
 };
 using Bindings = std::map<std::pair<uint32_t, uint32_t>, Descriptor>;
 struct Template {
@@ -184,6 +193,8 @@ struct GraphicsViewport {
     std::vector<VkViewport> viewports;
     bool known{}, modified{};
 };
+struct NativeMotionFrame;
+struct MotionCapture;
 struct FrameResources;
 struct DepthProbe;
 struct DepthCapture;
@@ -206,7 +217,8 @@ struct Command {
     std::map<VkImage, std::shared_ptr<DepthCapture>> capturedDepths;
     uint64_t fgFrame{}, sceneFrame{};
     uint64_t lastUsePresent{};
-    bool oneTime{}, rendering{}, secondary{}, processed{}, failed{}, submitted{}, dynamicOffsets{};
+    bool oneTime{}, rendering{}, secondary{}, processed{}, failed{}, submitted{}, dynamicOffsets{},
+        nativeHistoryWritten{};
     uint64_t epoch{},recording{};
     VkQueue submittedQueue{};
     struct Push {
@@ -224,8 +236,23 @@ struct Command {
     std::vector<VkCommandBuffer> executedChildren;
     float appliedJitterX{}, appliedJitterY{};
     std::unique_ptr<FrameResources> resources;
+    std::unique_ptr<NativeMotionFrame> nativeMotion;
+    std::vector<std::shared_ptr<MotionCapture>> motionCaptures; // pending fence submission
 };
 struct CpuCost {uint64_t calls{},microseconds{},maximum{};};
+// v2 per-frame CPU timers (P1 sim performance): cheap QPC scopes around the
+// layer's heavier work on X-Plane's render thread. Summed atomically.
+inline int64_t qpcNow() {LARGE_INTEGER c{};QueryPerformanceCounter(&c);return c.QuadPart;}
+inline double qpcToNs(int64_t ticks) {
+    static const double scale = [] {LARGE_INTEGER f{};QueryPerformanceFrequency(&f);return f.QuadPart ? 1e9 / double(f.QuadPart) : 0.0;}();
+    return double(ticks) * scale;
+}
+struct WorkTimer {
+    std::atomic<int64_t> &sum;
+    int64_t start = qpcNow();
+    explicit WorkTimer(std::atomic<int64_t> &target) : sum(target) {}
+    ~WorkTimer() { sum += qpcNow() - start; }
+};
 struct CpuScope {
     CpuCost &cost;std::chrono::steady_clock::time_point start=std::chrono::steady_clock::now();
     ~CpuScope(){auto us=uint64_t(std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now()-start).count());++cost.calls;cost.microseconds+=us;cost.maximum=std::max(cost.maximum,us);}
@@ -275,6 +302,17 @@ struct Device {
     std::map<VkImage, Depth> depths;
     std::map<VkImage, VkImageLayout> layouts;
     std::map<std::array<uint32_t, 6>, std::unique_ptr<xpfsr::Context>> contexts;
+    // v2: FSR contexts being prepared on a worker thread (pipeline and resource
+    // creation only; the backend has no queue). X-Plane's own image is shown
+    // until one is ready, instead of stalling the render thread.
+    struct PreparedContext { std::unique_ptr<xpfsr::Context> context; uint64_t ms{}; };
+    // v2 opt-in AMD Anti-Lag 2: null unless the driver enabled VK_AMD_anti_lag.
+    PFN_vkAntiLagUpdateAMD antiLagUpdate{};
+    // v2 opt-in texture LOD bias (see texture_bias.hpp): 0 = X-Plane's own.
+    float lodExtra{}, lodLimit{2.f};
+    std::atomic<uint64_t> lodBiased{0}, lodSkipped{0};
+    uint64_t antiLagFrame{1}, antiLagWaits{}, antiLagWaitTicks{};
+    std::map<std::array<uint32_t, 6>, std::future<PreparedContext>> pendingContexts;
     std::unique_ptr<xpfsr::Runtime> runtime;
     std::vector<std::unique_ptr<DepthProbe>> probes;
     uint64_t imageGeneration{};
@@ -290,6 +328,33 @@ struct Device {
     VkDescriptorSetLayout packLayout{};
     VkPipelineLayout packPipelineLayout{};
     VkPipeline packPipeline{}, packMsaaPipeline{};
+    // Motion source (shared motion contract v1). Native renderer motion reads
+    // X-Plane's scene SSR pass inputs; see docs/developer/NATIVE-MOTION-EXPERIMENT.md.
+    xpmotion::Source motionSource = xpmotion::Source::CameraDerived;
+    std::atomic<bool> nativeMotionRequested{false};
+    bool nativeHistorySubmitted{};
+    uint64_t nativeMotionCaptures{}, nativeMotionUsed{}, nativeMotionFallbacks{};
+    const char *nativeMotionBlocker{}; // last known reason native capture was skipped
+    // Stage E survey (XPFSR24_MOTION_SURVEY=1): log shader interfaces whose names
+    // suggest previous-frame transforms. Names only; nothing is changed.
+    bool motionSurvey{};
+    std::set<size_t> surveyed;
+    uint64_t surveyModules{}, surveyHinted{};
+    // Motion-quality capture (tester tool; see motion_capture.inc).
+    std::wstring motionCaptureDirectory;
+    uint64_t motionCaptureAfter{900};
+    uint32_t motionCaptureCrop{1024};
+    std::array<uint32_t, 2> motionCaptureRender{};
+    bool motionCaptureDone{};
+    std::vector<std::shared_ptr<MotionCapture>> motionCaptures;
+    std::map<VkShaderModule, ShaderRole> nativeMotionShaders;
+    std::map<VkPipeline, ShaderRole> nativeMotionPipelines;
+    std::map<std::vector<uint8_t>, ShaderRole> nativeMotionIdentifiers;
+    VkDescriptorSetLayout nativeMotionLayout{};
+    VkPipelineLayout nativeMotionPipelineLayout{};
+    VkPipeline nativeMotion2D{}, nativeMotionArray{}, nativeMotionHistoryPipeline{}, nativeMotionMsaa{};
+    VkBuffer nativeMotionHistory{};
+    VkDeviceMemory nativeMotionHistoryMemory{};
     VkSampler sampler{};
     Mode mode = Mode::Observe;
     std::array<uint32_t, 6> activeContext{};
@@ -303,6 +368,19 @@ struct Device {
     std::string fgRequested = requestedFrameGeneration();
     std::string fgPresenter = requestedFGPresenter();
     bool fgSynchronized = synchronizedFGPresentation();
+    // v2 base frame-rate cap for real frames while FG is active (app present thread only).
+    // Guarded by fgLimiterLock, never by d.lock: the present thread computes
+    // its delay under this small lock, releases it, then sleeps.
+    std::mutex fgLimiterLock;
+    xpfsr::pacing::FrameLimiter fgLimiter;
+    std::atomic<bool> fgLimiterArmed{false};
+    uint64_t fgLimiterWaits{}, fgLimiterWaitNs{};
+    // Synchronized compatibility FG drains every present on the CPU; measure it
+    // so its cost to the real frame rate is visible in the session log.
+    uint64_t fgDrains{}, fgDrainNs{}, fgDrainMaxNs{};
+    std::atomic<int64_t> layerWorkTicks{0};
+    int64_t presentCallTicks{}, cpuWindowStart{}, cpuWindowWork{}, cpuWindowCall{};
+    uint64_t cpuWindowPresents{}, cpuWindowWaitNs{};
     bool fgFailed{}, fgLiveEnabled = true, panelOpen{},fgResumeReset{};
     app::PanelPresenceChannel panelPresence;
     uint32_t fgQueueBase = UINT32_MAX;
@@ -319,6 +397,10 @@ struct Device {
     }
     std::set<VkSwapchainKHR> nativeSwapchains;
     std::shared_ptr<SwapchainGeneration> fgCurrent;
+    // v2 (P3) two-GPU frame generation: X-Plane's swapchains that we made virtual.
+    std::map<VkSwapchainKHR, std::shared_ptr<DualSwapchain>> duals;
+    std::shared_ptr<DualSwapchain> dualCurrent;
+    bool dualFailed{};
     std::unique_ptr<xpfsr::FrameGenerator> frameGenerator;
     uint64_t fgIssuedLease{},fgPreparedLease{},fgCompletedLease{};
     std::array<uint32_t, 6> fgKey{};
@@ -442,6 +524,11 @@ std::mutex registryLock;
 std::map<void *, std::shared_ptr<Instance>> instances;
 std::map<void *, std::shared_ptr<Device>> devices;
 std::map<void *, PFN_vkGetDeviceProcAddr> passiveDevices;
+// A device we pass through untouched inside an active host (the second-GPU device).
+bool passiveDevice(VkDevice device) {
+    std::lock_guard<std::mutex> lock(registryLock);
+    return passiveDevices.count(key(device)) != 0;
+}
 std::shared_ptr<Instance> instanceFor(VkInstance i) {
     std::lock_guard<std::mutex> l(registryLock);
     auto p = instances.find(key(i));
@@ -841,6 +928,7 @@ DepthProbe &createProbe(Device &d, VkImage image) {
     d.probes.push_back(std::move(job));
     return *d.probes.back();
 }
+void submitMotionCaptures(Device &d, VkQueue queue, Command &command); // motion_capture.inc
 void submittedProbes(Device &d, VkQueue queue, const std::vector<VkCommandBuffer> &commands) {
     std::vector<VkCommandBuffer> pending = commands;
     std::set<VkCommandBuffer> visited;
@@ -858,6 +946,9 @@ void submittedProbes(Device &d, VkQueue queue, const std::vector<VkCommandBuffer
                        command.executedChildren.end());
         command.submitted = true;
         command.submittedQueue=queue;
+        if (command.nativeHistoryWritten)
+            d.nativeHistorySubmitted = true;
+        submitMotionCaptures(d, queue, command);
         for (auto *job : command.probes)
             if (job->phase == 0) {
                 VkSubmitInfo empty{VK_STRUCTURE_TYPE_SUBMIT_INFO};
@@ -894,6 +985,7 @@ void transition(Device &d, VkCommandBuffer cb, OwnedImage &image, VkImageLayout 
     image.value.layout = to;
 }
 void captureDepth(Device &d, VkCommandBuffer cb, Command &command) {
+    WorkTimer work{d.layerWorkTicks};
     if (!command.activeCaptureEligible || !command.activeDepth || !d.enabled || d.mode==Mode::Observe || d.runtimeFailed)
         return;
     if(d.shared&&!d.startup.observe(d.camera.frame,d.camera.milliseconds,GetTickCount64()))return;
@@ -1075,9 +1167,18 @@ BindingUse stageUse(Device &d, const VkPipelineShaderStageCreateInfo &stage) {
     }
     return {};
 }
-void writeDescriptors(Bindings &destination, uint32_t count, const VkWriteDescriptorSet *writes) {
+void writeDescriptors(Bindings &destination, uint32_t count, const VkWriteDescriptorSet *writes,
+                      bool buffers = false) {
     for (uint32_t i = 0; i < count; ++i) {
         auto &w = writes[i];
+        if (buffers && (w.descriptorType == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER ||
+                        w.descriptorType == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC)) {
+            if (w.pBufferInfo)
+                for (uint32_t n = 0; n < w.descriptorCount; ++n)
+                    destination[{w.dstBinding, w.dstArrayElement + n}] = {
+                        w.descriptorType, {}, w.pBufferInfo[n]};
+            continue;
+        }
         if (!w.pImageInfo)
             continue;
         if (w.descriptorType != VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE &&
@@ -1096,6 +1197,18 @@ void templateDescriptors(Device &d, Bindings &destination, VkDescriptorUpdateTem
     if (it == d.templates.end())
         return;
     for (auto &entry : it->second.entries) {
+        if (d.nativeMotionRequested &&
+            (entry.descriptorType == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER ||
+             entry.descriptorType == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC)) {
+            for (uint32_t n = 0; n < entry.descriptorCount; ++n) {
+                VkDescriptorBufferInfo info{};
+                memcpy(&info, static_cast<const char *>(data) + entry.offset + entry.stride * n,
+                       sizeof(info));
+                destination[{entry.dstBinding, entry.dstArrayElement + n}] = {entry.descriptorType,
+                                                                              {}, info};
+            }
+            continue;
+        }
         if (entry.descriptorType != VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE &&
             entry.descriptorType != VK_DESCRIPTOR_TYPE_STORAGE_IMAGE &&
             entry.descriptorType != VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER &&
@@ -1225,11 +1338,17 @@ void stopGenerator(Device &d) {
     d.fgSequence = {};
     d.status.fgActive = 0;
 }
+#include "dual_gpu.inc"
 void prepareGeneration(Device &d, VkCommandBuffer cb, Command &command, const xpfsr::Frame &frame,
                        uint32_t rw, uint32_t rh, uint32_t ow, uint32_t oh) {
     if (d.fgRequested.empty() || d.fgFailed)return;
     if(!d.fgLiveEnabled){strncpy(d.status.fgReason,"FG Off - live switch disabled",159);return;}
     if(d.panelOpen){strncpy(d.status.fgReason,"FG paused while in-sim setup is visible; selection retained",159);return;}
+    if(d.dualCurrent){
+        // Two-GPU FG: the second GPU generates; capture this frame's guides.
+        if(d.startup.ready&&command.resources)dualCaptureGuides(d,*d.dualCurrent,cb,*command.resources,frame);
+        return;
+    }
     if(!d.fgCurrent){strncpy(d.status.fgReason,"FG waiting for a compatible presentation surface",159);return;}
     if(!d.startup.ready){
         strncpy(d.status.fgReason,"FG waiting for initial scene stabilization; real frames presented",159);
@@ -1399,6 +1518,9 @@ void setupFrame(Device &d, FrameResources &f, uint32_t rw, uint32_t rh, uint32_t
     d.fn<PFN_vkUpdateDescriptorSets>("vkUpdateDescriptorSets")(d.handle, 5, writes, 0, nullptr);
     f.ready=true;
 }
+#include "native_motion.inc"
+#include "cpu_scheduling.inc"
+#include "motion_capture.inc"
 void restoreCockpit(Device &d, VkCommandBuffer cb, FrameResources &f, uint32_t rw, uint32_t rh,
                     uint32_t ow, uint32_t oh, float jitterX, float jitterY, float ySign) {
     d.status.cockpitActive = 0;
@@ -1459,6 +1581,7 @@ bool replace(Device &d, VkCommandBuffer cb, Command &command) {
     if (pipeline == d.pipelines.end() || !pipeline->second)
         return false;
     CpuScope timing{d.interceptionCost};
+    WorkTimer work{d.layerWorkTicks};
     d.attach();
     app::Camera latest{};
     if (app::readCamera(d.shared, latest)) {
@@ -1767,26 +1890,44 @@ bool replace(Device &d, VkCommandBuffer cb, Command &command) {
             }
         }
         if(d.allocationPaused)d.camera.reset=1;d.allocationPaused=false;d.allocationBackoff.recovered();
-        auto &context = d.contexts[configKey];
-        if (!context) {
-            const auto contextStart=GetTickCount64();
-            if (d.contexts.size() > 2)
-                throw std::runtime_error("Resize limit reached; restart the simulator");
-            xpfsr::Config config{rw, rh, ow, oh};
-            config.invertedDepth = d.camera.reverseZ;
-            config.infiniteDepth = d.camera.infiniteZ;
-            VkDeviceContext backend{d.handle, applicationPhysical(d), d.next};
-            wchar_t requested[32]{};
-            GetEnvironmentVariableW(L"XPFSR24_PROVIDER", requested, 32);
-            std::string version = !wcscmp(requested, L"4.1.2") ? "4.1.2" : "3.1.6";
-            config.providerId = xpfsr::providerVersion(d.runtime->api, backend, version);
-            context = std::make_unique<xpfsr::Context>(d.runtime->api);
-            context->create(config, backend);
-            log("FSR context preparation: %llums (%ux%u -> %ux%u)",(unsigned long long)(GetTickCount64()-contextStart),rw,rh,ow,oh);
+        if (!d.contexts.count(configKey)) {
+            auto pending = d.pendingContexts.find(configKey);
+            if (pending == d.pendingContexts.end()) {
+                if (d.contexts.size() + d.pendingContexts.size() >= 3)
+                    throw std::runtime_error("Resize limit reached; restart the simulator");
+                xpfsr::Config config{rw, rh, ow, oh};
+                config.invertedDepth = d.camera.reverseZ;
+                config.infiniteDepth = d.camera.infiniteZ;
+                VkDeviceContext backend{d.handle, applicationPhysical(d), d.next};
+                wchar_t requested[32]{};
+                GetEnvironmentVariableW(L"XPFSR24_PROVIDER", requested, 32);
+                std::string version = !wcscmp(requested, L"4.1.2") ? "4.1.2" : "3.1.6";
+                config.providerId = xpfsr::providerVersion(d.runtime->api, backend, version);
+                const auto api = d.runtime->api;
+                pending = d.pendingContexts.emplace(configKey, std::async(std::launch::async, [api, config, backend] {
+                    const auto start = GetTickCount64();
+                    Device::PreparedContext prepared{std::make_unique<xpfsr::Context>(api)};
+                    prepared.context->create(config, backend);
+                    prepared.ms = GetTickCount64() - start;
+                    return prepared;
+                })).first;
+                log("FSR context preparation started on a worker thread (%ux%u -> %ux%u); X-Plane's image is shown until it is ready",
+                    rw, rh, ow, oh);
+            }
+            if (pending->second.wait_for(std::chrono::seconds(0)) != std::future_status::ready) {
+                d.bypass("FSR is getting ready (preparing on a worker thread); X-Plane's image is shown meanwhile");
+                return false;
+            }
+            auto prepared = pending->second.get();  // rethrows a creation failure on this thread
+            d.pendingContexts.erase(pending);
+            d.contexts[configKey] = std::move(prepared.context);
+            log("FSR context preparation: %llums on a worker thread (%ux%u -> %ux%u)", (unsigned long long)prepared.ms, rw, rh, ow, oh);
+            auto &context = d.contexts[configKey];
             auto name = context->provider();
             strncpy(d.status.provider, name.c_str(), sizeof(d.status.provider) - 1);
             log("FSR provider: %s (%ux%u -> %ux%u)", name.c_str(), rw, rh, ow, oh);
         }
+        auto &context = d.contexts.at(configKey);
         if (newFrame) {
             retireFrame(d,command.resources);
             command.resources=d.idleFrames.take(reuseKey);
@@ -1841,23 +1982,64 @@ bool replace(Device &d, VkCommandBuffer cb, Command &command) {
         barrier(d, cb, inView->second.create.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
                 input->second.image.imageLayout, inputRange);
         transition(d, cb, f.color, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-        barrier(d, cb, captured->image, depthLayout, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-                depthRange);
-        for (auto *target : {&f.depth, &f.motion, &f.reactive})
-            transition(d, cb, *target, VK_IMAGE_LAYOUT_GENERAL);
+        // Shared motion contract v1: both sources write the same formats and
+        // convention. Native renderer motion is used only when this command
+        // buffer captured X-Plane's SSR inputs for this exact scene depth.
+        NativeMotionFrame *native = nullptr;
+        if (d.nativeMotionRequested) {
+            auto *n = command.nativeMotion.get();
+            if (n && n->captured && n->frame == d.camera.frame && n->width == rw &&
+                n->height == rh && n->source == depth.image &&
+                n->generation == d.images.at(depth.image).generation)
+                native = n;
+            else if (++d.nativeMotionFallbacks <= 4 || d.nativeMotionFallbacks % 600 == 0)
+                log("Native renderer motion unavailable this frame (%s); camera-derived motion "
+                    "used; fallbacks=%llu",
+                    d.nativeMotionBlocker      ? d.nativeMotionBlocker
+                    : !n || !n->captured ? "no matching SSR pass in this command buffer"
+                                         : "SSR capture is for another frame or depth",
+                    (unsigned long long)d.nativeMotionFallbacks);
+        }
+        const auto frameSource =
+            native ? xpmotion::Source::NativeSsr : xpmotion::Source::CameraDerived;
         auto bindPipeline = d.fn<PFN_vkCmdBindPipeline>("vkCmdBindPipeline");
         auto bindSets = d.fn<PFN_vkCmdBindDescriptorSets>("vkCmdBindDescriptorSets");
-        bindPipeline(cb, VK_PIPELINE_BIND_POINT_COMPUTE,
-                     d.images.at(depth.image).create.samples == VK_SAMPLE_COUNT_1_BIT
-                         ? d.packPipeline
-                         : d.packMsaaPipeline);
-        bindSets(cb, VK_PIPELINE_BIND_POINT_COMPUTE, d.packPipelineLayout, 0, 1, &f.set, 0,
-                 nullptr);
-        d.fn<PFN_vkCmdDispatch>("vkCmdDispatch")(cb, (rw + 7) / 8, (rh + 7) / 8, 1);
-        for (auto *target : {&f.depth, &f.motion, &f.reactive})
-            transition(d, cb, *target, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-        barrier(d, cb, captured->image, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, depthLayout,
-                depthRange);
+        if (native) {
+            // Stage D: copy the native images into this frame's own images, so
+            // FSR, NR, frame generation (whose presenter can outlive this command
+            // buffer), the cockpit fix, the depth probe and the capture all read
+            // one set with the existing lifetime protections. Same formats/sizes.
+            OwnedImage *from[] = {&native->depth, &native->motion, &native->reactive};
+            OwnedImage *to[] = {&f.depth, &f.motion, &f.reactive};
+            for (int i = 0; i < 3; ++i) {
+                transition(d, cb, *from[i], VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+                transition(d, cb, *to[i], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+                VkImageCopy region{};
+                region.srcSubresource = region.dstSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+                region.extent = {rw, rh, 1};
+                d.fn<PFN_vkCmdCopyImage>("vkCmdCopyImage")(
+                    cb, from[i]->value.handle, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                    to[i]->value.handle, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+                transition(d, cb, *to[i], VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+                transition(d, cb, *from[i], VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+            }
+        } else {
+            barrier(d, cb, captured->image, depthLayout, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                    depthRange);
+            for (auto *target : {&f.depth, &f.motion, &f.reactive})
+                transition(d, cb, *target, VK_IMAGE_LAYOUT_GENERAL);
+            bindPipeline(cb, VK_PIPELINE_BIND_POINT_COMPUTE,
+                         d.images.at(depth.image).create.samples == VK_SAMPLE_COUNT_1_BIT
+                             ? d.packPipeline
+                             : d.packMsaaPipeline);
+            bindSets(cb, VK_PIPELINE_BIND_POINT_COMPUTE, d.packPipelineLayout, 0, 1, &f.set, 0,
+                     nullptr);
+            d.fn<PFN_vkCmdDispatch>("vkCmdDispatch")(cb, (rw + 7) / 8, (rh + 7) / 8, 1);
+            for (auto *target : {&f.depth, &f.motion, &f.reactive})
+                transition(d, cb, *target, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+            barrier(d, cb, captured->image, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, depthLayout,
+                    depthRange);
+        }
         transition(d, cb, f.output, VK_IMAGE_LAYOUT_GENERAL);
         xpfsr::Frame frame{};
         frame.commands = cb;
@@ -1867,6 +2049,21 @@ bool replace(Device &d, VkCommandBuffer cb, Command &command) {
         frame.reactive = f.reactive.value;
         if (d.reduceGhosting)
             frame.composition = f.reactive.value;
+        pollMotionCaptures(d);
+        if (!d.motionCaptureDirectory.empty() && !d.motionCaptureDone) {
+            try {
+                recordMotionCapture(d, cb, command, f.color, f.depth, f.motion, f.reactive, rw, rh,
+                                    depth.jitterX,
+                                    depth.jitterY,
+                                    d.camera.reset || !d.pathReady ||
+                                        frameSource != d.motionSource,
+                                    frameSource);
+            } catch (const std::exception &e) {
+                d.motionCaptureDone = true;
+                d.motionCaptures.clear();
+                log("Motion-quality capture turned off: %s", e.what());
+            }
+        }
         frame.output = f.output.value;
         frame.jitterX = depth.jitterX;
         frame.jitterY = depth.jitterY;
@@ -1878,7 +2075,15 @@ bool replace(Device &d, VkCommandBuffer cb, Command &command) {
         frame.sequence = d.camera.frame;
         uint32_t resetSources=(d.camera.reset?1u:0u)|(!d.pathReady?2u:0u)|
             (d.lastDepth!=depth.image?4u:0u)|
-            (d.lastDepthGeneration!=d.images.at(depth.image).generation?8u:0u);
+            (d.lastDepthGeneration!=d.images.at(depth.image).generation?8u:0u)|
+            (frameSource!=d.motionSource?64u:0u); // 64: motion source changed
+        if (frameSource != d.motionSource) {
+            log("Motion source now %s (shared motion contract v%u); history reset",
+                xpmotion::sourceName(frameSource), xpmotion::contractVersion);
+            d.motionSource = frameSource;
+        }
+        if (native)
+            ++d.nativeMotionUsed;
         frame.reset = resetSources != 0;
         if (!findProbe(d, depth.image)) {
             if (d.probes.size() >= 16)
@@ -2006,18 +2211,18 @@ bool replace(Device &d, VkCommandBuffer cb, Command &command) {
         }
         if (command.pushed.count(0) && command.layout) {
             std::vector<VkWriteDescriptorSet> writes;
-            std::vector<VkDescriptorImageInfo> infos;
             auto &saved = command.pushed[0];
-            infos.reserve(saved.size());
             writes.reserve(saved.size());
             for (auto &[binding, value] : saved) {
-                infos.push_back(value.image);
                 VkWriteDescriptorSet w{VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
                 w.dstBinding = binding.first;
                 w.dstArrayElement = binding.second;
                 w.descriptorCount = 1;
                 w.descriptorType = value.type;
-                w.pImageInfo = &infos.back();
+                // Map entries are stable: point at them directly. Buffer
+                // descriptors exist only while native renderer motion is selected.
+                w.pImageInfo = &value.image;
+                w.pBufferInfo = &value.buffer;
                 writes.push_back(w);
             }
             auto push = d.fn<PFN_vkCmdPushDescriptorSetKHR>("vkCmdPushDescriptorSetKHR");
@@ -2062,7 +2267,12 @@ bool replace(Device &d, VkCommandBuffer cb, Command &command) {
                 d.camera.ownSphere[3] == app::groundCameraMarker,resetSources,
                 (unsigned long long)d.frameDiagnostics.reportedResets,
                 (unsigned long long)d.frameDiagnostics.reportedSuppressed);
-        d.publish(d.mode == Mode::NativeAA
+        d.publish(native ? d.mode == Mode::NativeAA
+                               ? "Native AA recorded; EXPERIMENTAL native renderer motion (SSR)"
+                               : "Temporal upscaling recorded; EXPERIMENTAL native renderer motion (SSR)"
+                  : d.nativeMotionRequested
+                      ? "Camera-derived motion used: native renderer motion not available"
+                  : d.mode == Mode::NativeAA
                       ? "Native AA recorded; experimental camera-derived motion"
                       : "Temporal upscaling recorded; experimental camera-derived motion");
         return true;
@@ -2159,7 +2369,9 @@ static VKAPI_ATTR VkResult VKAPI_CALL L_CreateDevice(VkPhysicalDevice physical,
     link->u.pLayerInfo = link->u.pLayerInfo->pNext;
     auto create =
         reinterpret_cast<PFN_vkCreateDevice>(nextInstance(instance->handle, "vkCreateDevice"));
-    if(!hostActive()){
+    if(!hostActive()||creatingPrivateDevice){
+        // creatingPrivateDevice: the two-GPU module's own device on the second
+        // GPU is passed through untouched (no hooks, no feature changes).
         auto result=create(physical,ci,allocator,out);
         if(result==VK_SUCCESS){std::lock_guard<std::mutex> lock(registryLock);passiveDevices[key(*out)]=next;}
         return result;
@@ -2243,6 +2455,10 @@ static VKAPI_ATTR VkResult VKAPI_CALL L_CreateDevice(VkPhysicalDevice physical,
         VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TIMELINE_SEMAPHORE_FEATURES};
     bool foundTimeline = false;
     bool foundFloats = false, foundCoop = false, foundFp8 = false;
+    const bool antiLagWanted = app::environment(L"XPFSR24_ANTI_LAG") == L"1";
+    bool antiLagEnabled = false;
+    const char *antiLagReason = "";
+    VkPhysicalDeviceAntiLagFeaturesAMD requestLag{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ANTI_LAG_FEATURES_AMD};
     xpfsr::nr::Features neuralFeatures;
     bool neuralSupported = neuralSessionCapable() && cloned && coop.cooperativeMatrix &&
         fp8.shaderFloat8 && fp8.shaderFloat8CooperativeMatrix && neuralFeatures.query(physical,getFeatures);
@@ -2333,7 +2549,33 @@ static VKAPI_ATTR VkResult VKAPI_CALL L_CreateDevice(VkPhysicalDevice physical,
             requestFp8.shaderFloat8CooperativeMatrix = fp8.shaderFloat8CooperativeMatrix;
             append(requestFp8);
         }
-    }
+        // v2 opt-in AMD Anti-Lag 2 (VK_AMD_anti_lag): only when the driver
+        // exposes the extension and feature; otherwise the reason is shown.
+        if (antiLagWanted) {
+            VkPhysicalDeviceFeatures2 lagSupport{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2};
+            VkPhysicalDeviceAntiLagFeaturesAMD lag{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ANTI_LAG_FEATURES_AMD};
+            lagSupport.pNext = &lag;
+            bool listed = false;
+            for (auto &p : available) listed |= !strcmp(p.extensionName, VK_AMD_ANTI_LAG_EXTENSION_NAME);
+            if (listed) getFeatures(physical, &lagSupport);
+            bool inChain = false;
+            for (auto *node = first; node; node = node->pNext)
+                if (node->sType == VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ANTI_LAG_FEATURES_AMD) {
+                    reinterpret_cast<VkPhysicalDeviceAntiLagFeaturesAMD *>(node)->antiLag |= lag.antiLag;
+                    inChain = true;
+                }
+            if (!listed)
+                antiLagReason = "your graphics driver does not offer Anti-Lag 2 for Vulkan";
+            else if (!lag.antiLag)
+                antiLagReason = "the driver lists Anti-Lag 2 but turned it off for this GPU";
+            else if (add(VK_AMD_ANTI_LAG_EXTENSION_NAME)) {
+                requestLag.antiLag = VK_TRUE;
+                if (!inChain) append(requestLag);
+                antiLagEnabled = true;
+            }
+        }
+    } else if (antiLagWanted)
+        antiLagReason = "another Vulkan setting prevented the mod from adding it";
     VkDeviceCreateInfo modified = *ci;
     if (cloned) {
         modified.pNext = first;
@@ -2394,7 +2636,40 @@ static VKAPI_ATTR VkResult VKAPI_CALL L_CreateDevice(VkPhysicalDevice physical,
     try { state->files.start(); }
     catch (const std::exception &e) { log("Background status/control files unavailable: %s; shared controls retained", e.what()); }
     state->neural.features(neuralSupported);
+    if (antiLagEnabled)
+        state->antiLagUpdate = reinterpret_cast<PFN_vkAntiLagUpdateAMD>(next(*out, "vkAntiLagUpdateAMD"));
+    if (antiLagWanted) {
+        if (antiLagEnabled && !state->antiLagUpdate) antiLagReason = "the driver did not provide its Anti-Lag 2 function";
+        snprintf(state->status.antiLag, sizeof(state->status.antiLag), "%c%s", state->antiLagUpdate ? '1' : '2',
+                 state->antiLagUpdate ? "" : antiLagReason);
+        log("AMD Anti-Lag 2: %s", state->antiLagUpdate ? "on (VK_AMD_anti_lag, input and present markers)" : antiLagReason);
+    }
+    {
+        const auto choice = app::environment(L"XPFSR24_LOD_BIAS");
+        state->lodExtra = xpfsr::lod::parse(choice.c_str());
+        VkPhysicalDeviceProperties limits{};
+        reinterpret_cast<PFN_vkGetPhysicalDeviceProperties>(instance->next(instance->handle, "vkGetPhysicalDeviceProperties"))(physical, &limits);
+        state->lodLimit = limits.limits.maxSamplerLodBias;
+        if (state->lodExtra < 0)
+            log("Texture detail: %.1f extra mip bias on anisotropic texture samplers (device limit %.1f)", state->lodExtra, state->lodLimit);
+    }
     state->mode = selectedMode();
+    setupMotionCapture(*state);
+    cpusched::apply();
+    {const auto cpu=cpusched::status();strncpy(state->status.cpuScheduling,cpu.empty()?"0":("1"+cpu).c_str(),sizeof(state->status.cpuScheduling)-1);}
+    state->motionSurvey = app::environment(L"XPFSR24_MOTION_SURVEY") == L"1";
+    if (state->motionSurvey)
+        log("Motion survey on: logging shader interfaces with motion-related names (names only)");
+    {
+        auto motion = app::environment(L"XPFSR24_MOTION");
+        std::string token(motion.begin(), motion.end());
+        state->nativeMotionRequested =
+            xpmotion::parseSource(token.c_str()) == xpmotion::Source::NativeSsr;
+        log("Motion source selected: %s (shared motion contract v%u)",
+            state->nativeMotionRequested ? "EXPERIMENTAL native renderer SSR; camera-derived fallback"
+                                         : "camera-derived (default)",
+            xpmotion::contractVersion);
+    }
     auto fgGuard=app::environment(L"XPFSR24_FG_GUARD");
     if(!fgGuard.empty()&&state->fgRequested.empty()){
         std::string message(fgGuard.begin(),fgGuard.end());
@@ -2477,7 +2752,7 @@ static VKAPI_ATTR VkResult VKAPI_CALL L_CreateDevice(VkPhysicalDevice physical,
 }
 static VKAPI_ATTR void VKAPI_CALL L_DestroyDevice(VkDevice device,
                                                   const VkAllocationCallbacks *allocator) {
-    if(!hostActive()){
+    if(!hostActive()||passiveDevice(device)){
         PFN_vkGetDeviceProcAddr next{};
         {std::lock_guard<std::mutex> lock(registryLock);auto p=passiveDevices.find(key(device));if(p!=passiveDevices.end()){next=p->second;passiveDevices.erase(p);}}
         if(next)reinterpret_cast<PFN_vkDestroyDevice>(next(device,"vkDestroyDevice"))(device,allocator);
@@ -2486,6 +2761,8 @@ static VKAPI_ATTR void VKAPI_CALL L_DestroyDevice(VkDevice device,
     auto d = deviceFor(device);
     if (!d)
         return;
+    for (auto &entry : d->duals) dualDestroy(*d, *entry.second);
+    d->dualCurrent.reset();d->duals.clear();
     d->files.stop(); // file worker never calls Vulkan or takes the device lock
     d->neural.join();
     d->fn<PFN_vkDeviceWaitIdle>("vkDeviceWaitIdle")(device);
@@ -2498,7 +2775,9 @@ static VKAPI_ATTR void VKAPI_CALL L_DestroyDevice(VkDevice device,
         retired.clear(); // No routing lock across SDK waits/destruction.
     }
     d->fn<PFN_vkDeviceWaitIdle>("vkDeviceWaitIdle")(device);
-    d->commands.clear();
+    d->pendingContexts.clear(); // waits for any worker-thread FSR context creation
+    d->commands.clear(); // also releases native motion frames
+    d->motionCaptures.clear();
     d->presenterFrames.clear();
     d->idleFrames.clear();d->idleDepths.clear();
     if(d->reclaimFence)d->fn<PFN_vkDestroyFence>("vkDestroyFence")(device,d->reclaimFence,nullptr);
@@ -2509,6 +2788,28 @@ static VKAPI_ATTR void VKAPI_CALL L_DestroyDevice(VkDevice device,
     d->runtime.reset();
     log("Quality preview: native function lookup misses=%llu",
         (unsigned long long)d->dispatchLookups.load());
+    for (auto p : {d->nativeMotion2D, d->nativeMotionArray, d->nativeMotionHistoryPipeline,
+                   d->nativeMotionMsaa})
+        if (p)
+            d->fn<PFN_vkDestroyPipeline>("vkDestroyPipeline")(device, p, nullptr);
+    if (d->nativeMotionPipelineLayout)
+        d->fn<PFN_vkDestroyPipelineLayout>("vkDestroyPipelineLayout")(
+            device, d->nativeMotionPipelineLayout, nullptr);
+    if (d->nativeMotionLayout)
+        d->fn<PFN_vkDestroyDescriptorSetLayout>("vkDestroyDescriptorSetLayout")(
+            device, d->nativeMotionLayout, nullptr);
+    if (d->nativeMotionHistory)
+        d->fn<PFN_vkDestroyBuffer>("vkDestroyBuffer")(device, d->nativeMotionHistory, nullptr);
+    if (d->nativeMotionHistoryMemory)
+        d->fn<PFN_vkFreeMemory>("vkFreeMemory")(device, d->nativeMotionHistoryMemory, nullptr);
+    if (d->motionSurvey)
+        log("Motion survey summary: modules=%llu motion-named=%llu unique-logged=%zu",
+            (unsigned long long)d->surveyModules, (unsigned long long)d->surveyHinted,
+            d->surveyed.size());
+    if (d->nativeMotionCaptures || d->nativeMotionRequested)
+        log("Native renderer motion summary: captures=%llu used=%llu camera-fallbacks=%llu",
+            (unsigned long long)d->nativeMotionCaptures, (unsigned long long)d->nativeMotionUsed,
+            (unsigned long long)d->nativeMotionFallbacks);
     if (d->packPipeline)
         d->fn<PFN_vkDestroyPipeline>("vkDestroyPipeline")(device, d->packPipeline, nullptr);
     if (d->packMsaaPipeline)
@@ -2532,6 +2833,9 @@ static VKAPI_ATTR void VKAPI_CALL L_DestroyDevice(VkDevice device,
     }
     destroy(device, allocator);
     log("Device destroyed");
+    bool last;
+    {std::lock_guard<std::mutex> l(registryLock);last=devices.empty();}
+    if(last)cpusched::restore();
 }
 #include "layer_framegen.inc"
 static VKAPI_ATTR void VKAPI_CALL L_GetDeviceQueue(VkDevice device, uint32_t family, uint32_t index,
@@ -2540,6 +2844,25 @@ static VKAPI_ATTR void VKAPI_CALL L_GetDeviceQueue(VkDevice device, uint32_t fam
     d->fn<PFN_vkGetDeviceQueue>("vkGetDeviceQueue")(device, family, index, queue);
     if (*queue && d->setLoaderData)
         d->setLoaderData(device, *queue);
+}
+// v2 opt-in texture detail: shift material-texture samplers one level (or half)
+// sharper, as AMD recommends for temporal upscaling. Everything else is untouched.
+static VKAPI_ATTR VkResult VKAPI_CALL L_CreateSampler(VkDevice device, const VkSamplerCreateInfo *c,
+                                                      const VkAllocationCallbacks *a, VkSampler *out) {
+    auto d = deviceFor(device);
+    auto create = d->fn<PFN_vkCreateSampler>("vkCreateSampler");
+    if (sdkNesting || d->lodExtra >= 0 || !c || !xpfsr::lod::eligible(*c)) {
+        if (!sdkNesting && d->lodExtra < 0 && c) ++d->lodSkipped;
+        return create(device, c, a, out);
+    }
+    auto copy = *c;
+    copy.mipLodBias = xpfsr::lod::biased(c->mipLodBias, d->lodExtra, d->lodLimit);
+    const auto count = ++d->lodBiased;
+    if (count <= 4 || count % 500 == 0)
+        log("Texture detail: sampler %llu bias %.2f -> %.2f (aniso %.0f, max LOD %.1f); %llu other samplers kept",
+            (unsigned long long)count, c->mipLodBias, copy.mipLodBias, c->maxAnisotropy, c->maxLod,
+            (unsigned long long)d->lodSkipped.load());
+    return create(device, &copy, a, out);
 }
 static VKAPI_ATTR VkResult VKAPI_CALL L_CreateImage(VkDevice device, const VkImageCreateInfo *c,
                                                     const VkAllocationCallbacks *a, VkImage *out) {
@@ -2622,8 +2945,30 @@ static VKAPI_ATTR VkResult VKAPI_CALL L_CreateShaderModule(VkDevice device,
     auto result = d->fn<PFN_vkCreateShaderModule>("vkCreateShaderModule")(device, c, a, out);
     if (result == VK_SUCCESS) {
         uint32_t fsr = fsrShader(c);
+        // Classify outside the device lock; only when native motion is selected.
+        const ShaderRole role = d->nativeMotionRequested
+                                    ? classifyShader(c->pCode, c->codeSize / 4)
+                                    : ShaderRole::None;
+        bool hinted = false;
+        const std::string survey =
+            d->motionSurvey ? describeInterface(c->pCode, c->codeSize / 4, &hinted) : std::string();
         std::lock_guard<std::recursive_mutex> l(d->lock);
         d->shaders[*out] = fsr;
+        if (d->motionSurvey && !survey.empty()) {
+            ++d->surveyModules;
+            if (hinted) {
+                ++d->surveyHinted;
+                if (d->surveyed.insert(std::hash<std::string>{}(survey)).second &&
+                    d->surveyed.size() <= 300)
+                    log("Motion survey: %s", survey.c_str());
+            }
+        }
+        if (d->nativeMotionRequested) {
+            d->nativeMotionShaders[*out] = role;
+            if (role == ShaderRole::SsrScene2D || role == ShaderRole::SsrSceneArray ||
+                role == ShaderRole::SsrSceneMsaa)
+                log("Native motion: recognized SSR shader role=%s", roleName(role));
+        }
         d->shaderUse[*out] = reflectBindings(c);
         if (fsr)
             log("Recognized native FSR compute shader (%zu bytes)", c->codeSize);
@@ -2641,6 +2986,7 @@ static VKAPI_ATTR void VKAPI_CALL L_DestroyShaderModule(VkDevice device, VkShade
     {
         std::lock_guard<std::recursive_mutex> l(d->lock);
         d->shaders.erase(shader);
+        d->nativeMotionShaders.erase(shader);
         d->shaderUse.erase(shader);
     }
     d->fn<PFN_vkDestroyShaderModule>("vkDestroyShaderModule")(device, shader, a);
@@ -2660,6 +3006,29 @@ static VKAPI_ATTR VkResult VKAPI_CALL L_CreateComputePipelines(
     for (uint32_t i = 0; i < count; ++i)
         if (out[i]) {
             uint32_t known = d->shaders[c[i].stage.module];
+            if (d->nativeMotionRequested) {
+                auto module = d->nativeMotionShaders.find(c[i].stage.module);
+                ShaderRole motion =
+                    module != d->nativeMotionShaders.end() ? module->second : ShaderRole::None;
+                for (auto *p = static_cast<const VkBaseInStructure *>(c[i].stage.pNext); p;
+                     p = p->pNext) {
+                    if (p->sType == VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO) {
+                        auto *info = reinterpret_cast<const VkShaderModuleCreateInfo *>(p);
+                        motion = classifyShader(info->pCode, info->codeSize / 4);
+                    }
+                    if (p->sType ==
+                        VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_MODULE_IDENTIFIER_CREATE_INFO_EXT) {
+                        auto *id = reinterpret_cast<
+                            const VkPipelineShaderStageModuleIdentifierCreateInfoEXT *>(p);
+                        auto found = d->nativeMotionIdentifiers.find(
+                            {id->pIdentifier, id->pIdentifier + id->identifierSize});
+                        motion = found != d->nativeMotionIdentifiers.end() ? found->second
+                                                                           : ShaderRole::None;
+                    }
+                }
+                if (motion != ShaderRole::None)
+                    d->nativeMotionPipelines[out[i]] = motion;
+            }
             for (auto *p = static_cast<const VkBaseInStructure *>(c[i].stage.pNext); p;
                  p = p->pNext) {
                 if (p->sType == VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO)
@@ -2699,6 +3068,13 @@ static VKAPI_ATTR void VKAPI_CALL L_GetShaderModuleIdentifierEXT(VkDevice device
             d->shaders[shader];
         d->identifierUse[{out->identifier, out->identifier + out->identifierSize}] =
             d->shaderUse[shader];
+        if (d->nativeMotionRequested) {
+            auto module = d->nativeMotionShaders.find(shader);
+            if (module != d->nativeMotionShaders.end())
+                d->nativeMotionIdentifiers[{out->identifier,
+                                            out->identifier + out->identifierSize}] =
+                    module->second;
+        }
     }
 }
 static VKAPI_ATTR void VKAPI_CALL L_GetShaderModuleCreateInfoIdentifierEXT(
@@ -2718,6 +3094,9 @@ static VKAPI_ATTR void VKAPI_CALL L_GetShaderModuleCreateInfoIdentifierEXT(
             fsrShader(c);
         d->identifierUse[{out->identifier, out->identifier + out->identifierSize}] =
             reflectBindings(c);
+        if (d->nativeMotionRequested)
+            d->nativeMotionIdentifiers[{out->identifier, out->identifier + out->identifierSize}] =
+                classifyShader(c->pCode, c->codeSize / 4);
     }
 }
 static VKAPI_ATTR VkResult VKAPI_CALL L_CreateGraphicsPipelines(
@@ -2794,6 +3173,7 @@ static VKAPI_ATTR void VKAPI_CALL L_DestroyPipeline(VkDevice device, VkPipeline 
     {
         std::lock_guard<std::recursive_mutex> l(d->lock);
         d->pipelines.erase(pipeline);
+        d->nativeMotionPipelines.erase(pipeline);
         d->graphicsViewports.erase(pipeline);
         d->pipelineUse.erase(pipeline);
     }
@@ -2911,6 +3291,10 @@ static VKAPI_ATTR VkResult VKAPI_CALL L_BeginCommandBuffer(VkCommandBuffer cb,
             resources->neuralColor.release();resources->neuralOutput.release();
         }
         auto captures = std::move(old.capturedDepths);
+        // Begin proves this buffer is idle; its native motion images are reused.
+        auto nativeMotion = std::move(old.nativeMotion);
+        if (nativeMotion)
+            nativeMotion->captured = false;
         if (!old.submitted || presenterPending) {
             retireFrame(*d,resources);
             for(auto&capture:captures)retireDepth(*d,capture.second);
@@ -2943,6 +3327,7 @@ static VKAPI_ATTR VkResult VKAPI_CALL L_BeginCommandBuffer(VkCommandBuffer cb,
                                         inherited->colorAttachmentCount > 0;
                 }
         old.resources = std::move(resources);
+        old.nativeMotion = std::move(nativeMotion);
         old.capturedDepths = std::move(captures);
     }
     return result;
@@ -3155,7 +3540,8 @@ static VKAPI_ATTR void VKAPI_CALL L_UpdateDescriptorSets(VkDevice device, uint32
     {
         std::lock_guard<std::recursive_mutex> l(d->lock);
         for (uint32_t i = 0; i < count; ++i)
-            writeDescriptors(d->descriptors[writes[i].dstSet], 1, writes + i);
+            writeDescriptors(d->descriptors[writes[i].dstSet], 1, writes + i,
+                             d->nativeMotionRequested);
         for (uint32_t i = 0; i < copyCount; ++i) {
             auto &c = copies[i];
             for (uint32_t n = 0; n < c.descriptorCount; ++n)
@@ -3182,7 +3568,7 @@ static VKAPI_ATTR void VKAPI_CALL L_CmdPushDescriptorSet(VkCommandBuffer cb,
         auto &command = d->commands[cb];
         command.layout = layout;
         command.sets.erase(set);
-        writeDescriptors(command.pushed[set], count, writes);
+        writeDescriptors(command.pushed[set], count, writes, d->nativeMotionRequested);
     } else if (point == VK_PIPELINE_BIND_POINT_GRAPHICS) {
         std::lock_guard<std::recursive_mutex> l(d->lock);
         auto &command = d->commands[cb];
@@ -3207,7 +3593,8 @@ static VKAPI_ATTR void VKAPI_CALL L_CmdPushDescriptorSet2(VkCommandBuffer cb,
         auto &command = d->commands[cb];
         command.layout = c->layout;
         command.sets.erase(c->set);
-        writeDescriptors(command.pushed[c->set], c->descriptorWriteCount, c->pDescriptorWrites);
+        writeDescriptors(command.pushed[c->set], c->descriptorWriteCount, c->pDescriptorWrites,
+                         d->nativeMotionRequested);
     }
     if (c->stageFlags & VK_SHADER_STAGE_ALL_GRAPHICS) {
         std::lock_guard<std::recursive_mutex> l(d->lock);
@@ -4030,8 +4417,14 @@ static VKAPI_ATTR void VKAPI_CALL L_CmdDispatch(VkCommandBuffer cb, uint32_t x, 
         trackDispatch(*d, d->commands[cb]);
         handled = replace(*d, cb, d->commands[cb]);
     }
-    if (!handled)
+    if (!handled) {
         d->fn<PFN_vkCmdDispatch>("vkCmdDispatch")(cb, x, y, z);
+        // After X-Plane's own SSR dispatch: read its inputs for native motion.
+        if (d->nativeMotionRequested && z == 1) {
+            std::lock_guard<std::recursive_mutex> l(d->lock);
+            captureNativeMotion(*d, cb, d->commands[cb]);
+        }
+    }
 }
 static VKAPI_ATTR void VKAPI_CALL L_CmdDispatchBase(VkCommandBuffer cb, uint32_t bx, uint32_t by,
                                                     uint32_t bz, uint32_t x, uint32_t y,
@@ -4053,6 +4446,10 @@ static VKAPI_ATTR void VKAPI_CALL L_CmdDispatchBase(VkCommandBuffer cb, uint32_t
         if (!fn)
             fn = d->fn<PFN_vkCmdDispatchBase>("vkCmdDispatchBaseKHR");
         fn(cb, bx, by, bz, x, y, z);
+        if (d->nativeMotionRequested && !bx && !by && !bz && z == 1) {
+            std::lock_guard<std::recursive_mutex> l(d->lock);
+            captureNativeMotion(*d, cb, d->commands[cb]);
+        }
     }
 }
 static VKAPI_ATTR void VKAPI_CALL L_CmdDispatchIndirect(VkCommandBuffer cb, VkBuffer buffer,
@@ -4083,6 +4480,7 @@ static VKAPI_ATTR VkResult VKAPI_CALL L_QueueSubmit(VkQueue queue, uint32_t coun
     auto result = fn(queue, count, submits, fence);
     if (result == VK_SUCCESS) {
         std::lock_guard<std::recursive_mutex> l(d->lock);
+        WorkTimer work{d->layerWorkTicks};
         std::vector<VkCommandBuffer> commands;
         for (uint32_t i = 0; i < count; ++i)
             for (uint32_t n = 0; n < submits[i].commandBufferCount; ++n)
@@ -4104,6 +4502,7 @@ static VKAPI_ATTR VkResult VKAPI_CALL L_QueueSubmit2(VkQueue queue, uint32_t cou
     auto result = fn(queue, count, submits, fence);
     if (result == VK_SUCCESS) {
         std::lock_guard<std::recursive_mutex> l(d->lock);
+        WorkTimer work{d->layerWorkTicks};
         std::vector<VkCommandBuffer> commands;
         for (uint32_t i = 0; i < count; ++i)
             for (uint32_t n = 0; n < submits[i].commandBufferInfoCount; ++n)
@@ -4113,15 +4512,53 @@ static VKAPI_ATTR VkResult VKAPI_CALL L_QueueSubmit2(VkQueue queue, uint32_t cou
     }
     return result;
 }
+// AMD Anti-Lag 2 markers around each real (not SDK presenter) frame: present
+// stage just before it is handed over, input stage right after, which is
+// where X-Plane starts its next frame and reads input. The input call may
+// wait briefly; that wait is the latency reduction. maxFPS stays 0 (the
+// mod's own cap and the SDK pacer keep control of frame timing).
+static void antiLagMark(Device &d, VkAntiLagStageAMD stage) {
+    VkAntiLagPresentationInfoAMD frame{VK_STRUCTURE_TYPE_ANTI_LAG_PRESENTATION_INFO_AMD};
+    frame.stage = stage;
+    frame.frameIndex = d.antiLagFrame;
+    VkAntiLagDataAMD data{VK_STRUCTURE_TYPE_ANTI_LAG_DATA_AMD};
+    data.mode = VK_ANTI_LAG_MODE_ON_AMD;
+    data.maxFPS = 0;
+    data.pPresentationInfo = &frame;
+    d.antiLagUpdate(d.handle, &data);
+}
 static VKAPI_ATTR VkResult VKAPI_CALL L_QueuePresentKHR(VkQueue queue, const VkPresentInfoKHR *c) {
-    return presentFrame(*deviceFor(queue), queue, c);
+    auto &d = *deviceFor(queue);
+    if (!sdkNesting && c && c->swapchainCount == 1) {
+        std::lock_guard<std::recursive_mutex> lock(d.lock);
+        auto dual = d.duals.find(c->pSwapchains[0]);
+        if (dual != d.duals.end()) {
+            const auto r = dual->second == d.dualCurrent ? dualPresent(d, *dual->second, queue, *c, c->pImageIndices[0]) : VK_ERROR_OUT_OF_DATE_KHR;
+            if (c->pResults) c->pResults[0] = r;
+            if (d.antiLagUpdate) {++d.antiLagFrame;antiLagMark(d, VK_ANTI_LAG_STAGE_INPUT_AMD);}
+            return r;
+        }
+    }
+    const bool real = d.antiLagUpdate && !sdkNesting && !(!d.fgRequested.empty() && d.fgQueues[0] && queue != d.fgQueues[0]);
+    if (real) antiLagMark(d, VK_ANTI_LAG_STAGE_PRESENT_AMD);
+    const auto result = presentFrame(d, queue, c);
+    if (real) {
+        ++d.antiLagFrame;
+        const auto start = qpcNow();
+        antiLagMark(d, VK_ANTI_LAG_STAGE_INPUT_AMD);
+        d.antiLagWaitTicks += qpcNow() - start;
+        if (++d.antiLagWaits % 1200 == 0)
+            log("AMD Anti-Lag 2: average input wait %.2f ms over %llu frames",
+                qpcToNs(int64_t(d.antiLagWaitTicks)) / 1e6 / double(d.antiLagWaits), (unsigned long long)d.antiLagWaits);
+    }
+    return result;
 }
 
 extern "C" __declspec(dllexport) VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL
 XP_GetDeviceProcAddr(VkDevice device, const char *name) {
     if (!name)
         return nullptr;
-    if(!hostActive()){
+    if(!hostActive()||passiveDevice(device)){
         if(!strcmp(name,"vkGetDeviceProcAddr"))return reinterpret_cast<PFN_vkVoidFunction>(XP_GetDeviceProcAddr);
         if(!strcmp(name,"vkDestroyDevice"))return reinterpret_cast<PFN_vkVoidFunction>(L_DestroyDevice);
         PFN_vkGetDeviceProcAddr next{};
@@ -4151,6 +4588,7 @@ XP_GetDeviceProcAddr(VkDevice device, const char *name) {
     HOOK("vkGetDeviceProcAddr", XP_GetDeviceProcAddr);
     HOOK("vkDestroyDevice", L_DestroyDevice);
     HOOK("vkCreateImage", L_CreateImage);
+    HOOK("vkCreateSampler", L_CreateSampler);
     HOOK("vkDestroyImage", L_DestroyImage);
     HOOK("vkCreateImageView", L_CreateImageView);
     HOOK("vkDestroyImageView", L_DestroyImageView);

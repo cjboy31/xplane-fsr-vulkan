@@ -57,6 +57,12 @@ while flying, but must close X-Plane before installing. Downloads are verified.
 Native AA updates also refuse downgrades. Your saved image settings are kept.
 
 Open Changelog in the panel to read changes. No startup video is needed.
+To see FPS, open Rendering and scroll to Frame generation. Turn Show frame
+counter On. You can also use Plugins > FSR 3.1 / 4.1 + Frame Gen > Show / hide
+frame counter. Real (raw) FPS counts X-Plane's frames. FG extra FPS counts the
+extra frames frame generation produces. FG shows zero when it produces no
+extra frames. This does not measure your monitor's refresh rate. The choice
+saves automatically and works without restarting X-Plane.
 Select ? beside a setting for a short explanation and a starting point.
 Group headings show when changes apply. The Windows Animation effects setting controls
 the opening, tab and switch transitions. Diagnostics opens the FSR log folder.
@@ -106,7 +112,7 @@ include FSR 4, NR or frame generation. Mac rendering is not available.
 Check the live status after loading a flight. If an effect is waiting or off,
 read the message rather than assuming a selected option means it is running.
 Community: https://discord.gg/yh396QNgHZ
-Downloads: https://github.com/cjboy31/xplane-fsr-vulkan/releases
+Downloads: https://github.com/cjboy31/xplane12-fsr-framegen/releases
 Keep the supplied licenses. No simulator assets or personal settings are bundled.
 
 OPTIONAL SHADOW CONTROLS

@@ -2,6 +2,17 @@
 #pragma once
 #include "shared.hpp"
 namespace app {
+// v2 fix: the clip-space reprojection grows with (camera step / near plane).
+// X-Plane's near plane is a few centimetres, so ordinary forward flight
+// (several metres per frame) exceeded the old fixed bound of 100 on every
+// airborne frame and reset FSR/FG history continuously. Real cuts are found
+// physically by cameraCut(); the matrix itself is rejected only when unusable.
+inline bool reprojectionUnusable(const double *reprojection) {
+    for (int i = 0; i < 16; ++i)
+        if (!std::isfinite(reprojection[i]) || std::abs(reprojection[i]) > 1e12)
+            return true;
+    return false;
+}
 inline bool cameraCut(const Camera &before, const Camera &after) {
     if (!before.valid || !after.valid || before.internal != after.internal ||
         before.width != after.width || before.height != after.height ||

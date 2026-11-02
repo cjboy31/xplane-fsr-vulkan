@@ -96,7 +96,7 @@ same stationary view and allow a newly selected model to finish preparing.
 
 Our NR timing checks found a real cost difference between 33%, 50% and 67%.
 They do not predict another user's flight FPS. Read the
-[measured NR results and their limits](NR-PERFORMANCE-20261031.md) if you want detail.
+[measured NR results and their limits](developer/NR-PERFORMANCE-20261031.md) if you want detail.
 
 ## Low FPS or stutters: what to check
 

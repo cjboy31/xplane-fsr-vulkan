@@ -71,6 +71,11 @@ int wmain(int argc,wchar_t**argv){try{
     std::wstring name=L"Local\\XPFSRPanelTest-"+std::to_wstring(GetCurrentProcessId());xpfsr::nr::ControlChannel writer,reader;
     check(writer.create(name.c_str(),initial.nr)&&reader.open(name.c_str()),"NR IPC attach");int publications=0;
     insim::Panel panel;panel.bind(file,&writer,true,false,[&](const auto&){++publications;});
+    {const auto fg=panel.choices.frameGeneration;check(!panel.choices.showFrameCounter,"Frame counter should default Off");
+     panel.act({insim::Kind::FrameCounter,0,1});check(panel.choices.showFrameCounter&&launcher::load(file).showFrameCounter&&panel.choices.frameGeneration==fg,"Live frame-counter toggle changed FG or did not save");
+     insim::Panel restored;restored.bind(file,&writer,true,false);check(restored.choices.showFrameCounter,"Reopening lost frame counter choice");
+     check(panel.helpTitle(214)=="Frame counter"&&panel.helpText(214).find("zero")!=std::string::npos,"Counter help does not explain inactive FG");
+     panel.act({insim::Kind::FrameCounter,0,-1});check(!launcher::load(file).showFrameCounter,"Counter could not turn Off");}
     int logOpens=0;panel.logSupport([&]{++logOpens;});
     int reportOpens=0;panel.reportSupport([&]{++reportOpens;});
     for(auto size:{std::pair{640,480},std::pair{880,740}}){panel.act({insim::Kind::Tab,2});bool openLog=false;
@@ -98,8 +103,13 @@ int wmain(int argc,wchar_t**argv){try{
             for(const auto&i:items){check(i.rect.x>=0&&i.rect.y>=0&&i.rect.x+i.rect.w<=size.first&&i.rect.y+i.rect.h<=size.second,"Panel content escaped viewport");if(i.button&&i.action.kind==insim::Kind::NRField)reached.insert(i.action.field);if(i.action.kind==insim::Kind::OpenChoice&&i.action.field==int(insim::Kind::NRField))reached.insert(i.action.delta);}}
         check(reached.size()==xpfsr::nr::Count,"NR field unreachable by scrolling");
         panel.scroll=panel.maxScroll(size.second);check(!panel.wheel(10000,size.second),"Bottom overscroll changed layout");panel.scroll=0;check(!panel.wheel(-10000,size.second),"Top overscroll changed layout");
-        panel.act({insim::Kind::Help,xpfsr::nr::Order});auto help=panel.view(size.first,size.second);for(const auto&i:help)check(!i.button||i.action.kind!=insim::Kind::NRField,"Help overlay left editable background controls");
-        panel.act({insim::Kind::Help,-1});panel.act({insim::Kind::Tab,0});for(int y=0;y<=panel.maxScroll(size.second);++y){panel.scroll=y;for(const auto&i:panel.view(size.first,size.second))check(i.rect.y<insim::contentTop||i.rect.y+i.rect.h<=size.second-insim::footerHeight||!i.button,"Flight control overlaps footer");}
+        // v2: "?" pins a hover card and keeps the user on the same page with live controls.
+        const int tabBefore=panel.tab;const auto unpinned=panel.view(size.first,size.second).size();
+        panel.act({insim::Kind::Help,xpfsr::nr::Order});check(panel.pinnedHelp==xpfsr::nr::Order&&panel.helpField<0&&panel.tab==tabBefore,"Help click left the current page");
+        check(panel.view(size.first,size.second).size()==unpinned,"Pinned help replaced the settings it explains");
+        check(!panel.helpText(xpfsr::nr::Order).empty()&&!panel.helpTitle(xpfsr::nr::Order).empty(),"Missing hover card text");
+        panel.act({insim::Kind::Help,xpfsr::nr::Order});check(panel.pinnedHelp<0,"Second help click did not unpin the card");
+        panel.act({insim::Kind::Help,-1});panel.act({insim::Kind::Tab,0});check(panel.pinnedHelp<0,"Tab change kept a pinned card");for(int y=0;y<=panel.maxScroll(size.second);++y){panel.scroll=y;for(const auto&i:panel.view(size.first,size.second))check(i.rect.y<insim::contentTop||i.rect.y+i.rect.h<=size.second-insim::footerHeight||!i.button,"Flight control overlaps footer");}
     }
     panel.act({insim::Kind::Tab,1});panel.scroll=0;
     auto widgets=panel.view(880,740);bool toggle=false,slider=false,close=false;
@@ -117,6 +127,40 @@ int wmain(int argc,wchar_t**argv){try{
     int queued=0;panel.graphicsSupport([&]{++queued;});panel.act({insim::Kind::ApplyGraphics});check(queued==1,"Deferred graphics callback not invoked");
     panel.act({insim::Kind::FGToggle,0,-1});check(!panel.choices.frameGeneration&&panel.choices.lastFrameGeneration==1,"FG Off lost the selected provider");
     panel.act({insim::Kind::FGProvider,0,1});check(!panel.choices.frameGeneration&&panel.choices.lastFrameGeneration==2,"Choosing a provider enabled FG while Off");
+    // v2 pacing profile: saved, clamped, reloaded, and never toggles FG itself.
+    {const int fgBefore=panel.choices.frameGeneration;panel.act({insim::Kind::FGPacing,0,1});check(panel.choices.fgPacing==1&&panel.choices.frameGeneration==fgBefore,"Pacing choice changed FG or was not saved");
+     panel.act({insim::Kind::FGPacing,0,5});check(panel.choices.fgPacing==2,"Pacing choice not clamped");check(launcher::load(file).fgPacing==2,"Pacing choice not persisted");
+     panel.act({insim::Kind::FGPacing,0,-2});check(panel.choices.fgPacing==0,"Pacing choice could not return to Smooth");}
+    // v2 base frame-rate cap: index saved, clamped, reloaded, FG untouched.
+    {const int fgBefore=panel.choices.frameGeneration;panel.act({insim::Kind::FGCap,0,1});check(panel.choices.fgCap==1&&panel.choices.frameGeneration==fgBefore,"Cap choice changed FG or was not saved");
+     check(launcher::load(file).fgCap==1,"Cap choice not persisted");panel.act({insim::Kind::FGCap,0,99});check(panel.choices.fgCap==xpfsr::pacing::capCount-1,"Cap choice not clamped");
+     panel.act({insim::Kind::FGCap,0,-99});check(panel.choices.fgCap==0,"Cap could not return to Off");}
+    // v2 motion source (shared motion contract v1): saved, clamped, reloaded, FG untouched; help card present.
+    {const int fgBefore=panel.choices.frameGeneration;check(panel.choices.motionSource==0,"Motion source must default to Camera");
+     panel.act({insim::Kind::MotionSource,0,1});check(panel.choices.motionSource==1&&panel.choices.frameGeneration==fgBefore&&launcher::load(file).motionSource==1,"Native motion choice not saved or changed FG");
+     panel.act({insim::Kind::MotionSource,0,9});check(panel.choices.motionSource==1,"Motion source not clamped");
+     check(panel.helpTitle(211)=="Motion source"&&panel.helpText(211).find("experimental")!=std::string::npos&&panel.helpText(211).find("frame generation")!=std::string::npos,"Motion source help missing");
+     panel.act({insim::Kind::MotionSource,0,-1});check(panel.choices.motionSource==0&&launcher::load(file).motionSource==0,"Motion source could not return to Camera");}
+    // v2 opt-in CPU scheduling helper: Off by default, saved, clamped, reloaded; help present.
+    {check(panel.choices.cpuScheduling==0,"CPU scheduling must default to Windows decides");
+     panel.act({insim::Kind::CpuScheduling,0,1});check(panel.choices.cpuScheduling==1&&launcher::load(file).cpuScheduling==1&&panel.notice.find("undone")!=std::string::npos,"CPU scheduling not saved");
+     panel.act({insim::Kind::CpuScheduling,0,5});check(panel.choices.cpuScheduling==1,"CPU scheduling not clamped");
+     check(panel.helpTitle(212)=="CPU scheduling"&&panel.helpText(212).find("P-cores")!=std::string::npos&&panel.helpText(212).find("X3D")!=std::string::npos,"CPU scheduling help missing");
+     check(panel.cpuSchedulingSummary().find("restart")!=std::string::npos||panel.cpuSchedulingSummary().find("after the renderer")!=std::string::npos,"CPU scheduling summary before a session");
+     check(panel.choices.fgGpu==0,"Frame generation GPU must default to the same GPU");
+     panel.act({insim::Kind::FGGpu,0,1});check(panel.choices.fgGpu==1&&launcher::load(file).fgGpu==1&&panel.notice.find("monitor")!=std::string::npos,"Second-GPU FG not saved");
+     check(panel.helpTitle(216)=="Frame generation GPU"&&panel.helpText(216).find("second")!=std::string::npos,"Frame generation GPU help missing");
+     panel.act({insim::Kind::FGGpu,0,-1});check(panel.choices.fgGpu==0,"Frame generation GPU could not return to same");
+     check(panel.choices.textureBias==0,"Texture detail must default to X-Plane's own");
+     panel.act({insim::Kind::TextureBias,0,2});check(panel.choices.textureBias==2&&launcher::load(file).textureBias==2,"Texture detail not saved");
+     panel.act({insim::Kind::TextureBias,0,5});check(panel.choices.textureBias==2,"Texture detail not clamped");
+     check(panel.helpTitle(215)=="Texture detail"&&panel.helpText(215).find("AMD")!=std::string::npos,"Texture detail help missing");
+     panel.act({insim::Kind::TextureBias,0,-9});check(panel.choices.textureBias==0,"Texture detail could not return to default");
+     check(panel.choices.antiLag==0,"Anti-Lag 2 must default to Off");
+     panel.act({insim::Kind::AntiLag,0,1});check(panel.choices.antiLag==1&&launcher::load(file).antiLag==1,"Anti-Lag 2 not saved");
+     check(panel.helpTitle(213)=="Anti-Lag 2"&&panel.helpText(213).find("AMD")!=std::string::npos,"Anti-Lag 2 help missing");
+     panel.act({insim::Kind::AntiLag,0,-1});check(panel.choices.antiLag==0&&launcher::load(file).antiLag==0,"Anti-Lag 2 could not turn Off");
+     panel.act({insim::Kind::CpuScheduling,0,-1});check(panel.choices.cpuScheduling==0&&launcher::load(file).cpuScheduling==0,"CPU scheduling could not return to Windows decides");}
     insim::Panel fgReopened;fgReopened.bind(file,&writer,true,false);check(fgReopened.choices.lastFrameGeneration==2,"Reopening lost the last FG provider");fgReopened.act({insim::Kind::FGToggle,0,1});check(fgReopened.choices.frameGeneration==2,"FG On did not restore the remembered provider");
     panel.act({insim::Kind::Tab,1});widgets=panel.view(640,480);bool importVisible=false;int firstTabY=0;
     for(const auto &item:widgets){importVisible|=item.action.kind==insim::Kind::ImportModel; if(item.action.kind==insim::Kind::Tab)firstTabY=item.rect.y;}
@@ -125,7 +169,7 @@ int wmain(int argc,wchar_t**argv){try{
     check(refused&&launcher::serialized(launcher::load(file))==saved,"Unavailable import changed preferences");
     int imports=0;panel.modelSupport([&]{++imports;panel.modelImportBusy=true;});panel.act({insim::Kind::ImportModel});panel.act({insim::Kind::ImportModel});
     check(imports==1&&launcher::serialized(launcher::load(file))==saved,"Duplicate import or model picker changed rendering choices");
-    panel.act({insim::Kind::Help,203});check(panel.help().find("never")!=std::string::npos||panel.help().find("without running")!=std::string::npos,"Missing model import guidance");panel.act({insim::Kind::Help,-1});
+    {const auto guide=panel.helpText(203);check(guide.find("never")!=std::string::npos||guide.find("without running")!=std::string::npos,"Missing model import guidance");}
     panel.nrStatus="NR bypassed: NR model missing";panel.act({insim::Kind::Budget,2});check(panel.selectedBudget()==2&&panel.notice.find("Waiting for a model")!=std::string::npos,"Budget selection falsely implied missing NR was active");
     before=publications;panel.act({insim::Kind::Budget,2});check(publications==before&&panel.notice.find("Selected: Quality 67%")!=std::string::npos,"Selecting the current budget gave no feedback or restarted NR");
     panel.act({insim::Kind::Tab,0});panel.scroll=panel.maxScroll(740);int highlights=0;
@@ -147,6 +191,25 @@ int wmain(int argc,wchar_t**argv){try{
         check(cloud&&clarity&&applyCloud,"Cloud controls or Apply cannot be reached in a supported viewport");}
     app::Telemetry status{};status.active=1;status.recordings=100;panel.observe(status,1000);check(panel.activity.find("FSR ACTIVE")==std::string::npos,"Static telemetry falsely confirmed activity");
     status.recordings=101;panel.observe(status,1016);check(panel.activity.find("FSR ACTIVE")!=std::string::npos,"Advancing renderer not confirmed");panel.observe(status,5000);check(panel.activity.find("WAITING")!=std::string::npos,"Stale activity stayed green");
+    // v2 warm-up indicator: worker-thread FSR preparation is shown with elapsed time.
+    {insim::Panel ready;ready.bind(file,&writer,true,true);app::Telemetry t{};t.recordings=1;
+     snprintf(t.reason,sizeof(t.reason),"FSR is getting ready (preparing on a worker thread); X-Plane's image is shown meanwhile");
+     ready.observe(t,10000);check(ready.activity.find("FSR GETTING READY")==0&&ready.activity.find("(0 s)")!=std::string::npos,"Preparation not shown");
+     ready.observe(t,13500);check(ready.activity.find("(3 s)")!=std::string::npos,"Preparation time does not advance");
+     t.reason[0]=0;t.active=1;++t.recordings;ready.observe(t,13600);++t.recordings;ready.observe(t,13620);check(ready.activity.find("FSR ACTIVE")==0,"Ready FSR not shown as active");}
+    // v2 per-frame CPU timers (ABI 5) shown in Diagnostics (connected renderer).
+    {insim::Panel timers;check(timers.cpuSummary().find("Waiting")==0&&timers.simSummary().find("not available")!=std::string::npos,"Timers shown before data");
+     timers.bind(file,&writer,true,true);
+     app::Telemetry t{};t.recordings=1;t.cpuWorkUs=1250;t.cpuWaitUs=0;t.presentCallUs=8000;t.frameIntervalUs=25000;timers.observe(t,1000);
+     check(timers.cpuSummary().find("Mod work 1.25 ms")==0&&timers.cpuSummary().find("frame 25.00 ms")!=std::string::npos,"CPU timer summary wrong");
+     t.frameIntervalUs=0;timers.observe(t,1016);check(timers.cpuSummary().find("Waiting")==0,"Timer summary shown without a frame interval");
+     check(timers.pacingSummary().find("after frame generation")!=std::string::npos,"Pacing shown before a check");
+     snprintf(t.pacingCheck,sizeof(t.pacingCheck),"0turn VSync off");timers.observe(t,1032);check(timers.pacingSummary()=="Not available: turn VSync off.","Pacing blockers not shown");
+     snprintf(t.pacingCheck,sizeof(t.pacingCheck),"1");timers.observe(t,1048);check(timers.pacingSummary().find("driver decides")!=std::string::npos,"Met pacing claimed active or hidden");
+     snprintf(t.antiLag,sizeof(t.antiLag),"2your graphics driver does not offer Anti-Lag 2 for Vulkan");timers.observe(t,1064);
+     check(timers.antiLagSummary()=="Not available: your graphics driver does not offer Anti-Lag 2 for Vulkan.","Anti-Lag 2 reason not shown");
+     snprintf(t.antiLag,sizeof(t.antiLag),"1");timers.observe(t,1080);check(timers.antiLagSummary().find("On.")==0,"Anti-Lag 2 On not shown");
+     timers.simFrameMs=25;timers.simGpuMs=12;check(timers.simSummary().find("40 FPS")!=std::string::npos&&timers.simSummary().find("CPU is the limit")!=std::string::npos,"X-Plane timing summary wrong");}
     insim::Panel fgLive;bool liveFG=false;
     fgLive.bind(file,&writer,true,true,[&](const auto&p){liveFG=p.frameGeneration!=0;});
     fgLive.act({insim::Kind::FGToggle,0,-1});

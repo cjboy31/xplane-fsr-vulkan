@@ -10,13 +10,19 @@
 #include <vector>
 namespace updates {
 #ifdef XPFSR_NR_DEVELOPMENT
-inline constexpr char currentVersion[] = "0.7.10-beta.windows.1";
+inline constexpr char currentVersion[] = "2.0.0-beta.windows.1";
 #elif defined(XPFSR_FG_DEVELOPMENT)
-inline constexpr char currentVersion[] = "0.7.10-beta.windows.1";
+inline constexpr char currentVersion[] = "2.0.0-beta.windows.1";
 #else
-inline constexpr char currentVersion[] = "0.7.10";
+// A Release Candidate tag is published only after the v2 verification checklist passes.
+inline constexpr char currentVersion[] = "2.0.0-rc.1";
 #endif
-inline constexpr char repository[] = "https://github.com/cjboy31/xplane-fsr-vulkan";
+// Renamed from xplane-fsr-vulkan in v2. Web links redirect, but 0.5.4-0.7.10
+// updaters reject the API redirect, so those users install v2 manually once.
+inline constexpr char repository[] = "https://github.com/cjboy31/xplane12-fsr-framegen";
+// The pre-v2 name. Accepted so the updater keeps working whichever name the
+// repository has (renames can be reverted; GitHub may report either).
+inline constexpr char legacyRepository[] = "https://github.com/cjboy31/xplane-fsr-vulkan";
 inline void require(bool ok, const char *why) {
     if (!ok)
         throw std::runtime_error(why);
@@ -269,10 +275,12 @@ inline Channel channel(const Version &v) {
 }
 inline Channel installedChannel() { return channel(version(currentVersion)); }
 inline const wchar_t *channelName(Channel c) {
-    return c == Channel::Beta ? L"Beta" : L"Release";
+    // v2 names. Saved keys stay "release"/"beta" so existing choices are kept.
+    return c == Channel::Beta ? L"Betas" : L"Release Candidates";
 }
 inline constexpr const wchar_t *channelChoices[] = {
-    L"Release - all current features (recommended)", L"Beta - preview upcoming changes"};
+    L"Release Candidates - tested and verified (recommended)",
+    L"Betas - features still being developed and tested"};
 struct Release {
     std::string tag, name, notes, url, assetURL, digest;
     uint64_t bytes{};
@@ -306,7 +314,12 @@ inline Release select(const std::string &feed, const std::string &current, Chann
         bool preview = r.at("prerelease").yes();
         if (preview != (v.stage < 3))
             continue;
-        auto url = std::string(repository) + "/releases/tag/" + tag;
+        std::string base = repository;
+        auto url = base + "/releases/tag/" + tag;
+        if (r.at("html_url").str() != url) {
+            base = legacyRepository;
+            url = base + "/releases/tag/" + tag;
+        }
         require(r.at("html_url").str() == url, "Update links to an unexpected repository");
         const auto &assets = r.at("assets");
         require(assets.type == Json::array, "Invalid update assets");
@@ -328,7 +341,7 @@ inline Release select(const std::string &feed, const std::string &current, Chann
                              a.at("digest").str(),
                              a.at("size").size()};
                 require(candidate.assetURL ==
-                            std::string(repository) + "/releases/download/" + tag + "/" + filename,
+                            base + "/releases/download/" + tag + "/" + filename,
                         "Unexpected update download URL");
                 require(candidate.digest.size() == 71 &&
                             candidate.digest.substr(0, 7) == "sha256:" &&

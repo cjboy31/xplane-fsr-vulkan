@@ -5,6 +5,7 @@
 #include <atomic>
 #include <ffx_framegeneration.h>
 #include <vk/ffx_api_framegeneration_vk.h>
+#include "frame_pacing.hpp"
 #include "framegen_pixel_probe.hpp"
 #include "framegen_encoded_color.hpp"
 
@@ -69,6 +70,13 @@ class Presentation {
     void create(VkDeviceContext device, const VkSwapchainCreateInfoKHR &info,
                 const std::array<VkQueue, 4> &queues, uint32_t family,
                 const std::string &provider = "") {
+        create(device, info, queues, std::array<uint32_t, 4>{family, family, family, family}, provider);
+    }
+    // v2: per-queue families (game, async compute, present, acquire), used by
+    // two-GPU FG where the second GPU spreads its queues over several families.
+    void create(VkDeviceContext device, const VkSwapchainCreateInfoKHR &info,
+                const std::array<VkQueue, 4> &queues, const std::array<uint32_t, 4> &families,
+                const std::string &provider = "") {
         require(!context_ && api_.configure, "Invalid frame generation runtime");
         if (!provider.empty())
             label_ = provider;
@@ -88,10 +96,10 @@ class Presentation {
                 "FG preview requires exclusive image sharing");
         create_.createInfo.pQueueFamilyIndices = nullptr;
         create_.createInfo.queueFamilyIndexCount = 0;
-        create_.gameQueue = {queues[0], family, nullptr};
-        create_.asyncComputeQueue = {queues[1], family, nullptr};
-        create_.presentQueue = {queues[2], family, nullptr};
-        create_.imageAcquireQueue = {queues[3], family, nullptr};
+        create_.gameQueue = {queues[0], families[0], nullptr};
+        create_.asyncComputeQueue = {queues[1], families[1], nullptr};
+        create_.presentQueue = {queues[2], families[2], nullptr};
+        create_.imageAcquireQueue = {queues[3], families[3], nullptr};
         version_.header.type = FFX_API_CREATE_CONTEXT_DESC_TYPE_FRAMEGENERATIONSWAPCHAIN_VERSION_VK;
         version_.version = FFX_FRAMEGENERATION_SWAPCHAIN_VK_VERSION;
         mode_.header.type = FFX_API_CREATE_CONTEXT_DESC_TYPE_FGSWAPCHAIN_MODE_VK;
@@ -114,6 +122,21 @@ class Presentation {
                 "Incomplete FG presentation function table");
     }
     VkSwapchainKHR handle() const { return swapchain_; }
+    // v2: pass a pacing profile to the SDK's own pacer. Returns false (and
+    // keeps AMD defaults) when the provider does not accept the key.
+    bool tunePacing(const pacing::Tuning &t) {
+        if (!context_)
+            return false;
+        static_assert(sizeof(pacing::Tuning) == sizeof(FfxApiSwapchainFramePacingTuning),
+                      "Pacing tuning must match the SDK structure");
+        FfxApiSwapchainFramePacingTuning tuning{t.safetyMarginInMs, t.varianceFactor, t.allowHybridSpin,
+                                                t.hybridSpinTime, t.allowWaitForSingleObjectOnFence};
+        ffxConfigureDescFrameGenerationSwapChainKeyValueVK key{};
+        key.header.type = FFX_API_CONFIGURE_DESC_TYPE_FRAMEGENERATIONSWAPCHAIN_KEYVALUE_VK;
+        key.key = FFX_API_CONFIGURE_FG_SWAPCHAIN_KEY_FRAMEPACINGTUNING;
+        key.ptr = &tuning;
+        return api_.configure(&context_, &key.header) == FFX_API_RETURN_OK;
+    }
     std::string provider() {
         ffxQueryGetProviderVersion q{};
         q.header.type = FFX_API_QUERY_DESC_TYPE_GET_PROVIDER_VERSION;

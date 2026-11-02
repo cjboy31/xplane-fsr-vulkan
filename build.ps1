@@ -44,6 +44,18 @@ if($LASTEXITCODE -ne 0){throw 'Shader compilation failed'}
 if($LASTEXITCODE -ne 0){throw 'MSAA packing shader compilation failed'}
 & $Python (Join-Path $root 'tools\generate.py') (Join-Path $build 'generated') $VulkanHeaders (Join-Path $build 'temporal.spv') (Join-Path $build 'temporal-msaa.spv')
 if($LASTEXITCODE -ne 0){throw 'Header generation failed'}
+# Native renderer motion (experimental, opt-in): 2D / array input and the
+# projection-history update. Shared motion contract v1 is included by the shader.
+foreach($variant in @('2d','array','history','msaa')){
+ $flags=@('-V','--target-env','vulkan1.2','-S','comp')
+ if($variant -eq 'array'){$flags+='-DINPUT_ARRAY=1'}
+ if($variant -eq 'history'){$flags+='-DHISTORY_UPDATE=1'}
+ if($variant -eq 'msaa'){$flags+='-DINPUT_MS=1'}
+ & $Glslang @flags (Join-Path $source 'native_motion.comp') '-o' (Join-Path $build ('native-motion-'+$variant+'.spv'))
+ if($LASTEXITCODE -ne 0){throw 'Native renderer motion shader failed'}
+}
+& $Python (Join-Path $root 'tools\embed_native_motion.py') (Join-Path $build 'generated\native_motion_spv.hpp') (Join-Path $build 'native-motion-2d.spv') (Join-Path $build 'native-motion-array.spv') (Join-Path $build 'native-motion-history.spv') (Join-Path $build 'native-motion-msaa.spv')
+if($LASTEXITCODE -ne 0){throw 'Native renderer shader embedding failed'}
 $includes=@(('-I'+(Join-Path $build 'generated')),('-I'+(Join-Path $VulkanHeaders 'include')),('-I'+(Join-Path $FsrSdk 'Kits\FidelityFX\api\include')),('-I'+(Join-Path $FsrSdk 'Kits\FidelityFX\upscalers\include')),('-I'+(Join-Path $FsrSdk 'Kits\FidelityFX\framegeneration\include')))
 & $Compiler '-std=c++17' '-O2' '-static' '-shared' '-Wl,--no-insert-timestamp' '-DWIN32_LEAN_AND_MEAN' '-DNOMINMAX' @channelFlags @includes (Join-Path $source 'layer.cpp') (Join-Path $source 'layer.def') '-lbcrypt' '-o' (Join-Path $bin 'layer\XPFSR24Layer.dll')
 if($LASTEXITCODE -ne 0){throw 'Layer build failed'}

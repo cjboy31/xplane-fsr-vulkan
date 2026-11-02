@@ -4,6 +4,7 @@
 #include "probe_support.hpp"
 #undef wmain
 #include "framegen.hpp"
+#include "test_layer_identity.hpp"
 #include <fstream>
 static LRESULT CALLBACK windowProc(HWND w, UINT m, WPARAM a, LPARAM b) {
     return DefWindowProcW(w, m, a, b);
@@ -22,9 +23,8 @@ int wmain(int argc, wchar_t **argv) {
         const bool captureLoaded=GetModuleHandleW(L"graphics-hook64.dll")!=nullptr;
         std::cout<<"Capture hook loaded="<<captureLoaded<<'\n';
         require(!captureTest||captureLoaded,"Capture lifecycle test did not load the installed OBS layer");
-        wchar_t layerPath[32768]{};auto layer=GetModuleHandleW(L"XPFSR24Layer.dll");
-        require(layer&&GetModuleFileNameW(layer,layerPath,32768),"Presentation test did not load our renderer");
-        std::wcout<<L"Tested layer="<<layerPath<<L'\n';
+        fixture::verifyLayerIdentity();
+        if(argc>3&&std::wstring(argv[3])==L"--identity-only")return 0;
         WNDCLASSW wc{};
         wc.lpfnWndProc = windowProc;
         wc.hInstance = GetModuleHandleW(nullptr);

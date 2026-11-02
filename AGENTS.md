@@ -17,7 +17,7 @@ release-publication request above.
   used for the build. Alpha/experimental builds must be marked pre-release.
 - Preserve upstream license notices in the installer. Do not commit SDK runtime
   binaries, simulator/aircraft assets, user preferences, logs or credentials.
-- Follow docs/RELEASING.md. Report the public release URL and verify its assets.
+- Follow docs/developer/RELEASING.md. Report the public release URL and verify its assets.
   A local archive, source branch or draft release alone is not publication.
 - If account access blocks publication, prepare the reviewed files and explain
   the specific blocker; do not claim that a release was published.
@@ -66,7 +66,7 @@ The owner requests LuminaXP as the reference for its in-sim workflow and control
 an accessible X-Plane panel, live supported adjustments and activation compatible
 with third-party launchers. Study documented behavior; implement original code
 and artwork without copying restricted LuminaXP internals. Distinguish plugin
-presence from confirmed renderer activity. See docs/IN-SIM-PLUGIN.md.
+presence from confirmed renderer activity. See docs/developer/IN-SIM-PLUGIN.md.
 
 The owner's latest direction makes the in-sim panel the primary interface for
 presets, graphics, NR/FG, models, diagnostics, guides and updates. Keep the
@@ -98,3 +98,29 @@ source/display frame timing before proposing an optimization.
 ## Owner update: 2026-10-31
 
 The owner replaced the feature-video workflow: new versions use a viewable in-sim changelog, with no startup video or video approval step. The desktop dashboard is retired; build it only as a plugin updater. Rendering options belong in the in-sim panel. Preserve saved choices. Use plain, short setting labels and help at an eighth-grade reading level. Main-page descriptions must cover delivered features only; keep developer details in developer docs. Remove aircraft-specific screen branding while retaining honest screen-layout limits. Optional shadow Lua is separate, opt-in, and must probe writable controls and restore owned values. Shimmer reduction is the next rendering priority.
+
+
+## Owner update: 2026-11-01 (v2)
+
+- Two public channels only: **Release Candidates** (tested and verified
+  features, `main`) and **Betas** (in development/testing, `beta`). Saved
+  updater keys stay `release`/`beta`. See docs/developer/RELEASING.md (FSR) and
+  docs/developer/TEST-CHANNEL.md (both).
+- A private **Test** channel comes first: `test` branch plus DRAFT releases
+  tagged `test-<version>.<n>` via `Publish-TestBuild.ps1`. Claude prepares
+  changes; ChatGPT live-tests drafts on the owner's PC with the checklist in
+  docs/developer/TEST-CHANNEL.md and reports PROMOTE TO BETAS or NEEDS FIX.
+- Every change that needs a live check gets a prompt in
+  docs/developer/TESTER-PROMPTS.md (newest first, with the minimum commit).
+  The tester starts there; Publish-TestBuild.ps1 copies the open prompts into
+  each draft. Move a prompt to *Done* (date + verdict) when its report arrives.
+- PIPELINE.md is the shared work queue: type (Feature / QoL / Optimization /
+  Bug) and priority (P0 regression, P1 extends the last update, P2 researched,
+  P3 exploratory). Add incoming ideas and bugs there; keep "Shipped" honest.
+- Help in the in-sim panels is a hover card on "?" (click pins); do not
+  reintroduce help pages that replace the settings view.
+- The FSR repository is renamed `xplane12-fsr-framegen` (no "vulkan" in the
+  name). Web links redirect, but 0.5.4-0.7.10 updaters reject the API
+  redirect: those users need one manual v2 install, and every v2 release
+  announcement must say so. Keep the updater's repository constant
+  in sync with the actual name.

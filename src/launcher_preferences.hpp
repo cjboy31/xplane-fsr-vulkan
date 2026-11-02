@@ -10,8 +10,16 @@ struct Preferences {
     std::string presetId;
     int mode{}, frameGeneration{}, neuralRendering{};
     int lastFrameGeneration{2};
+    int fgPacing{0}; // v2: 0 Smooth (AMD default), 1 Recover after heavy scenes, 2 Power saver.
+    int fgCap{0};    // v2: index into xpfsr::pacing::capSettings (0 Off, 1 Auto, then fixed FPS).
+    int motionSource{0}; // v2: 0 camera-derived (default), 1 native renderer SSR (experimental).
+    int cpuScheduling{0}; // v2: 0 Windows decides (default), 1 opt-in CPU scheduling helper.
+    int antiLag{0};       // v2: 0 Off (default), 1 AMD Anti-Lag 2 via VK_AMD_anti_lag when available.
+    int fgGpu{0};         // v2: 0 same GPU as X-Plane, 1 second GPU (monitor on it) generates and shows frames.
+    int textureBias{0};   // v2: 0 X-Plane default, 1 +0.5 level, 2 AMD-recommended +1 level of texture detail.
     xpfsr::nr::Controls nr;
     bool keepSimUISize{true};
+    bool showFrameCounter{};
     bool enabled{true}, ghostReduction{true}, cockpitRestore{true}, alignmentTint{};
     graphics::Options manual{};
     bool manualApplied{}, manualPending{};
@@ -90,6 +98,14 @@ inline Preferences load(const graphics::fs::path &file) {
     p.frameGeneration = integer(file, L"FrameGeneration", 0, 4);
     p.lastFrameGeneration=integer(file,L"LastFrameGeneration",p.frameGeneration?p.frameGeneration:2,4);
     if(!p.lastFrameGeneration)p.lastFrameGeneration=2;
+    p.fgPacing=integer(file,L"FramePacing",0,2);
+    p.fgCap=integer(file,L"FrameRateCap",0,11);
+    p.motionSource=integer(file,L"MotionSource",0,1);
+    p.showFrameCounter=integer(file,L"ShowFrameCounter",0,1)!=0;
+    p.cpuScheduling=integer(file,L"CpuScheduling",0,1);
+    p.antiLag=integer(file,L"AntiLag",0,1);
+    p.textureBias=integer(file,L"TextureBias",0,2);
+    p.fgGpu=integer(file,L"FrameGenerationGpu",0,1);
     // Older Normal releases replace their Launcher section on save. Keep NR
     // independently, migrating the unreleased prototype's keys on first save.
     const bool separateNR=readSetting(file,L"NeuralRendering",L"Schema")==L"1";
@@ -142,6 +158,14 @@ inline std::wstring serialized(const Preferences &p) {
     add(L"Mode", std::to_wstring(p.mode));
     add(L"FrameGeneration", std::to_wstring(p.frameGeneration));
     add(L"LastFrameGeneration",std::to_wstring(p.lastFrameGeneration));
+    add(L"FramePacing",std::to_wstring(p.fgPacing));
+    add(L"FrameRateCap",std::to_wstring(p.fgCap));
+    add(L"MotionSource",std::to_wstring(p.motionSource));
+    add(L"ShowFrameCounter",std::to_wstring(p.showFrameCounter));
+    add(L"CpuScheduling",std::to_wstring(p.cpuScheduling));
+    add(L"AntiLag",std::to_wstring(p.antiLag));
+    add(L"TextureBias",std::to_wstring(p.textureBias));
+    add(L"FrameGenerationGpu",std::to_wstring(p.fgGpu));
     add(L"NeuralRendering",std::to_wstring(p.neuralRendering));
     add(L"KeepSimUISize",std::to_wstring(p.keepSimUISize));
     for(int i=0;i<xpfsr::nr::Count;++i)add(xpfsr::nr::settings[i].key,std::to_wstring(i==xpfsr::nr::Enabled?int(p.neuralRendering!=0):p.nr.value[i]));

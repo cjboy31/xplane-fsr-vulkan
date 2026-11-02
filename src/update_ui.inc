@@ -132,7 +132,7 @@ static void startUpdateCheck() {
                                L"Ordinary updates never downgrade within a channel."
                              : L"No compatible installer is published for your selected "
                                L"channel. Ordinary updates never downgrade within a channel. "
-                               L"Release includes all current NR and frame-generation features.";
+                               L"Release Candidates contain only tested and verified features.";
         } catch (const std::exception &e) {
             std::lock_guard<std::mutex> guard(j->mutex);
             j->phase = UpdateJob::failed;
@@ -376,7 +376,7 @@ static void showUpdates() {
     SetWindowPos(updateWindow, nullptr, x, y, 0, 0, SWP_NOSIZE | SWP_NOZORDER);
     autoCheckBox = scaledControl(L"BUTTON", L"Automatically check for updates when the app opens",
                                  BS_AUTOCHECKBOX | WS_TABSTOP, 20, 20, 645, 28, 150, updateWindow);
-    scaledControl(L"STATIC", L"Release channel", 0, 20, 60, 120, 24, 0, updateWindow);
+    scaledControl(L"STATIC", L"Update channel", 0, 20, 60, 120, 24, 0, updateWindow);
     channelBox = scaledControl(L"COMBOBOX", L"", CBS_DROPDOWNLIST | WS_TABSTOP, 155, 54, 510, 150,
                                151, updateWindow);
     for (auto label : updates::channelChoices)
@@ -384,9 +384,10 @@ static void showUpdates() {
     SendMessageW(autoCheckBox, BM_SETCHECK, autoCheckUpdates ? BST_CHECKED : BST_UNCHECKED, 0);
     SendMessageW(channelBox, CB_SETCURSEL, releaseChannel == updates::Channel::Beta ? 1 : 0,
                  0);
-    theme::name(channelBox, L"Update channel: Release or Beta");
+    theme::name(channelBox, L"Update channel: Release Candidates or Betas");
     scaledControl(L"STATIC",
-                  L"Release includes all current features. Beta lets you try upcoming changes. "
+                  L"Release Candidates contain only tested, verified features. Betas include "
+                  L"features still being developed and tested. "
                   L"Hardware and model requirements still apply. Selecting a channel only "
                   L"checks releases. Install explicitly, with X-Plane closed.",
                   0, 20, 96, 645, 64, 0, updateWindow);

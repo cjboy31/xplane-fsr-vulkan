@@ -162,7 +162,7 @@ and unrelated files are preserved; remove your local models yourself if desired.
 No joystick, controller binding or camera-control configuration is changed.
 
 SOURCE / SUPPORT
-https://github.com/cjboy31/xplane-fsr-vulkan
+https://github.com/cjboy31/xplane12-fsr-framegen
 See licenses and REDISTRIBUTION.txt. No endorsement by AMD, NVIDIA or Laminar
 Research is claimed. The independent model runtime is pinned MIT DLSSNR-AMD.
 

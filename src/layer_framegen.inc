@@ -49,6 +49,126 @@ static VKAPI_ATTR VkResult VKAPI_CALL L_QueueWaitIdle(VkQueue queue) {
     if(result==VK_SUCCESS&&completedLease){std::lock_guard<std::recursive_mutex> lock(d->lock);d->fgCompletedLease=std::max(d->fgCompletedLease,completedLease);retirePresenterFrames(*d);}
     return result;
 }
+// v2: X-Plane's own main window: the largest visible, unowned top-level window
+// of this process. Unlike the foreground window it is right even when X-Plane
+// is in the background. Returns nullptr when none is found.
+static HWND simulatorWindow() {
+    struct Search { DWORD pid; HWND best; LONGLONG area; } search{GetCurrentProcessId(), nullptr, 0};
+    EnumWindows([](HWND window, LPARAM context) -> BOOL {
+        auto &s = *reinterpret_cast<Search *>(context);
+        DWORD owner = 0;
+        GetWindowThreadProcessId(window, &owner);
+        if (owner != s.pid || !IsWindowVisible(window) || GetWindow(window, GW_OWNER))
+            return TRUE;
+        RECT r{};
+        if (!GetWindowRect(window, &r))
+            return TRUE;
+        const LONGLONG area = LONGLONG(r.right - r.left) * LONGLONG(r.bottom - r.top);
+        if (area > s.area) { s.area = area; s.best = window; }
+        return TRUE;
+    }, reinterpret_cast<LPARAM>(&search));
+    return search.best;
+}
+// v2: refresh rate and size of the monitor X-Plane's window is on (primary
+// monitor if no window is found). Returns false when Windows reports nothing usable.
+static bool displayMode(double &refreshHz, uint32_t &width, uint32_t &height) {
+    HWND window = simulatorWindow();
+    HMONITOR monitor = window ? MonitorFromWindow(window, MONITOR_DEFAULTTOPRIMARY)
+                              : MonitorFromPoint(POINT{0, 0}, MONITOR_DEFAULTTOPRIMARY);
+    MONITORINFOEXW info{};
+    info.cbSize = sizeof(info);
+    if (!monitor || !GetMonitorInfoW(monitor, &info))
+        return false;
+    DEVMODEW mode{};
+    mode.dmSize = sizeof(mode);
+    if (!EnumDisplaySettingsW(info.szDevice, ENUM_CURRENT_SETTINGS, &mode))
+        return false;
+    refreshHz = mode.dmDisplayFrequency > 1 ? double(mode.dmDisplayFrequency) : 0;
+    width = uint32_t(info.rcMonitor.right - info.rcMonitor.left);
+    height = uint32_t(info.rcMonitor.bottom - info.rcMonitor.top);
+    return true;
+}
+// v2: resolve the base-FPS cap and explain driver-assisted pacing for this
+// swapchain. Logging and the cap never change what the SDK presents.
+static void reportPacingSetup(Device &d, const VkSwapchainCreateInfoKHR &info) {
+    double refresh = 0;
+    uint32_t monitorWidth = 0, monitorHeight = 0;
+    const bool haveMode = displayMode(refresh, monitorWidth, monitorHeight);
+    wchar_t capValue[8]{};
+    int capSetting = 0;
+    if (GetEnvironmentVariableW(L"XPFSR24_FG_CAP", capValue, 8))
+        capSetting = _wtoi(capValue);
+    const int cap = xpfsr::pacing::resolveBaseCap(capSetting, refresh);
+    {
+        std::lock_guard<std::mutex> limiterGuard(d.fgLimiterLock);
+        d.fgLimiterArmed = false;
+        d.fgLimiter.setFps(cap);
+    }
+    if (capSetting && !cap)
+        log("FG base FPS cap: Auto requested but the refresh rate is unknown; cap Off.");
+    else
+        log("FG base FPS cap: %s (display %.0f Hz).", cap ? (std::to_string(cap) + " FPS").c_str() : "Off", refresh);
+
+    xpfsr::pacing::DisplayState state;
+    VkPhysicalDeviceDriverProperties driver{};
+    driver.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES;
+    VkPhysicalDeviceProperties2 properties{};
+    properties.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
+    properties.pNext = &driver;
+    if (auto get2 = d.inst<PFN_vkGetPhysicalDeviceProperties2>("vkGetPhysicalDeviceProperties2"))
+        get2(d.physical, &properties);
+    state.amdRdna4OrLater = xpfsr::pacing::looksLikeRdna4OrLater(properties.properties.vendorID,
+                                                                 properties.properties.deviceName);
+    state.driverKnown = xpfsr::pacing::parseDriverVersion(driver.driverInfo, state.driverMajor, state.driverMinor,
+                                                          state.driverPatch);
+    state.presenterIs4OrLater = d.fgPresenter.empty() || d.fgPresenter.rfind("4.", 0) == 0;
+    state.fullscreenCoversDisplay = haveMode && info.imageExtent.width == monitorWidth &&
+                                    info.imageExtent.height == monitorHeight;
+    state.vsyncOn = info.presentMode == VK_PRESENT_MODE_FIFO_KHR ||
+                    info.presentMode == VK_PRESENT_MODE_FIFO_RELAXED_KHR;
+    state.variableRefreshKnown = false;  // Windows exposes no per-app VRR state to a Vulkan layer.
+    const auto blockers = xpfsr::pacing::driverPacingBlockers(state);
+    std::string reasons;
+    for (const auto &b : blockers)
+        reasons += (reasons.empty() ? "" : "; ") + b;
+    snprintf(d.status.pacingCheck, sizeof(d.status.pacingCheck), "%c%s", reasons.empty() ? '1' : '0',
+             reasons.empty() ? "" : reasons.c_str());
+    log("Driver-assisted pacing check (%s, driver '%s', present mode %u, swapchain %ux%u, monitor %ux%u): %s",
+        properties.properties.deviceName, driver.driverInfo, unsigned(info.presentMode), info.imageExtent.width,
+        info.imageExtent.height, monitorWidth, monitorHeight,
+        reasons.empty() ? "requirements look met; the AMD driver decides" : reasons.c_str());
+}
+// v2: high-resolution wait used by the base-FPS cap. Sleeps most of the
+// interval on a high-resolution waitable timer, then spins the last part.
+static void preciseWait(int64_t nanoseconds) {
+    if (nanoseconds <= 0)
+        return;
+#ifndef CREATE_WAITABLE_TIMER_HIGH_RESOLUTION
+#define CREATE_WAITABLE_TIMER_HIGH_RESOLUTION 0x00000002
+#endif
+    LARGE_INTEGER frequency{}, start{}, now{};
+    QueryPerformanceFrequency(&frequency);
+    QueryPerformanceCounter(&start);
+    const int64_t target = start.QuadPart + nanoseconds * frequency.QuadPart / 1000000000LL;
+    struct Timer {
+        HANDLE handle = CreateWaitableTimerExW(nullptr, nullptr, CREATE_WAITABLE_TIMER_HIGH_RESOLUTION,
+                                               TIMER_ALL_ACCESS);
+        ~Timer() { if (handle) CloseHandle(handle); }
+    };
+    static thread_local Timer owned;  // Closed when the present thread exits.
+    HANDLE timer = owned.handle;
+    const int64_t coarse = nanoseconds - 1000000;  // leave ~1 ms to spin
+    if (coarse > 0) {
+        LARGE_INTEGER due{};
+        due.QuadPart = -(coarse / 100);
+        if (timer && SetWaitableTimer(timer, &due, 0, nullptr, nullptr, FALSE))
+            WaitForSingleObject(timer, 100);
+        else if (coarse > 2000000)
+            Sleep(DWORD((coarse - 1000000) / 1000000));
+    }
+    for (QueryPerformanceCounter(&now); now.QuadPart < target; QueryPerformanceCounter(&now))
+        YieldProcessor();
+}
 static VKAPI_ATTR VkResult VKAPI_CALL L_CreateSwapchainKHR(VkDevice device,
                                                            const VkSwapchainCreateInfoKHR *info,
                                                            const VkAllocationCallbacks *allocator,
@@ -63,6 +183,27 @@ static VKAPI_ATTR VkResult VKAPI_CALL L_CreateSwapchainKHR(VkDevice device,
         info->presentMode,
         info->pNext ? int(static_cast<const VkBaseInStructure *>(info->pNext)->sType) : 0,
         info->imageUsage, d->fgRequested.c_str());
+    // v2 two-GPU FG: X-Plane's swapchain becomes virtual; the second GPU presents.
+    if (info->oldSwapchain) {
+        auto old = d->duals.find(info->oldSwapchain);
+        if (old != d->duals.end() && old->second == d->dualCurrent) {
+            // Only one swapchain per window: close the old second-GPU side first.
+            // Its virtual images stay valid until X-Plane destroys the old swapchain.
+            dualCloseSecond(*d, *old->second);d->dualCurrent.reset();
+        }
+    }
+    if (dualRequested(*d) && !d->dualFailed && !allocator && !d->fgCurrent) {
+        try {
+            auto dual = dualCreate(*d, *info);
+            *output = reinterpret_cast<VkSwapchainKHR>(dual.get());
+            d->duals[*output] = dual;d->dualCurrent = dual;
+            return VK_SUCCESS;
+        } catch (const std::exception &e) {
+            d->dualFailed = true;
+            snprintf(d->status.fgReason, sizeof(d->status.fgReason), "Two-GPU FG unavailable: %s", e.what());
+            log("Two-GPU FG unavailable, using this GPU instead: %s", e.what());
+        }
+    }
     auto previous = d->findFGSwapchain(info->oldSwapchain);
     try {
         if (previous) {
@@ -97,6 +238,16 @@ static VKAPI_ATTR VkResult VKAPI_CALL L_CreateSwapchainKHR(VkDevice device,
             auto presentation = std::make_shared<xpfsr::Presentation>(d->runtime->api);
             presentation->create({d->handle, applicationPhysical(*d), d->next}, *info, d->fgQueues,
                                  d->graphicsFamily,d->fgPresenter);
+            {
+                // v2 pacing profile. Failure is non-fatal: the SDK keeps its defaults.
+                wchar_t pacingValue[8]{};int pacingChoice=0;
+                if(GetEnvironmentVariableW(L"XPFSR24_FG_PACING",pacingValue,8))pacingChoice=_wtoi(pacingValue);
+                const auto profile=xpfsr::pacing::clampProfile(pacingChoice);
+                const bool tuned=profile==xpfsr::pacing::Profile::Smooth||presentation->tunePacing(xpfsr::pacing::tuning(profile));
+                log("FG pacing profile: %s (%s).",
+                    xpfsr::pacing::profileNames[int(profile)],tuned?"applied":"provider kept AMD defaults");
+                reportPacingSetup(*d,*info);
+            }
             auto generation = std::make_shared<SwapchainGeneration>();
             generation->presentation = std::move(presentation);
             generation->width = info->imageExtent.width;
@@ -134,6 +285,16 @@ static VKAPI_ATTR void VKAPI_CALL L_DestroySwapchainKHR(VkDevice device, VkSwapc
         d->fn<PFN_vkDestroySwapchainKHR>("vkDestroySwapchainKHR")(device, swapchain, allocator);
         return;
     }
+    {
+        std::lock_guard<std::recursive_mutex> lock(d->lock);
+        auto dual = d->duals.find(swapchain);
+        if (dual != d->duals.end()) {
+            if (dual->second == d->dualCurrent) {dualDestroy(*d, *dual->second);d->dualCurrent.reset();}
+            else dualReleaseFirst(*d, *dual->second);  // retired: second GPU already closed
+            d->duals.erase(dual);
+            return;
+        }
+    }
     std::shared_ptr<SwapchainGeneration> generation;
     {
         std::lock_guard<std::recursive_mutex> lock(d->lock);
@@ -157,6 +318,11 @@ static VKAPI_ATTR VkResult VKAPI_CALL L_GetSwapchainImagesKHR(VkDevice device,
                                                               VkSwapchainKHR swapchain,
                                                               uint32_t *count, VkImage *images) {
     auto d = deviceFor(device);
+    {
+        std::lock_guard<std::recursive_mutex> lock(d->lock);
+        auto dual = d->duals.find(swapchain);
+        if (dual != d->duals.end()) return dualImages(*dual->second, count, images);
+    }
     auto generation=d->findFGSwapchain(swapchain);
     if (generation) {
         SdkScope sdk;
@@ -177,6 +343,12 @@ static VKAPI_ATTR VkResult VKAPI_CALL L_AcquireNextImageKHR(VkDevice device,
                                                             uint64_t timeout, VkSemaphore semaphore,
                                                             VkFence fence, uint32_t *index) {
     auto d = deviceFor(device);
+    {
+        std::lock_guard<std::recursive_mutex> lock(d->lock);
+        auto dual = d->duals.find(swapchain);
+        if (dual != d->duals.end())
+            return dual->second == d->dualCurrent ? dualAcquire(*d, *dual->second, timeout, semaphore, fence, index) : VK_ERROR_OUT_OF_DATE_KHR;
+    }
     auto generation=d->findFGSwapchain(swapchain);
     if (generation) {
         SdkScope sdk;
@@ -195,6 +367,11 @@ static VKAPI_ATTR VkResult VKAPI_CALL L_AcquireNextImage2KHR(VkDevice device,
                                                              const VkAcquireNextImageInfoKHR *info,
                                                              uint32_t *index) {
     auto d = deviceFor(device);
+    {
+        std::lock_guard<std::recursive_mutex> lock(d->lock);
+        if (d->duals.count(info->swapchain))
+            return L_AcquireNextImageKHR(device, info->swapchain, info->timeout, info->semaphore, info->fence, index);
+    }
     auto generation=d->findFGSwapchain(info->swapchain);
     if (generation) {
             if (info->deviceMask != 1 || info->pNext)
@@ -211,6 +388,7 @@ static VKAPI_ATTR void VKAPI_CALL L_SetHdrMetadataEXT(VkDevice device, uint32_t 
                                                       const VkHdrMetadataEXT *metadata) {
     auto d = deviceFor(device);
     for (uint32_t i = 0; i < count; ++i) {
+        {std::lock_guard<std::recursive_mutex> lock(d->lock);if (d->duals.count(chains[i])) continue;}  // two-GPU: no HDR yet
         auto generation=d->findFGSwapchain(chains[i]);
         if (generation) {
             SdkScope sdk;
@@ -233,6 +411,28 @@ static VkResult presentFrame(Device &d, VkQueue queue, const VkPresentInfoKHR *i
     // AMD requires Present (including its generation callback), PrepareV2 and
     // context destruction to be externally serialized. Keep the device guard
     // across the SDK call, not just the bookkeeping before/after it.
+    if (d.fgLimiterArmed) {
+        // Real frames only: SDK presenter traffic returned above. The delay is
+        // computed under the limiter's own lock, which is released before the
+        // sleep; neither d.lock nor the SDK's threads ever wait on it.
+        int64_t wait = 0, period = 0;
+        {
+            std::lock_guard<std::mutex> limiterGuard(d.fgLimiterLock);
+            if (d.fgLimiterArmed && d.fgLimiter.enabled()) {
+                LARGE_INTEGER counter{}, frequency{};
+                QueryPerformanceCounter(&counter);
+                QueryPerformanceFrequency(&frequency);
+                const int64_t nowNs = int64_t(double(counter.QuadPart) * 1e9 / double(frequency.QuadPart));
+                wait = d.fgLimiter.delay(nowNs);
+                period = d.fgLimiter.period();
+            }
+        }
+        if (wait > 0 && wait <= 2 * period) {
+            preciseWait(wait);
+            ++d.fgLimiterWaits;
+            d.fgLimiterWaitNs += uint64_t(wait);
+        }
+    }
     std::lock_guard<std::recursive_mutex> presentationGuard(d.lock);
     LARGE_INTEGER presentStart{}, presentEnd{}, clockFrequency{};
     QueryPerformanceFrequency(&clockFrequency);
@@ -301,25 +501,87 @@ static VkResult presentFrame(Device &d, VkQueue queue, const VkPresentInfoKHR *i
         auto proxy = generation->presentation->handle();
         auto present = *info;
         present.pSwapchains = &proxy;
+        const int64_t callStart = qpcNow();
         result = generation->presentation->functions.pOutQueuePresentKHR(queue, &present);
+        d.presentCallTicks += qpcNow() - callStart;
+        {
+            std::lock_guard<std::mutex> limiterGuard(d.fgLimiterLock);
+            const bool arm = d.status.fgActive && d.fgLimiter.enabled();
+            if (!arm && d.fgLimiterArmed)
+                d.fgLimiter.reset();
+            d.fgLimiterArmed = arm;
+        }
         const bool pressureDrain=d.memoryBudget.available&&!xpfsr::nr::profileFits(d.memoryBudget.budget,d.memoryBudget.usage,0);
-        if((d.fgSynchronized||pressureDrain) && d.status.fgActive && (result==VK_SUCCESS||result==VK_SUBOPTIMAL_KHR)){
+        if(xpfsr::presenterDrainRequired(d.fgPreparedLease,d.fgCompletedLease,d.fgSynchronized,pressureDrain) &&
+           (result==VK_SUCCESS||result==VK_SUBOPTIMAL_KHR)){
             // The compatibility path deliberately gives up CPU/GPU overlap.
             // Drain SDK-managed interpolation/composition/presents before the
-            // next source can prepare on another host recording thread. Keep
+            // next source can prepare on another host recording thread. The
+            // ordinary presenter drains every three sources to bound retained
+            // 4K image sets. Drain pending work under memory pressure even if
+            // reconstruction/FG has already fallen back on this present. Keep
             // the same device guard; SDK native present traffic bypasses it.
             // No semaphore is re-used and no old swapchain image is re-presented.
-            try {generation->presentation->wait();d.fgCompletedLease=std::max(d.fgCompletedLease,d.fgPreparedLease);}
+            LARGE_INTEGER drainStart{},drainEnd{};QueryPerformanceCounter(&drainStart);
+            try {
+                generation->presentation->wait();
+                d.fgCompletedLease=std::max(d.fgCompletedLease,d.fgPreparedLease);
+                retirePresenterFrames(d);
+            }
             catch(const std::exception &e){
                 d.fgFailed=true;d.status.fgActive=0;
                 snprintf(d.status.fgReason,160,"FG synchronization failed: %.120s",e.what());
                 log("FG compatibility synchronization failed: %s",e.what());
                 return VK_ERROR_DEVICE_LOST;
             }
+            QueryPerformanceCounter(&drainEnd);
+            if(clockFrequency.QuadPart>0){
+                const auto ns=uint64_t(double(drainEnd.QuadPart-drainStart.QuadPart)*1e9/double(clockFrequency.QuadPart));
+                ++d.fgDrains;d.fgDrainNs+=ns;d.fgDrainMaxNs=std::max(d.fgDrainMaxNs,ns);
+            }
         }
     } else
+    {
+        const int64_t callStart = qpcNow();
         result = native(queue, info);
+        d.presentCallTicks += qpcNow() - callStart;
+    }
     QueryPerformanceCounter(&presentEnd);
+    {
+        // Per-frame CPU timers: present bookkeeping is our work; the present
+        // call itself and the synchronized drain are reported separately.
+        const int64_t total = presentEnd.QuadPart - presentStart.QuadPart;
+        static thread_local int64_t lastCall = 0;
+        static thread_local uint64_t lastDrainNs = 0;
+        const int64_t call = d.presentCallTicks - lastCall;
+        const double drainNs = double(d.fgDrainNs - lastDrainNs);
+        lastCall = d.presentCallTicks;
+        lastDrainNs = d.fgDrainNs;
+        const double ownNs = qpcToNs(total - call) - drainNs;
+        if (ownNs > 0)
+            d.layerWorkTicks += int64_t(ownNs / std::max(1e-9, qpcToNs(1)));
+        ++d.cpuWindowPresents;
+        const int64_t now = presentEnd.QuadPart;
+        if (!d.cpuWindowStart) {
+            d.cpuWindowStart = now;
+            d.cpuWindowWork = d.layerWorkTicks.load();
+            d.cpuWindowCall = d.presentCallTicks;
+            d.cpuWindowWaitNs = d.fgLimiterWaitNs + d.fgDrainNs;
+            d.cpuWindowPresents = 0;
+        } else if (qpcToNs(now - d.cpuWindowStart) >= 2e9 && d.cpuWindowPresents) {
+            const double n = double(d.cpuWindowPresents);
+            const auto us = [&](double ns) { return uint32_t(std::min(ns / n / 1000.0, 4e9)); };
+            d.status.cpuWorkUs = us(qpcToNs(d.layerWorkTicks.load() - d.cpuWindowWork));
+            d.status.presentCallUs = us(qpcToNs(d.presentCallTicks - d.cpuWindowCall));
+            d.status.cpuWaitUs = us(double(d.fgLimiterWaitNs + d.fgDrainNs - d.cpuWindowWaitNs));
+            d.status.frameIntervalUs = us(qpcToNs(now - d.cpuWindowStart));
+            d.cpuWindowStart = now;
+            d.cpuWindowWork = d.layerWorkTicks.load();
+            d.cpuWindowCall = d.presentCallTicks;
+            d.cpuWindowWaitNs = d.fgLimiterWaitNs + d.fgDrainNs;
+            d.cpuWindowPresents = 0;
+        }
+    }
     {
         std::lock_guard<std::recursive_mutex> lock(d.lock);
         if (clockFrequency.QuadPart > 0) {
@@ -369,10 +631,17 @@ static VkResult presentFrame(Device &d, VkQueue queue, const VkPresentInfoKHR *i
         }
         if (d.status.presents < 5 || d.status.presents % 500 == 0)
             log("Presentation counters: rendered=%llu FG-prepared=%llu generated=%llu "
-                "SDK-presents=%llu FG-active=%u",
+                "SDK-presents=%llu FG-active=%u cap-waits=%llu cap-wait-ms=%.1f "
+                "sync-drains=%llu sync-drain-avg-ms=%.2f sync-drain-max-ms=%.2f "
+                "per-frame-us: mod-work=%u mod-waits=%u present-call=%u frame=%u",
                 (unsigned long long)d.status.presents, (unsigned long long)d.status.fgPrepared,
                 (unsigned long long)d.status.fgGenerated,
-                (unsigned long long)d.status.displayedPresents, d.status.fgActive);
+                (unsigned long long)d.status.displayedPresents, d.status.fgActive,
+                (unsigned long long)d.fgLimiterWaits, double(d.fgLimiterWaitNs) / 1e6,
+                (unsigned long long)d.fgDrains,
+                d.fgDrains ? double(d.fgDrainNs) / 1e6 / double(d.fgDrains) : 0.0,
+                double(d.fgDrainMaxNs) / 1e6, d.status.cpuWorkUs, d.status.cpuWaitUs,
+                d.status.presentCallUs, d.status.frameIntervalUs);
         if (!d.enabled) {
             d.status.active = 0;
             d.publish("Disabled; native simulator upscaling active");

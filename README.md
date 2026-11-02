@@ -1,98 +1,123 @@
 <img src="assets/app-icon.png" width="96" alt="FSR aircraft icon">
 
-# FSR 3.1 / 4.1 + Frame Gen for X-Plane 12
+# FSR Upscaling + Frame Gen for X-Plane 12
 
-Choose smoother edges, upscaling, frame generation and optional neural rendering
-from a panel inside X-Plane. This is a community mod, not an official AMD or
-Laminar Research product.
+Sharper edges, higher FPS and smoother motion in X-Plane 12, controlled from a
+panel inside the simulator. Uses AMD FSR 3.1 / 4.1 upscaling and anti-aliasing,
+AMD frame generation, and optional neural rendering.
 
-## Download and setup
+*A community mod. Not made by AMD or Laminar Research.*
 
-[Windows Release â€” recommended](https://github.com/cjboy31/xplane-fsr-vulkan/releases/tag/v0.7.10)
-Â· [Windows Beta](https://github.com/cjboy31/xplane-fsr-vulkan/releases/tag/v0.7.10-beta.windows.1)
-Â· [All releases](https://github.com/cjboy31/xplane-fsr-vulkan/releases)
-Â· [Join Discord](https://discord.gg/yh396QNgHZ)
+## Download
 
-1. **Install:** close X-Plane. Run the file ending in **Setup.exe**, select your
-   X-Plane folder and enable **in-sim integration**. The other EXEs are support tools.
-2. **Open settings:** start X-Plane normally and load a flight. At the top of the
-   simulator, open **Plugins > FSR 3.1 / 4.1 + Frame Gen > Open settings**.
-3. **Find presets:** on **Rendering**, open **Resolution preset** and choose one.
-4. **Apply:** open **Image quality**, scroll down and select
-   **Apply graphics after I close X-Plane**. Close X-Plane normally, then reopen it.
-5. **Check:** load a flight and reopen the panel. Look for **FSR ACTIVE**.
-   Read any waiting or bypass message if it is not active.
+| Channel | Who it's for | Link |
+| --- | --- | --- |
+| **Release Candidates** | Everyone. Only tested and verified features. | [Latest Release Candidate](https://github.com/cjboy31/xplane12-fsr-framegen/releases/latest) |
+| **Betas** | People who want to try new features early and report problems. | [All releases (Betas are marked *Pre-release*)](https://github.com/cjboy31/xplane12-fsr-framegen/releases) |
 
-**The presets are inside X-Plane.** The desktop **Plugin Updater** only installs
-updates. Start with FXAA, MSAA, frame generation and NR Off. Use **Full** input
-with **Native AA**, or **Quality** input with **Upscaling**.
-See the [step-by-step setup and preset instructions](docs/INSTALLATION.md).
+Windows is the main platform. See [Linux and Mac](#linux-and-mac) below.
 
-## Features
+**Updating from 0.7.x?** This project was renamed, and the 0.7.x updater can't
+follow the new name. Download and run the new Setup.exe once; your saved settings
+are kept. From 2.0 on, updates work from the updater again.
 
-- **FSR 3.1.6 and 4.1.2 Native AA:** smooth edges at full input resolution.
-- **Upscaling:** build a larger picture from a smaller input. Lower inputs can improve speed but lose fine detail.
-- **Frame generation 3.1.6 and 4.0.2:** add frames for smoother displayed motion. It does not speed up the simulation. Optional compatibility modes are included.
-- **Neural rendering:** adjust lighting, color and detail live. Choose outside-only or whole-scene use, and whether it runs before or after upscaling.
-- **Resolution and cloud presets:** choose a starting point, then adjust image quality. Changes marked for restart apply after you close X-Plane normally.
-- **Cockpit screen protection:** restore supported display areas after FSR. It needs frame generation Off and does not support every screen layout. Turn it off if alignment looks wrong.
-- **Saved settings and live status:** choices are remembered, and the panel shows whether image processing is working.
-- **One image processor at a time:** when independent Native AA is also installed, choose the mod you want and restart. Both mods keep their choices.
+## Install in 3 steps (Windows)
 
-NR needs compatible Windows RDNA4 FP8 hardware and your own supported model.
-NVIDIA DLLs and model weights are not included. Use one NR pass to begin; extra
-passes can blur textures and cost more graphics time. More smoothing is not
-always clearer. Visual results vary by aircraft, view, graphics card and display.
+1. **Close X-Plane.** Download the file ending in **`-Setup.exe`** and run it.
+2. Setup finds X-Plane 12 for you. Check the folder, keep
+   **Load the mod automatically when X-Plane starts** ticked, then click **Install**.
+3. Start X-Plane the way you always do and load a flight. Open
+   **Plugins → FSR 3.1 / 4.1 + Frame Gen → Open settings**. You should see
+   **FSR ACTIVE** at the top.
 
-## Recommended hardware and settings
+Point at any **?** in the panel to read what a setting does. Click the **?** to
+keep the card open.
 
-For a comfortable starting point, we suggest Windows 11, a recent CPU with
-strong performance per core, 32 GB RAM, an SSD, and a graphics card with
-12 GB VRAM for 1440p or 16 GB for 4K. These are project setup suggestions,
-not tested minimums or a guarantee of FPS. Heavy aircraft and scenery need more.
-Our main Windows test GPU is the Radeon AI PRO R9700; other GPUs need their own checks.
+## First settings that work well
 
-Start with **Quality upscaling**, **FXAA Off**, **MSAA Off**, **NR Off** and
-**frame generation Off**. For Native AA, use **Full** input instead. NR changes
-the picture and can lower FPS; it is optional. If you add it, start with the
-Small model, one pass and Balanced 50%, before upscaling.
+1. **Rendering** tab → **Resolution preset** → pick the one that matches your monitor.
+2. **Image quality** tab → scroll down → **Apply graphics after I close X-Plane**.
+3. Close X-Plane normally and start it again.
 
-Read the [hardware, GPU compatibility and low-FPS guide](docs/HARDWARE-AND-SETTINGS.md)
-for FSR 3.1 versus 4.1, frame-generation requirements, resolution examples and
-how to find what is slowing your sim down. Linux and Mac limits are listed too.
+Start with frame generation, neural rendering, FXAA and MSAA **Off**. Use
+**Quality** upscaling for more FPS, or **Native AA** if you already have enough FPS
+and just want cleaner edges. More help: [step-by-step setup](docs/INSTALLATION.md) ·
+[hardware and low-FPS guide](docs/HARDWARE-AND-SETTINGS.md).
 
-## Updates and help
+## What it does
 
-Choose **Release** for all current features or **Beta** to try upcoming changes.
-The previous Experimental updates are included in Release. Your saved Normal
-choice maps to Release; Experimental maps to Beta. Version 0.7.10 keeps the
-installer, buffer-reuse and startup corrections from 0.7.7 and 0.7.6. It reduces
-unneeded scene copies and moves status-file work into the background to help
-frame pacing. Performance gains vary by computer and scene.
-Diagnostics provides easy access to fresh session logs. The grouped controls,
-help and transitions from 0.7.5 are retained.
-Optional [diagnostic reporting](docs/DIAGNOSTIC-REPORTS.md) lets you preview a
-filtered bundle and send it to Discord now or after this session. It starts Off.
-The bundle can include X-Plane Log.txt, startup errors, a saved settings summary
-and small crash text. Original logs, models and preference files stay on your PC.
-The separate **Plugin Updater** handles updates for FSR and Native AA. Open **Changelog**
-inside the simulator to read changes; startup videos are retired. An optional
-[shadow script](extras/shadows/README.txt) is included separately and starts Off.
-Read the instructions included with your download.
+- **FSR Native AA (3.1.6 / 4.1.2):** smoother edges at your full resolution.
+- **FSR Upscaling:** X-Plane draws a smaller picture and FSR rebuilds it at full
+  size. More FPS; very low settings lose fine detail.
+- **Frame generation (3.1.6 / 4.0.2):** adds in-between frames so motion looks
+  smoother. It does not make the simulation itself run faster.
+- **Frame pacing** *(new in v2, Beta)*: choose **Smooth**, **Recover after heavy
+  scenes** or **Power saver** for how generated frames are timed.
+- **Neural rendering (optional):** live lighting, color and detail adjustments.
+  Needs a compatible AMD RDNA 4 card and a model file you supply yourself.
+- **Cockpit screen protection:** restores supported cockpit displays after FSR
+  (frame generation must be Off).
+- **Hover help** *(new in v2, Beta)*: help appears right where you point.
+- **One image processor at a time:** if the separate
+  [Native AA mod](https://github.com/cjboy31/make-xp-anti-aliasing-great-again)
+  is also installed, pick one on the **Rendering** tab and restart. Both keep your settings.
 
-[Setup instructions](docs/INSTALLATION.md) Â·
-[Report a problem](https://github.com/cjboy31/xplane-fsr-vulkan/issues) Â·
-[Upload diagnostic logs](https://xplane-mod-log-reports.cjboy31.chatgpt.site/) Â·
-[Discord support](https://discord.gg/yh396QNgHZ)
+### Smoothest frame generation
 
-## Platforms
+- Keep your real frame rate a little **below half** your monitor's refresh rate
+  (for example under 72 FPS on a 144 Hz screen).
+- Use **fullscreen** or a **borderless window that fills the screen**.
+- Turn **VSync off** and **FreeSync / variable refresh on**.
 
-Windows is the current rendering package. The separate
-[Linux preview](https://github.com/cjboy31/xplane-fsr-vulkan/releases/tag/native-preview-2026.10.29.1)
-only offers FSR 3.1 upscaling and still needs Linux flight testing. It does not
-include FSR 4, NR or frame generation. The Mac download is a diagnostic tool;
-Mac rendering is not available.
+On Radeon RX 9000 cards with Adrenalin 26.10.1 or newer, AMD's driver can then
+time the frames for you, which is smoother still.
 
-For developers: [Build](BUILDING.md) Â· [Testing](docs/RENDERING-STABILITY.md) Â·
-[Contribute](CONTRIBUTING.md). Original code and artwork are MIT; supplied
-[third-party licenses](licenses/) have their own terms.
+## Recommended hardware
+
+Windows 11, a recent CPU with strong single-core speed, 32 GB RAM, an SSD and a
+graphics card with 12 GB of video memory for 1440p or 16 GB for 4K. These are
+suggestions, not guarantees. Main test card: AMD Radeon AI PRO R9700.
+
+Supported by AMD's SDK (only AMD cards have been tested with this mod so far; Intel and NVIDIA reports are welcome):
+
+| Brand | What can run |
+| --- | --- |
+| AMD | Everything. FSR 4.1 and FG 4.0 need RX 9000 series (AMD's SDK also lists FSR 4.1 for RX 6000/7000). Neural rendering needs RDNA 4. |
+| Intel Arc | FSR 3.1 upscaling, Native AA and FSR 3.1 frame generation. |
+| NVIDIA | FSR 3.1 upscaling, Native AA and FSR 3.1 frame generation. |
+
+## Updates
+
+The in-sim panel has a **Changelog** button, and the separate **Plugin Updater**
+installs new versions of this mod and Native AA. Pick **Release Candidates** or
+**Betas** there; your choice is remembered.
+
+## Linux and Mac
+
+- **Linux:** a separate [Linux preview](https://github.com/cjboy31/xplane12-fsr-framegen/releases/tag/native-preview-2026.10.29.1)
+  offers FSR 3.1 upscaling only (no FSR 4, frame generation or neural rendering yet).
+- **Mac:** X-Plane uses Apple's Metal graphics on Mac, which this mod can't hook
+  into yet. The Mac download is a diagnostics tool only; it does not change the picture.
+  See [platform details](docs/PLATFORMS.md).
+
+## Help
+
+[Report a problem](https://github.com/cjboy31/xplane12-fsr-framegen/issues/new?template=bug_report.yml) ·
+[Suggest an idea](https://github.com/cjboy31/xplane12-fsr-framegen/issues/new?template=improvement.yml) ·
+[Upload diagnostic logs](https://xplane-mod-log-reports.cjboy31.chatgpt.site/) ·
+[Discord](https://discord.gg/yh396QNgHZ) ·
+[What we're working on](PIPELINE.md)
+
+In the panel, **Diagnostics → Open log folder** shows your logs.
+[Optional diagnostic reporting](docs/DIAGNOSTIC-REPORTS.md) can send a filtered
+bundle to Discord; it starts Off.
+
+An optional [shadow script](extras/shadows/README.txt) is included separately and starts Off.
+
+---
+
+**For developers:** [Build](BUILDING.md) · [Architecture](docs/developer/ARCHITECTURE.md) ·
+[Releasing](docs/developer/RELEASING.md) · [Contributing](CONTRIBUTING.md) ·
+[All developer notes](docs/developer/).
+Original code and artwork are MIT. Supplied [third-party licenses](licenses/) have their own terms.
+NVIDIA DLLs and model weights are never included.

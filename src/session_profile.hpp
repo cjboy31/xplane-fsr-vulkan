@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 #pragma once
+#include "frame_pacing.hpp"
 #include "launcher_preferences.hpp"
 #include "session_logs.hpp"
 #include "framegen_policy.hpp"
@@ -37,7 +38,12 @@ inline std::string prepareSessionProfile(const std::filesystem::path &root,const
     if(!native)validateSessionProfile(p);
     const int mode=native?0:p.mode,fg=native?0:effectiveFrameGeneration(p.frameGeneration),nr=native?0:effectiveNeuralRendering(p.neuralRendering);
     std::ostringstream choices;choices<<"requested_mode="<<mode<<" provider="<<(mode>=3?"4.1.2":"3.1.6")
-        <<" frame_generation="<<fg<<" neural_rendering="<<nr<<" native_comparison="<<native;
+        <<" frame_generation="<<fg<<" neural_rendering="<<nr<<" native_comparison="<<native
+        <<" motion_source="<<(!native&&mode&&p.motionSource==1?"native-renderer":"camera")
+        <<" cpu_scheduling="<<(!native&&p.cpuScheduling==1?"helper":"windows")
+        <<" anti_lag="<<(!native&&mode&&p.antiLag==1?"on":"off")
+        <<" fg_gpu="<<(!native&&fg&&p.fgGpu==1?"second":"same")
+        <<" texture_bias="<<(!native&&mode?std::clamp(p.textureBias,0,2):0);
     auto token=session::prepare(root/L"logs",choices.str());
     channel.close();
     std::wstring name;
@@ -59,6 +65,18 @@ inline std::string prepareSessionProfile(const std::filesystem::path &root,const
     const bool sync=synchronizedFrameGeneration(fg);
     setEnvironment(L"XPFSR24_FG_PRESENTER",sync?L"3.1.7":L"");
     setEnvironment(L"XPFSR24_FG_SYNCHRONIZED",sync?L"1":L"");
+    setEnvironment(L"XPFSR24_FG_PACING",provider?std::to_wstring(std::clamp(p.fgPacing,0,2)):L"");
+    setEnvironment(L"XPFSR24_FG_CAP",provider?std::to_wstring(xpfsr::pacing::capSettings[std::clamp(p.fgCap,0,xpfsr::pacing::capCount-1)]):L"");
+    // Shared motion contract v1 token; only a reconstruction session uses it.
+    setEnvironment(L"XPFSR24_MOTION",!native&&mode&&p.motionSource==1?L"native-renderer":L"");
+    // Opt-in CPU scheduling helper; a native comparison session never uses it.
+    setEnvironment(L"XPFSR24_CPU_SCHEDULING",!native&&p.cpuScheduling==1?L"1":L"");
+    // Opt-in AMD Anti-Lag 2; only an FSR session with the layer active uses it.
+    setEnvironment(L"XPFSR24_ANTI_LAG",!native&&mode&&p.antiLag==1?L"1":L"");
+    // v2 two-GPU frame generation (monitor on the second GPU); FG sessions only.
+    setEnvironment(L"XPFSR24_FG_GPU",!native&&fg&&p.fgGpu==1?L"second":L"");
+    // Opt-in texture detail bias; only an FSR session (which replaces X-Plane's FSR) uses it.
+    setEnvironment(L"XPFSR24_LOD_BIAS",!native&&mode&&p.textureBias>0?std::to_wstring(std::clamp(p.textureBias,1,2)):L"");
     setEnvironment(L"XPFSR24_MODE",mode==1||mode==3?L"native-aa":mode==2||mode==4?L"upscale":L"observe");
     setEnvironment(L"XPFSR24_PROVIDER",mode>=3?L"4.1.2":L"3.1.6");
     setEnvironment(L"XPFSR24_RUNTIME",(root/L"runtime").wstring());

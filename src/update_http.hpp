@@ -90,7 +90,9 @@ inline std::string transfer(std::wstring url, const fs::path &destination, uint6
                                     WINHTTP_HEADER_NAME_BY_INDEX, &status, &size, nullptr),
                 "Cannot read GitHub response");
         if (status == 301 || status == 302 || status == 303 || status == 307 || status == 308) {
-            require(binary, "Unexpected redirect from the release feed");
+            // A renamed repository answers its old API URL with a redirect to
+            // api.github.com/repositories/<id>/... Follow it; the host check at
+            // the top of the loop still rejects anything but api.github.com.
             url = header(request.h, WINHTTP_QUERY_LOCATION);
             continue;
         }
@@ -183,7 +185,7 @@ inline void verify(const fs::path &file, const Release &release) {
 inline Release check(const std::string &current, Channel requested, std::atomic<bool> &cancel,
                      std::atomic<uint64_t> &progress) {
     return select(
-        transfer(L"https://api.github.com/repos/cjboy31/xplane-fsr-vulkan/releases?per_page=100",
+        transfer(L"https://api.github.com/repos/cjboy31/xplane12-fsr-framegen/releases?per_page=100",
                  {}, 0, cancel, progress),
         current, requested, true);
 }

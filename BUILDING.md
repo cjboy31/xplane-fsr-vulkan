@@ -16,6 +16,16 @@ font or third-party UI framework is added. These are launcher-only dependencies;
 the rendering layer and publisher do not initialize the UI. Other operating
 systems require a port; see [the platform audit](docs/PLATFORMS.md).
 
+The v2 build also compiles `src/native_motion.comp` (2D, array and history
+variants) for the opt-in **Motion source: Native (experimental)**. It
+includes `src/motion_contract.glsl`, so glslang must resolve includes relative
+to the shader (the default). Keep `licenses/xplane-fsr3-MIT.txt` in source and
+binary packages: `native_motion/shader_classify.*` and the reconstruction in
+`native_motion.comp` adapt MIT code from JonathanOrr/xplane-fsr3. No simulator
+shaders are used or redistributed. The shared motion contract
+(`src/motion_contract.*`) must stay byte-identical to Native AA's copy;
+`python tools/check_motion_contract.py` checks the pinned hashes.
+
 Use PowerShell 7 with these dependencies installed locally:
 
 - LLVM-MinGW (UCRT x86_64). Validated compiler: llvm-mingw-20261020, LLVM 23.
@@ -119,7 +129,7 @@ the pinned MIT reference, compiler, glslang, Python and Vulkan headers and use
 the same `-AppDirectory build/release-app`. The initial build generates and
 records shaders; `-SkipShaders` subsequently verifies their hashes. Models
 are user-supplied local data and must never be packaged. See
-[the integration contract](docs/NEURAL-RENDERING.md).
+[the integration contract](docs/developer/NEURAL-RENDERING.md).
 
 `Test-LauncherUI.ps1 -Compiler '<compiler>'` exercises the actual native main
 window and NR dialog, including scrolling, clipped children, diagnostics,

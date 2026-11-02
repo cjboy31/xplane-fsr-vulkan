@@ -9,7 +9,7 @@ plugin or its packaged upscaler runtime works on another operating system.
 | Linux x64 | Separate FSR 3.1 preview; real-flight compatibility unconfirmed | The native-platform branch supplies a Vulkan backend and native package. It does not include Windows FSR 4/NR/FG parity. |
 | macOS, including Apple Silicon | Separate universal diagnostic probe only | Native plugin loading and camera diagnostics are implemented. No Metal FSR, NR, FG or AA enhancement is implemented. |
 
-The [published native preview](https://github.com/cjboy31/xplane-fsr-vulkan/releases/tag/native-preview-2026.10.29.1)
+The [published native preview](https://github.com/cjboy31/xplane12-fsr-framegen/releases/tag/native-preview-2026.10.29.1)
 already provides a Linux archive, a Mac Universal Probe ZIP, instructions and a
 combined RAR. The Mac package is a diagnostic installation, not a rendering-mod
 installer. Both architectures are built; this does not establish a real flight

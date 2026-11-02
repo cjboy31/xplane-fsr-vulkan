@@ -26,7 +26,7 @@ bytecode, SDK proprietary source, paid mod files, user preferences, credentials,
 tokens or unreviewed logs. Do not copy GPL/proprietary implementation code into
 the MIT project without discussing a compatible distribution plan first.
 
-Read BUILDING.md, docs/ARCHITECTURE.md and docs/STATUS.md. Run the tests relevant
+Read BUILDING.md, docs/developer/ARCHITECTURE.md and docs/developer/STATUS.md. Run the tests relevant
 to your change. Record which tests were not run and why. Screenshots/video help
 with visual regressions, but should not replace frame-time or pixel evidence.
 

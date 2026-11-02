@@ -6,6 +6,8 @@
 #include "startup_readiness.hpp"
 #include "frame_diagnostics.hpp"
 #include "render_safety.hpp"
+#include "frame_counter.hpp"
+#include <algorithm>
 #include <atomic>
 #include <iostream>
 #include <stdexcept>
@@ -16,11 +18,38 @@ static void expect(bool value, const char *name) {
 }
 int main() {
     try {
+        app::FrameCounter counter;
+        expect(counter.due(0),"Frame counter did not start");counter.sample(0,100,200,true);
+        expect(!counter.ready&&!counter.due(999),"Counter displayed a partial sampling interval");
+        counter.sample(2000,180,280,true);
+        expect(counter.ready&&counter.realFPS==40&&counter.generatedFPS==40,"Counter did not divide actual source/generated deltas by elapsed time");
+        counter.sample(3000,220,280,true);expect(counter.realFPS==40&&counter.generatedFPS==0,"FG selected but inactive produced fictitious extra FPS");
+        counter.sample(4000,260,1,true);expect(counter.generatedFPS==0,"Restarted generated counter underflowed");
+        counter.sample(5000,300,41,false);expect(counter.realFPS==40&&counter.generatedFPS==0,"Unavailable renderer reused stale FG rate");
+        counter.sample(11000,600,400,true);expect(!counter.ready,"Counter included a loading/stalled sampling gap");
+        counter.sample(10000,10,0,true);expect(!counter.ready,"Clock/source reset caused a bogus FPS spike");
+        counter.reset();expect(!counter.ready&&!counter.seeded&&counter.realFPS==0&&counter.generatedFPS==0,"Hidden counter retained stale values");
         xpfsr::AllocationBackoff backoff;
         expect(backoff.allowed(100),"Initial allocation blocked");backoff.failed(100);
         expect(!backoff.allowed(101)&&!backoff.allowed(3099)&&backoff.allowed(3100),"Failed allocation retried at frame rate or never recovered");
         backoff.failed(UINT64_MAX-10);expect(!backoff.allowed(UINT64_MAX-1),"Retry timestamp overflowed");backoff.recovered();expect(backoff.allowed(0),"Allocation recovery remained blocked");
         expect(!xpfsr::presenterFinished(2,1)&&xpfsr::presenterFinished(2,2)&&xpfsr::presenterFinished(0,0),"Application completion substituted for SDK ownership");
+        expect(!xpfsr::presenterDrainRequired(0,0,true,true),"Empty presenter caused an unnecessary drain");
+        expect(!xpfsr::presenterDrainRequired(2,0,false,false)&&xpfsr::presenterDrainRequired(3,0,false,false),"Asynchronous source window was unbounded or disabled overlap");
+        expect(xpfsr::presenterDrainRequired(1,0,true,false)&&xpfsr::presenterDrainRequired(1,0,false,true),"Compatibility or memory-pressure drain was skipped");
+        // Exercise a long session with 4K-sized images and delayed completion.
+        // A host fence alone must not free them; a successful SDK drain must.
+        uint64_t issued=0,completed=0,peakPending=0,drains=0;
+        for(uint64_t frame=0;frame<120000;++frame){
+            ++issued;const auto pending=issued-completed;peakPending=std::max(peakPending,pending);
+            expect(!xpfsr::presenterFinished(issued,completed),"Pending SDK source released by a host frame");
+            if(xpfsr::presenterDrainRequired(issued,completed,false,false)){
+                expect(pending==3,"Delayed SDK completion accumulated more than three source image sets");
+                completed=issued;++drains;
+            }
+        }
+        expect(peakPending==3&&drains==40000&&completed==issued,"Long-flight source ownership did not remain bounded");
+        expect(xpfsr::presenterDrainRequired(UINT64_MAX,UINT64_MAX-3,false,false)&&!xpfsr::presenterDrainRequired(1,UINT64_MAX,false,false),"Presenter-window arithmetic overflowed");
         expect(!xpfsr::coldPresent(10,130)&&xpfsr::coldPresent(10,131)&&!xpfsr::coldPresent(UINT64_MAX,1),"Cold resource age overflowed or evicted active images");
         xpfsr::FrameDiagnostics resetLog;
         uint64_t detailed{}, resetCount{}, suppressedCount{};
@@ -99,6 +128,30 @@ int main() {
         after = before;
         after.verticalFov += .2f;
         expect(app::cameraCut(before, after), "Abrupt zoom retained history");
+        {
+            // Airborne regression: 3.6 m forward per frame with a 2 cm near plane gave a
+            // clip-space delta of ~180 (> the old bound of 100) on every frame.
+            const double n = .02, f = 1.7320508;
+            double proj[16] = {f / 1.7777778, 0, 0, 0, 0, f, 0, 0, 0, 0, 0, -1, 0, 0, n, 0};
+            double v0[16] = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1}, v1[16];
+            memcpy(v1, v0, sizeof(v1));
+            v1[14] = 3.6;
+            double vp0[16], vp1[16], inv1[16], rep[16];
+            app::multiply(vp0, proj, v0);
+            app::multiply(vp1, proj, v1);
+            expect(app::inverse(inv1, vp1), "Flight projection inversion failed");
+            app::multiply(rep, vp0, inv1);
+            double delta = 0;
+            for (int i = 0; i < 16; ++i)
+                delta = std::max(delta, std::abs(rep[i] - ((i % 5) == 0)));
+            expect(delta > 100 && !app::reprojectionUnusable(rep),
+                   "Forward flight reprojection treated as a camera cut");
+            after = before;
+            after.position[2] = -3.6f;
+            expect(!app::cameraCut(before, after), "Forward flight step reset history");
+            rep[5] = std::numeric_limits<double>::quiet_NaN();
+            expect(app::reprojectionUnusable(rep), "Non-finite reprojection accepted");
+        }
         double v[16] = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, -53000, 2200, -41000, 1};
         double vp[16], inv[16], identity[16];
         app::multiply(vp, p, v);

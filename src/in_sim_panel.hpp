@@ -6,7 +6,10 @@
 #include "product_names.hpp"
 #include "framegen_policy.hpp"
 #include "renderer_selection.hpp"
+#include "frame_pacing.hpp"
+#include "texture_bias_choices.hpp"
 #include <algorithm>
+#include <cstdio>
 #include <fstream>
 #include <functional>
 #include <sstream>
@@ -16,6 +19,10 @@ using namespace xpfsr::nr;
 inline std::string utf8(const std::wstring&s){int n=WideCharToMultiByte(CP_UTF8,0,s.data(),int(s.size()),nullptr,0,nullptr,nullptr);std::string out(n,0);if(n)WideCharToMultiByte(CP_UTF8,0,s.data(),int(s.size()),out.data(),n,nullptr,nullptr);return out;}
 inline constexpr auto &fsrNames=product::fsrModes;
 inline constexpr auto &fgNames=product::fgModes;
+inline constexpr const char *motionSourceNames[]={"Camera","Native (experimental)"};
+inline constexpr const char *cpuSchedulingNames[]={"Windows decides","Helper (experimental)"};
+inline constexpr const char *antiLagNames[]={"Off","On (experimental)"};
+inline constexpr const char *fgGpuNames[]={"Same as X-Plane","Second GPU (experimental)"};
 inline std::string valueName(const Controls &c,Field f){
     int value=c[f];
     if(f==Enabled||f==Mask||f==Grade||f==AllowFG)return value?"On":"Off";
@@ -30,7 +37,7 @@ inline std::string valueName(const Controls &c,Field f){
     return std::to_string(value)+"%";
 }
 struct Rect {int x{},y{},w{},h{};bool contains(int a,int b)const{return a>=x&&a<x+w&&b>=y&&b<y+h;}};
-enum class Kind {Tab,Processing,Mode,FrameGen,NRField,Budget,Help,Close,Preset,Graphics,ApplyGraphics,OpenChoice,ChooseOption,CloseChoice,FGToggle,FGProvider,ImportModel,CloudPreset,Renderer,Changelog,Updates,Logs,RepairStartup,Report};
+enum class Kind {Tab,Processing,Mode,FrameGen,NRField,Budget,Help,Close,Preset,Graphics,ApplyGraphics,OpenChoice,ChooseOption,CloseChoice,FGToggle,FGProvider,ImportModel,CloudPreset,Renderer,Changelog,Updates,Logs,RepairStartup,Report,FGPacing,FGCap,MotionSource,CpuScheduling,AntiLag,FrameCounter,TextureBias,FGGpu};
 inline constexpr int contentTop=162, footerHeight=82, modelSetupHeight=96, sectionHeight=32, rowHeight=46;
 inline Rect footerNotice(int width,int height){return {28,height-78,width-56,51};}
 inline Rect footerGuidance(int width,int height){return {28,height-23,width-56,17};}
@@ -49,12 +56,49 @@ class Panel {
     std::function<void()> repairStartup;
     bool liveNR{},sessionFG{},rendererConnected{true};
     std::vector<const graphics::Preset*> displayPresets;
-    uint64_t previousRecords{},lastProgress{};bool sawStatus{};
+    uint64_t previousRecords{},lastProgress{},preparingSince{};bool sawStatus{};
 public:
     launcher::Preferences choices;
     xp_renderer::Choice rendererChoice{xp_renderer::Choice::fsr};
     app::Telemetry telemetry{};
-    int tab{},scroll{},helpField{-1},helpScroll{};std::string notice,activity="PLUGIN LOADED - renderer not confirmed",nrStatus="NR status not available";
+    // X-Plane's own frame period and approximate GPU time (seconds datarefs,
+    // read by the plugin); negative when unavailable.
+    float simFrameMs{-1},simGpuMs{-1};
+    // Plain-language per-frame CPU summary for Diagnostics (shared with tests).
+    std::string cpuSummary()const{
+        if(!sawStatus||!telemetry.frameIntervalUs)return "Waiting for frames. Shown after about 2 seconds of rendering.";
+        auto ms=[](double us){char b[32];snprintf(b,sizeof(b),"%.2f ms",us/1000.0);return std::string(b);};
+        std::string text="Mod work "+ms(telemetry.cpuWorkUs)+" - mod waits "+ms(telemetry.cpuWaitUs)+" - present call "+ms(telemetry.presentCallUs)+
+            " - frame "+ms(telemetry.frameIntervalUs);
+        return text+". Waits come from the frame rate cap and synchronized frame generation. The present call is the time spent handing the frame to the graphics driver.";
+    }
+    // Driver-assisted pacing (AMD, RX 9000 + Adrenalin 26.10.1+): what the
+    // layer found for this session's FG swapchain. Never claims it is active.
+    std::string pacingSummary()const{
+        if(!sawStatus||!telemetry.pacingCheck[0])return "Shown after frame generation starts.";
+        const std::string reasons(telemetry.pacingCheck+1,strnlen(telemetry.pacingCheck+1,sizeof(telemetry.pacingCheck)-1));
+        if(telemetry.pacingCheck[0]=='1')return "Requirements look met. AMD's driver decides whether to pace frames.";
+        return "Not available: "+reasons+".";
+    }
+    std::string antiLagSummary()const{
+        if(!sawStatus)return "Shown after the renderer starts.";
+        if(telemetry.antiLag[0]=='1')return "On. AMD's driver can make X-Plane wait a little before each frame so your controls feel quicker.";
+        if(telemetry.antiLag[0]=='2')return "Not available: "+std::string(telemetry.antiLag+1,strnlen(telemetry.antiLag+1,sizeof(telemetry.antiLag)-1))+".";
+        return choices.antiLag?"On is selected; it starts after you restart X-Plane.":"Off.";
+    }
+    std::string cpuSchedulingSummary()const{
+        if(!sawStatus)return "Shown after the renderer starts.";
+        if(telemetry.cpuScheduling[0]!='1')return choices.cpuScheduling?"Helper selected; it starts after you restart X-Plane.":"Off. Windows decides which processor cores X-Plane uses.";
+        return std::string(telemetry.cpuScheduling+1,strnlen(telemetry.cpuScheduling+1,sizeof(telemetry.cpuScheduling)-1))+".";
+    }
+    std::string simSummary()const{
+        if(simFrameMs<=0)return "X-Plane frame time not available.";
+        char b[160];
+        if(simGpuMs>0)snprintf(b,sizeof(b),"Frame %.1f ms (%.0f FPS) - GPU about %.1f ms. If the frame is much longer than GPU time, the CPU is the limit.",simFrameMs,1000.0/simFrameMs,simGpuMs);
+        else snprintf(b,sizeof(b),"Frame %.1f ms (%.0f FPS).",simFrameMs,1000.0/simFrameMs);
+        return b;
+    }
+    int tab{},scroll{},helpField{-1},helpScroll{},pinnedHelp{-1};std::string notice,activity="PLUGIN LOADED - renderer not confirmed",nrStatus="NR status not available";
     bool dropdownOpen{};Action dropdown{Kind::Mode};int dropdownScroll{};
     bool modelImportBusy{};std::string modelImportStatus="Import your own nvngx_dlssnr.dll 310.9.16 or 310.8.0. Models are not included.";
     std::string reportStatus="Reporting is Off until you agree and choose Send now or Send after this session.";
@@ -93,6 +137,13 @@ public:
         if(a.kind==Kind::Mode)return {std::begin(fsrNames),std::end(fsrNames)};
         if(a.kind==Kind::FrameGen)return {std::begin(fgNames),std::end(fgNames)};
         if(a.kind==Kind::FGProvider)return {std::begin(fgNames)+1,std::end(fgNames)};
+        if(a.kind==Kind::FGPacing)return {std::begin(xpfsr::pacing::profileNames),std::end(xpfsr::pacing::profileNames)};
+        if(a.kind==Kind::FGCap)return {std::begin(xpfsr::pacing::capNames),std::end(xpfsr::pacing::capNames)};
+        if(a.kind==Kind::MotionSource)return {std::begin(motionSourceNames),std::end(motionSourceNames)};
+        if(a.kind==Kind::CpuScheduling)return {std::begin(cpuSchedulingNames),std::end(cpuSchedulingNames)};
+        if(a.kind==Kind::AntiLag)return {std::begin(antiLagNames),std::end(antiLagNames)};
+        if(a.kind==Kind::FGGpu)return {std::begin(fgGpuNames),std::end(fgGpuNames)};
+        if(a.kind==Kind::TextureBias)return {std::begin(xpfsr::lod::choiceNames),std::end(xpfsr::lod::choiceNames)};
         if(a.kind==Kind::CloudPreset)return {"Keep current choices","Cloud clarity - Ultra Quality source","Cloud clarity - Native AA source (highest cost)"};
         if(a.kind==Kind::Preset){std::vector<std::string> names{"Custom"};for(auto p:displayPresets)names.push_back(utf8(p->label));return names;}
         if(a.kind==Kind::NRField){std::vector<std::string> result;auto c=choices.nr;for(int i=settings[a.field].minimum;i<=settings[a.field].maximum;++i){c[Field(a.field)]=i;result.push_back(valueName(c,Field(a.field)));}return result;}
@@ -103,6 +154,13 @@ public:
         if(a.kind==Kind::Renderer)return int(rendererChoice)-1;
         if(a.kind==Kind::Mode)return choices.mode;if(a.kind==Kind::FrameGen)return choices.frameGeneration;
         if(a.kind==Kind::FGProvider)return choices.lastFrameGeneration-1;
+        if(a.kind==Kind::FGPacing)return std::clamp(choices.fgPacing,0,2);
+        if(a.kind==Kind::FGCap)return std::clamp(choices.fgCap,0,xpfsr::pacing::capCount-1);
+        if(a.kind==Kind::MotionSource)return std::clamp(choices.motionSource,0,1);
+        if(a.kind==Kind::CpuScheduling)return std::clamp(choices.cpuScheduling,0,1);
+        if(a.kind==Kind::AntiLag)return std::clamp(choices.antiLag,0,1);
+        if(a.kind==Kind::FGGpu)return std::clamp(choices.fgGpu,0,1);
+        if(a.kind==Kind::TextureBias)return std::clamp(choices.textureBias,0,2);
         if(a.kind==Kind::CloudPreset)return 0;
         if(a.kind==Kind::NRField)return choices.nr[Field(a.field)]-settings[a.field].minimum;
         if(a.kind==Kind::Preset){for(size_t i=0;i<displayPresets.size();++i)if(choices.presetId==displayPresets[i]->id)return int(i)+1;return 0;}
@@ -133,7 +191,12 @@ public:
         if(!configured()){activity="SETUP NOT LINKED - renderer not confirmed";return;}
         if(!rendererConnected)return; // Retain the specific missing/bypassed startup state.
         if(sawStatus&&s.recordings>previousRecords)lastProgress=now;previousRecords=s.recordings;sawStatus=true;telemetry=s;
+        // v2: the layer prepares FSR on a worker thread; show that it is
+        // working (with elapsed time) instead of a generic waiting message.
+        const bool preparing=strstr(std::string(s.reason,strnlen(s.reason,sizeof(s.reason))).c_str(),"getting ready")!=nullptr;
+        if(!preparing)preparingSince=0;else if(!preparingSince)preparingSince=now;
         if(!choices.enabled)activity="PROCESSING PAUSED";
+        else if(preparing)activity="FSR GETTING READY - preparing in the background ("+std::to_string((now-preparingSince)/1000)+" s). X-Plane's picture shows meanwhile.";
         else if(lastProgress&&now>=lastProgress&&now-lastProgress<3000)activity=s.active?"FSR ACTIVE - renderer confirmed":"RENDERER CONFIRMED - processing protected / waiting";
         else activity="WAITING - load a flight to check image processing";
     }
@@ -150,8 +213,9 @@ public:
         if(action.kind==Kind::Report){if(!openReports)throw std::runtime_error("Report support is unavailable. Use the log folder and Discord for now.");openReports();notice="Report preview opened. Sharing is Off until you agree and choose Send now or Send after this session.";return;}
         if(action.kind==Kind::Changelog){helpField=300;helpScroll=0;dropdownOpen=false;return;}
         if(action.kind==Kind::Updates){if(!openUpdater)throw std::runtime_error("The updater is missing. Reinstall the complete package.");openUpdater();notice="Updater opened. You can check now; close X-Plane before installing.";return;}
-        if(action.kind==Kind::Tab){tab=std::clamp(action.field,0,3);scroll=0;helpField=-1;dropdownOpen=false;return;}
-        if(action.kind==Kind::Help){helpField=action.field;helpScroll=0;return;}
+        if(action.kind==Kind::Tab){tab=std::clamp(action.field,0,3);scroll=0;helpField=-1;pinnedHelp=-1;dropdownOpen=false;return;}
+        // "?" no longer opens a page: hovering shows a card, a click pins/unpins it.
+        if(action.kind==Kind::Help){pinnedHelp=pinnedHelp==action.field?-1:action.field;return;}
         if(action.kind==Kind::OpenChoice){dropdown={Kind(action.field),action.delta};dropdownOpen=true;dropdownScroll=0;helpField=-1;return;}
         if(action.kind==Kind::CloseChoice){dropdownOpen=false;return;}
         if(action.kind==Kind::ChooseOption){refresh();auto options=choiceOptions(dropdown);if(action.field<0||action.field>=int(options.size()))throw std::runtime_error("Invalid dropdown selection");auto selected=dropdown;selected.delta=action.field-choiceCurrent(dropdown);if(selected.kind==Kind::NRField)selected.delta=action.field+settings[selected.field].minimum-choices.nr[Field(selected.field)];dropdownOpen=false;act(selected,false);return;}
@@ -169,6 +233,7 @@ public:
         }
         if(refreshFirst)refresh();auto p=choices;
         if(action.kind==Kind::Processing)p.enabled=action.delta?action.delta>0:!p.enabled;
+        if(action.kind==Kind::FrameCounter)p.showFrameCounter=action.delta?action.delta>0:!p.showFrameCounter;
         if(action.kind==Kind::Mode){p.mode=(p.mode+action.delta+5)%5;p.presetId.clear();if(!p.mode){p.frameGeneration=0;p.neuralRendering=0;p.nr[Enabled]=0;}}
         if(action.kind==Kind::FGProvider){p.lastFrameGeneration=std::clamp(p.lastFrameGeneration+action.delta,1,4);if(p.frameGeneration)p.frameGeneration=p.lastFrameGeneration;}
         if(action.kind==Kind::FrameGen||action.kind==Kind::FGToggle||action.kind==Kind::FGProvider){
@@ -176,6 +241,13 @@ public:
             if(action.kind==Kind::FGToggle)p.frameGeneration=action.delta>0?p.lastFrameGeneration:0;
             if(p.frameGeneration&&!p.mode)throw std::runtime_error("Choose FSR AA/upscaling for the next session first.");if(p.frameGeneration&&p.nr[Enabled]&&!p.nr[AllowFG])throw std::runtime_error("Enable Allow NR + frame generation before queuing this combination.");if(p.frameGeneration){p.cockpitRestore=false;p.lastFrameGeneration=p.frameGeneration;}
         }
+        if(action.kind==Kind::FGPacing)p.fgPacing=std::clamp(p.fgPacing+action.delta,0,2);
+        if(action.kind==Kind::FGCap)p.fgCap=std::clamp(p.fgCap+action.delta,0,xpfsr::pacing::capCount-1);
+        if(action.kind==Kind::MotionSource)p.motionSource=std::clamp(p.motionSource+action.delta,0,1);
+        if(action.kind==Kind::CpuScheduling)p.cpuScheduling=std::clamp(p.cpuScheduling+action.delta,0,1);
+        if(action.kind==Kind::AntiLag)p.antiLag=std::clamp(p.antiLag+action.delta,0,1);
+        if(action.kind==Kind::FGGpu)p.fgGpu=std::clamp(p.fgGpu+action.delta,0,1);
+        if(action.kind==Kind::TextureBias)p.textureBias=std::clamp(p.textureBias+action.delta,0,2);
         if(action.kind==Kind::Budget)performanceProfile(p.nr,std::clamp(action.field,0,2));
         if(action.kind==Kind::CloudPreset){
             if(action.delta==0){notice="Cloud clarity choices unchanged.";return;}
@@ -215,42 +287,64 @@ public:
         if(launcher::serialized(p)!=launcher::serialized(choices))persist(p);
         if(action.kind==Kind::FGToggle)notice=sessionFG?(choices.frameGeneration?"Frame generation On. Close this panel to resume; check Diagnostics for generated frames.":"Frame generation Off. The change is live; your method stays saved."):(choices.frameGeneration?"Frame generation saved On. Restart X-Plane to load its presenter; it is not running yet.":"Frame generation saved Off. Your method stays saved.");
         if(action.kind==Kind::FGProvider)notice="Frame generation method saved. The new method applies after restarting X-Plane. The current method is retained for this flight.";
+        if(action.kind==Kind::FGCap)notice=std::string("Frame rate cap saved: ")+xpfsr::pacing::capNames[std::clamp(choices.fgCap,0,xpfsr::pacing::capCount-1)]+". It limits real frames while frame generation runs, after you restart X-Plane.";
+        if(action.kind==Kind::FrameCounter)notice=choices.showFrameCounter?"Frame counter On. Real and generated FPS appear at the top right during flight. No restart needed.":"Frame counter Off. Your choice is saved. No restart needed.";
+        if(action.kind==Kind::MotionSource)notice=choices.motionSource?"Motion source saved: Native (experimental). After you restart X-Plane, FSR uses X-Plane's own motion data when it can. It also works with MSAA, frame generation and the cockpit screen fix. If it cannot run, the normal motion is used and Diagnostics says why.":"Motion source saved: Camera. This is the normal motion. It applies after you restart X-Plane.";
+        if(action.kind==Kind::CpuScheduling)notice=choices.cpuScheduling?"CPU scheduling helper saved. After you restart X-Plane, Diagnostics shows what it changed. It only affects X-Plane, only while FSR runs, and is undone when X-Plane closes.":"CPU scheduling saved: Windows decides. This applies after you restart X-Plane.";
+        if(action.kind==Kind::TextureBias)notice=std::string("Texture detail saved: ")+xpfsr::lod::choiceNames[std::clamp(choices.textureBias,0,2)]+". It applies after you restart X-Plane.";
+        if(action.kind==Kind::FGGpu)notice=choices.fgGpu?"Frame generation GPU saved: Second GPU (experimental). Plug your monitor into the second GPU, keep X-Plane rendering on the main one, and restart X-Plane. Diagnostics shows which GPU does what.":"Frame generation GPU saved: Same as X-Plane. This applies after you restart X-Plane.";
+        if(action.kind==Kind::AntiLag)notice=choices.antiLag?"Anti-Lag 2 saved: On (experimental). After you restart X-Plane, Diagnostics shows whether your driver supports it.":"Anti-Lag 2 saved: Off. This applies after you restart X-Plane.";
+        if(action.kind==Kind::FGPacing)notice=std::string("Frame pacing saved: ")+xpfsr::pacing::profileNames[std::clamp(choices.fgPacing,0,2)]+". It applies the next time X-Plane starts with frame generation.";
         if(action.kind==Kind::Budget)notice=budgetSelectionMessage(action.field);
         if(action.kind==Kind::CloudPreset)notice="Cloud clarity setup saved: Maximum clouds with "+std::string(action.delta==1?"Ultra Quality input.":"full input and Native AA.")+" Select Apply graphics after exit, then restart. Higher source resolution costs GPU time; distant cloud detail remains limited by X-Plane's cloud pass.";
         if(action.kind==Kind::Graphics&&action.field==8)notice="Cloud quality saved for next session. Select Apply graphics after exit. This controls X-Plane's cloud quality; FSR/FG/NR choices are retained.";
     }
     int maxScroll(int height)const{
         if(!configured())return 0;
-        const int lengths[]={3*sectionHeight+9*rowHeight+68,2*sectionHeight+modelSetupHeight+Count*rowHeight,
-                             144+2*sectionHeight+62+61+48+75+75+48,3*sectionHeight+10*rowHeight+44};
+        const int lengths[]={3*sectionHeight+17*rowHeight+68,2*sectionHeight+modelSetupHeight+Count*rowHeight,
+                             144+3*sectionHeight+62+61+48+75+75+75+48+75+75+75+75,3*sectionHeight+10*rowHeight+44};
         return std::max(0,lengths[tab]+(tab==0&&needsStartupRepair()?44:0)+8-std::max(1,height-contentTop-footerHeight));
     }
     int maxDropdownScroll(int height)const{return std::max(0,int(choiceOptions(dropdown).size())*36-std::max(1,height-contentTop-footerHeight-68));}
     bool wheel(int amount,int height){auto &position=dropdownOpen?dropdownScroll:scroll;int next=std::clamp(position+amount,0,dropdownOpen?maxDropdownScroll(height):maxScroll(height));if(next==position)return false;position=next;return true;}
-    std::string help()const{
-        if(helpField==300)return changelogText();
+    std::string help()const{return helpText(helpField);}
+    // Short caption for a hover card. Setting rows use their own label.
+    std::string helpTitle(int f)const{
+        if(f>=0&&f<Count)return utf8(settings[f].label);
+        switch(f){case 100:return "MSAA";case 101:return "FXAA";case 102:return "Input detail";case 103:return "Output resolution";case 104:return "Menu size";case 105:return "FSR 3 trail reduction";
+            case 106:return "Cockpit screen protection";case 107:return "Protection tint";case 108:return "Cloud quality";case 200:return "FSR mode";case 201:return "Frame generation";case 202:return "Resolution preset";
+            case 203:return "Import NR model";case 204:return "Cloud presets";case 205:return "Renderer";case 206:return "FSR processing";case 207:return "NR quick setting";case 208:return "Repair startup";case 209:return "Frame pacing";case 210:return "Frame rate cap";case 211:return "Motion source";case 212:return "CPU scheduling";case 213:return "Anti-Lag 2";case 214:return "Frame counter";case 215:return "Texture detail";case 216:return "Frame generation GPU";default:return "Setting guide";}
+    }
+    std::string helpText(int f)const{
+        if(f==214)return "Shows two numbers at the top right during flight. Real (raw) FPS is how many frames X-Plane draws each second. FG extra FPS is how many extra frames frame generation produces. FG shows zero when it is not producing extra frames, even if its setting is On. The numbers update about once a second. They do not measure your monitor's refresh rate. Turn this off to hide it; your choice is saved. You can also toggle it from the FSR plugin menu. No restart needed.";
+        if(f==300)return changelogText();
         if(!configured())return "Rendering controls are unavailable until this simulator is linked to a saved installation. No selections have been changed. Enable in-sim integration for this X-Plane folder, then restart using your usual launcher.";
-        if(helpField>=0&&helpField<Count)return utf8(settings[helpField].help);
-        if(helpField==100)return "MSAA smooths the edges of 3D objects. Higher levels use more graphics time and memory. Combining it with FSR is experimental. Start Off or 2x. Apply after exit, then restart.";
-        if(helpField==101)return "FXAA is a fast smoother that can soften text and textures. Keep it Off with FSR Native AA or upscaling. Use it only when the FSR mode is Off.";
-        if(helpField==102)return "Input detail controls how much detail X-Plane draws before FSR. Native AA always starts at Full. Select FSR Upscaling to use lower input settings. At 4K output, Quality starts with a 1440p picture. Lower levels can improve speed but lose detail. Apply after exit, then restart.";
-        if(helpField==103)return "Output resolution is the picture sent to your display. Keep current keeps your existing display setup. Select a supported size, then Apply after exit and restart. A higher setting cannot add pixels your monitor does not have.";
-        if(helpField==104)return "Keep menus and text about the same size when this plugin changes output resolution. Leave this On unless you want X-Plane to choose its own menu size.";
-        if(helpField==105)return "Try to reduce trails left by FSR 3. It can make some thin lines flicker more. This only affects FSR 3 and needs a restart.";
-        if(helpField==106)return "Cockpit screen protection restores supported cockpit displays after FSR. It only works with supported screen layouts, not every aircraft. Frame generation must be Off. Turn this off if the restored area is misplaced or looks wrong.";
-        if(helpField==107)return "Show a green tint on screen areas accepted by cockpit screen protection. Use it to check alignment, then turn it Off. Unsupported layouts may show no tint. This requires frame generation Off and a restart.";
-        if(helpField==108)return "Choose X-Plane's cloud quality. Higher quality can reduce blocky clouds but uses more graphics time. It cannot add every missing distant detail. Apply after exit, then restart. Your weather stays the same.";
-        if(helpField==200)return "Native AA keeps the full input resolution and smooths edges. Upscaling builds a larger picture from a smaller input and can improve speed. Match Input detail on the Image quality tab and keep FXAA Off. Changes need a restart.";
-        if(helpField==201)return "Frame generation adds pictures between real frames to make movement look smoother. It does not speed up the simulation. Start with a steady base frame rate. If this session started with frame generation, On/Off works live. Otherwise restart once to load it. Changing the method needs a restart. It pauses while this panel is open. The status above and Diagnostics show whether frames are really being generated.";
-        if(helpField==202)return "A preset chooses resolution and FSR settings together. It turns MSAA, FXAA and frame generation Off as a starting point. Choose Apply after exit, close X-Plane normally, then reopen it. Custom keeps your separate FSR and frame-generation choices.";
-        if(helpField==203)return "Select your own supported nvngx_dlssnr.dll, version 310.9.16 or 310.8.0. The importer reads the model without running the DLL. Models are not included in this download. Wait for the import result, then turn NR Off and On if needed.";
-        if(helpField==204)return "These cloud presets raise input detail and choose Maximum cloud quality. Higher detail can reduce blockiness but costs graphics time. Native AA is the most demanding choice. Your weather and other effects stay selected. Apply after exit and restart.";
-        if(helpField==205)return "Choose Native AA, the separate FSR mod, or the original simulator for your next launch. Only one mod processes the scene. Close and reopen X-Plane after changing this. Both mods keep your choices. The input scale is prepared after a normal exit; Native AA uses Full.";
-        if(helpField==208)return "Repair startup fixes the Windows link used to load this mod. Your image settings stay saved. Close X-Plane normally and reopen it after repair. It does not turn on an installation you disabled or switch away from another enabled installation. Use the installation package if files are missing.";
-        if(helpField==206)return "Turn FSR image processing on or off during your flight. Off shows the current simulator picture without FSR processing. The FSR and frame-generation methods still need a restart when changed.";
-        if(helpField==207)return "Choose a quick NR speed and detail setting. Performance uses a smaller model picture. Quality uses a larger one. Each uses one pass. Your lighting and color choices stay saved. Wait for the NR status to confirm the change.";
-        if(helpField==206)return "Turn FSR image processing on or off during your flight. Off shows the current simulator picture without FSR processing. The FSR and frame-generation methods still need a restart when changed.";
-        if(helpField==207)return "Choose a quick NR speed and detail setting. Performance uses a smaller model picture. Quality uses a larger one. Each uses one pass. Your lighting and color choices stay saved. Wait for the NR status to confirm the change.";
+        if(f>=0&&f<Count)return utf8(settings[f].help);
+        if(f==100)return "MSAA smooths the edges of 3D objects. Higher levels use more graphics time and memory. Combining it with FSR is experimental. Start Off or 2x. Apply after exit, then restart.";
+        if(f==101)return "FXAA is a fast smoother that can soften text and textures. Keep it Off with FSR Native AA or upscaling. Use it only when the FSR mode is Off.";
+        if(f==102)return "Input detail controls how much detail X-Plane draws before FSR. Native AA always starts at Full. Select FSR Upscaling to use lower input settings. At 4K output, Quality starts with a 1440p picture. Lower levels can improve speed but lose detail. Apply after exit, then restart.";
+        if(f==103)return "Output resolution is the picture sent to your display. Keep current keeps your existing display setup. Select a supported size, then Apply after exit and restart. A higher setting cannot add pixels your monitor does not have.";
+        if(f==104)return "Keep menus and text about the same size when this plugin changes output resolution. Leave this On unless you want X-Plane to choose its own menu size.";
+        if(f==105)return "Try to reduce trails left by FSR 3. It can make some thin lines flicker more. This only affects FSR 3 and needs a restart.";
+        if(f==106)return "Cockpit screen protection restores supported cockpit displays after FSR. It only works with supported screen layouts, not every aircraft. Frame generation must be Off. Turn this off if the restored area is misplaced or looks wrong.";
+        if(f==107)return "Show a green tint on screen areas accepted by cockpit screen protection. Use it to check alignment, then turn it Off. Unsupported layouts may show no tint. This requires frame generation Off and a restart.";
+        if(f==108)return "Choose X-Plane's cloud quality. Higher quality can reduce blocky clouds but uses more graphics time. It cannot add every missing distant detail. Apply after exit, then restart. Your weather stays the same.";
+        if(f==200)return "Native AA keeps the full input resolution and smooths edges. Upscaling builds a larger picture from a smaller input and can improve speed. Match Input detail on the Image quality tab and keep FXAA Off. Changes need a restart.";
+        if(f==201)return "Frame generation adds pictures between real frames to make movement look smoother. It does not speed up the simulation. Start with a steady base frame rate. If this session started with frame generation, On/Off works live. Otherwise restart once to load it. Changing the method needs a restart. The synchronized methods are a compatibility fallback. They wait for every picture to be shown before the next real frame starts, which costs real frame rate. Use them only if the normal method shows flicker, black frames or crashes. It pauses while this panel is open. The status above and Diagnostics show whether frames are really being generated.";
+        if(f==202)return "A preset chooses resolution and FSR settings together. It turns MSAA, FXAA and frame generation Off as a starting point. Choose Apply after exit, close X-Plane normally, then reopen it. Custom keeps your separate FSR and frame-generation choices.";
+        if(f==203)return "Select your own supported nvngx_dlssnr.dll, version 310.9.16 or 310.8.0. The importer reads the model without running the DLL. Models are not included in this download. Wait for the import result, then turn NR Off and On if needed.";
+        if(f==204)return "These cloud presets raise input detail and choose Maximum cloud quality. Higher detail can reduce blockiness but costs graphics time. Native AA is the most demanding choice. Your weather and other effects stay selected. Apply after exit and restart.";
+        if(f==205)return "Choose Native AA, the separate FSR mod, or the original simulator for your next launch. Only one mod processes the scene. Close and reopen X-Plane after changing this. Both mods keep your choices. The input scale is prepared after a normal exit; Native AA uses Full.";
+        if(f==208)return "Repair startup fixes the Windows link used to load this mod. Your image settings stay saved. Close X-Plane normally and reopen it after repair. It does not turn on an installation you disabled or switch away from another enabled installation. Use the installation package if files are missing.";
+        if(f==209)return "Frame pacing decides when each real and generated picture is shown. Smooth uses AMD's default timing. Recover after heavy scenes gets your frame rate back sooner after busy airports or thick clouds, with slightly less even timing. Power saver lets the CPU rest instead of waiting in a busy loop. For the smoothest result, keep your real frame rate a little below half your monitor's refresh rate, use fullscreen or borderless, and turn VSync off with FreeSync on. Applies after restart.";
+        if(f==211)return "Motion source decides how FSR learns which way each pixel moved. Camera is the normal choice and works with everything. Native (experimental) reads motion that X-Plane itself works out for its reflections. It knows which pixels belong to your own aircraft, so the cockpit and airframe can trail less when you turn or zoom. It works with MSAA, frame generation and the cockpit screen fix, and feeds all of them. If it cannot run on a frame, the normal motion is used and Diagnostics says why. It does not yet cover other traffic, propellers or clouds. Applies after restart.";
+        if(f==212)return "CPU scheduling (experimental) can help X-Plane run more steadily on some processors. On Intel processors with P-cores and E-cores, it keeps X-Plane on the faster P-cores. On Ryzen X3D processors with two chiplets, it keeps X-Plane on the chiplet with the extra cache. It also stops Windows from slowing X-Plane down to save power. It changes only X-Plane, only while FSR runs, and is undone when X-Plane closes. Other processors are left alone. Diagnostics shows what it did. Compare your frame times with it On and Off. It applies after restart.";
+        if(f==213)return "Anti-Lag 2 (experimental) is an AMD feature that can make the controls feel quicker. The graphics driver makes X-Plane wait a moment before it starts each frame, so fewer frames queue up. It needs an AMD Radeon card and a driver that offers it for Vulkan; Diagnostics says if yours does not. It can lower your frame rate a little. Try it with and without frame generation. It applies after restart.";
+        if(f==215)return "Texture detail makes ground, runway and building textures sharper. X-Plane picks how blurry far-away textures are for its own simple FSR. This mod uses AMD's newer FSR, which can show more detail, so AMD recommends one step sharper. AMD recommended uses that full step; Sharper uses half. It can make some textures shimmer a little more; Native AA steadies most of it. Cockpit screens and the sky are not changed. It applies after restart.";
+        if(f==216)return "Frame generation GPU lets a second graphics card make the extra frames, so your main card can spend all its time on X-Plane. Plug the monitor into the second card and keep X-Plane rendering on the main card (choose it in X-Plane's graphics settings with Zink, or in Windows Graphics settings). Each real frame is copied to the second card over the PCIe slot, so a fast slot helps. If the second card cannot run AMD's frame generation, it shows the real frames and Diagnostics says why. It is experimental and applies after restart.";
+        if(f==210)return "Frame rate cap limits how many real frames X-Plane draws while frame generation runs. Frame generation is smoothest when real frames come at an even rate a little below half your monitor's refresh rate. Auto picks that for you (for example 71 FPS on a 144 Hz screen). Off lets X-Plane run free. Applies after restart.";
+        if(f==206)return "Turn FSR image processing on or off during your flight. Off shows the current simulator picture without FSR processing. The FSR and frame-generation methods still need a restart when changed.";
+        if(f==207)return "Choose a quick NR speed and detail setting. Performance uses a smaller model picture. Quality uses a larger one. Each uses one pass. Your lighting and color choices stay saved. Wait for the NR status to confirm the change.";
         return tab==3?"Choose your graphics settings, then select Apply after exit. Close X-Plane normally; the background component applies only these settings with a backup. Restart using your usual launcher. FSR/FG choices are retained for custom edits. FXAA is native-only; MSAA + FSR is experimental.":"Live NR and processing controls save automatically. Presets/graphics and FSR/FG providers need a new session. Queue changed graphics on the Image quality tab before exiting. FG pauses while this panel is visible. Open Changelog for changes, or Updates for the separate updater.";
     }
     std::vector<Item> view(int width,int height){
@@ -294,7 +388,7 @@ public:
             item({24,y+rowHeight-1,width-48,1},"",Widget::Rule);
             item({28,y+(hasTiming?3:13),controlX-40,20},label);
             if(hasTiming)item({28,y+22,controlX-40,18},timing,Widget::Muted);
-            bool toggle=kind==Kind::Processing||kind==Kind::FGToggle||
+            bool toggle=kind==Kind::Processing||kind==Kind::FGToggle||kind==Kind::FrameCounter||
                 (kind==Kind::NRField&&(field==Enabled||field==Mask||field==Grade||field==AllowFG))||
                 (kind==Kind::Graphics&&(field==1||(field>=4&&field<=7)));
             bool slider=kind==Kind::NRField&&((field>=Intensity&&field<=History)||field==Scale||field==Passes);
@@ -310,7 +404,7 @@ public:
             }
             const int help=kind==Kind::Renderer?205:kind==Kind::Processing?206:kind==Kind::NRField?field:
                 kind==Kind::Graphics?100+field:kind==Kind::CloudPreset?204:kind==Kind::Mode?200:
-                kind==Kind::FGToggle||kind==Kind::FGProvider?201:202;
+                kind==Kind::FGToggle||kind==Kind::FGProvider?201:kind==Kind::FGPacing?209:kind==Kind::FGCap?210:kind==Kind::MotionSource?211:kind==Kind::CpuScheduling?212:kind==Kind::AntiLag?213:kind==Kind::FrameCounter?214:kind==Kind::TextureBias?215:kind==Kind::FGGpu?216:202;
             button({helpX,y+7,32,32},"?",{Kind::Help,help});
         };
         const char *next="After restart",*nrTiming=liveNR?"Live":next;
@@ -341,9 +435,17 @@ public:
             row("Resolution preset",choices.presetId.empty()?"Custom":utf8(graphics::presetById(choices.presetId).label),Kind::Preset,0,"");
             row("Enable FSR",choices.enabled?"On":"Off",Kind::Processing,0,rendererConnected?"Live":"");
             row("FSR mode",fsrNames[std::clamp(choices.mode,0,4)],Kind::Mode,0,"");
+            row("Motion source",motionSourceNames[std::clamp(choices.motionSource,0,1)],Kind::MotionSource,0,"");
+            row("Texture detail",xpfsr::lod::choiceNames[std::clamp(choices.textureBias,0,2)],Kind::TextureBias,0,"");
             section("02   /   FRAME GENERATION",next);
             row("Generate frames",choices.frameGeneration?"On":"Off",Kind::FGToggle,0,sessionFG?"Live":"");
             row("Frame generation method",fgNames[std::clamp(choices.lastFrameGeneration,1,4)],Kind::FGProvider,0,"");
+            row("Frame pacing",xpfsr::pacing::profileNames[std::clamp(choices.fgPacing,0,2)],Kind::FGPacing,0,"");
+            row("Frame rate cap",xpfsr::pacing::capNames[std::clamp(choices.fgCap,0,xpfsr::pacing::capCount-1)],Kind::FGCap,0,"");
+            row("Frame generation GPU",fgGpuNames[std::clamp(choices.fgGpu,0,1)],Kind::FGGpu,0,"");
+            row("Show frame counter",choices.showFrameCounter?"On":"Off",Kind::FrameCounter,0,"Live");
+            row("Anti-Lag 2",antiLagNames[std::clamp(choices.antiLag,0,1)],Kind::AntiLag,0,"");
+            row("CPU scheduling",cpuSchedulingNames[std::clamp(choices.cpuScheduling,0,1)],Kind::CpuScheduling,0,"");
             section("03   /   NEURAL RENDERING",nrTiming);
             row("Enable neural rendering",valueName(choices.nr,Enabled),Kind::NRField,Enabled,"");
             row("Where to use NR",valueName(choices.nr,Scope),Kind::NRField,Scope,"");
@@ -413,8 +515,14 @@ public:
             info("Renderer",activity,61);
             info("Image size","Input "+std::to_string(telemetry.renderWidth)+" x "+std::to_string(telemetry.renderHeight)+"   /   Output "+std::to_string(telemetry.outputWidth)+" x "+std::to_string(telemetry.outputHeight),48);
             info("Frame generation",frameGenerationStatus(),75);
+            info("Driver pacing",pacingSummary(),75);
             info("Neural rendering",nrStatus,75);
             info("Log location","X-Plane / Output / FSR-Logs. A fresh copy is also saved after exit.",48);
+            section("03   /   PERFORMANCE PER FRAME");
+            info("This mod (CPU)",cpuSummary(),75);
+            info("X-Plane",simSummary(),75);
+            info("CPU scheduling",cpuSchedulingSummary(),75);
+            info("Anti-Lag 2",antiLagSummary(),75);
         }
         out.erase(std::remove_if(out.begin(),out.end(),[&](const Item&i){
             const auto &r=i.rect;

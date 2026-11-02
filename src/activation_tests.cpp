@@ -122,8 +122,28 @@ int wmain(int argc,wchar_t **argv){try{
     xpfsr::nr::ControlChannel channel,reader;auto token=app::prepareSessionProfile(root,p,channel);xpfsr::nr::Controls live;
     check(token.size()==32&&reader.open(app::environment(L"XPFSR24_NR_CONTROL").c_str())&&reader.read(live)&&live[xpfsr::nr::Enabled]&&live[xpfsr::nr::AllowFG],"Shared live controls missing");
     check(app::environment(L"XPFSR24_PROVIDER")==L"4.1.2"&&app::environment(L"XPFSR24_FG")==L"4.0.2"&&app::environment(L"XPFSR24_FG_PRESENTER")==L"3.1.7"&&app::environment(L"XPFSR24_FG_SYNCHRONIZED")==L"1","Provider/compatibility mapping changed");
+    check(app::environment(L"XPFSR24_MOTION").empty(),"Camera-derived motion must not set a native request");
     check(graphics::read(root/L"logs/renderer.log.previous")==firstLog&&graphics::read(root/L"logs/renderer-control.txt")=="1","Fresh logs/processing configuration failed");
     auto native=app::prepareSessionProfile(root,p,channel,true);check(native!=token&&app::environment(L"XPFSR24_NR_CONTROL").empty()&&app::environment(L"XPFSR24_FG").empty()&&app::environment(L"XPFSR24_MODE")==L"observe","Native session retained renderer requests");
+    {auto withNative=p;withNative.motionSource=1;xpfsr::nr::ControlChannel motionChannel;app::prepareSessionProfile(root,withNative,motionChannel);
+     check(app::environment(L"XPFSR24_MOTION")==L"native-renderer","Native motion choice not passed to the renderer");
+     app::prepareSessionProfile(root,withNative,motionChannel,true);check(app::environment(L"XPFSR24_MOTION").empty(),"Native comparison session kept a motion request");}
+    {check(app::environment(L"XPFSR24_CPU_SCHEDULING").empty(),"CPU scheduling helper must be Off by default");
+     auto helper=p;helper.cpuScheduling=1;xpfsr::nr::ControlChannel helperChannel;app::prepareSessionProfile(root,helper,helperChannel);
+     check(app::environment(L"XPFSR24_CPU_SCHEDULING")==L"1","CPU scheduling choice not passed to the renderer");
+     app::prepareSessionProfile(root,helper,helperChannel,true);check(app::environment(L"XPFSR24_CPU_SCHEDULING").empty(),"Native comparison session kept the CPU helper");}
+    {check(app::environment(L"XPFSR24_FG_GPU").empty(),"Second-GPU FG must be off by default");
+     auto two=p;two.fgGpu=1;xpfsr::nr::ControlChannel twoChannel;app::prepareSessionProfile(root,two,twoChannel);
+     check(app::environment(L"XPFSR24_FG_GPU")==(app::effectiveFrameGeneration(two.frameGeneration)?std::wstring(L"second"):std::wstring()),"Second-GPU FG not passed to an FG session");
+     app::prepareSessionProfile(root,two,twoChannel,true);check(app::environment(L"XPFSR24_FG_GPU").empty(),"Native comparison session kept second-GPU FG");}
+    {check(app::environment(L"XPFSR24_LOD_BIAS").empty(),"Texture detail must be X-Plane's own by default");
+     auto bias=p;bias.textureBias=2;xpfsr::nr::ControlChannel biasChannel;app::prepareSessionProfile(root,bias,biasChannel);
+     check(app::environment(L"XPFSR24_LOD_BIAS")==(bias.mode?std::wstring(L"2"):std::wstring()),"Texture detail not passed to an FSR session");
+     app::prepareSessionProfile(root,bias,biasChannel,true);check(app::environment(L"XPFSR24_LOD_BIAS").empty(),"Native comparison session kept the texture bias");}
+    {check(app::environment(L"XPFSR24_ANTI_LAG").empty(),"Anti-Lag 2 must be Off by default");
+     auto lag=p;lag.antiLag=1;xpfsr::nr::ControlChannel lagChannel;app::prepareSessionProfile(root,lag,lagChannel);
+     check(app::environment(L"XPFSR24_ANTI_LAG")==(lag.mode?std::wstring(L"1"):std::wstring()),"Anti-Lag 2 choice not passed to an FSR session");
+     app::prepareSessionProfile(root,lag,lagChannel,true);check(app::environment(L"XPFSR24_ANTI_LAG").empty(),"Native comparison session kept Anti-Lag 2");}
     auto registry=L"Software\\XPFSR24\\Tests\\Activation-"+std::to_wstring(GetCurrentProcessId())+L"-"+std::to_wstring(GetTickCount64());
     struct Cleanup{std::wstring key;~Cleanup(){RegDeleteTreeW(HKEY_CURRENT_USER,key.c_str());}}cleanup{registry};
     const auto layers=registry+L"\\Layers",owner=registry+L"\\Owner";

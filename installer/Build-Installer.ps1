@@ -90,7 +90,7 @@ foreach($name in ($expectedRuntime.Keys | Sort-Object)){
   if($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notmatch 'Advanced Micro Devices'){throw "AMD signature check failed: $name"}
   Add-Payload $source ('runtime\'+$name) 'AMD SDK binary redistribution terms; AMD-SDK-license.md and third-party notices'
 }
-$licenseFiles = @('AMD-API-Headers-MIT.txt','AMD-SDK-license.md','AMD-SDK-third-party-notices.md','LLVM-MinGW-LICENSE.TXT','Vulkan-Headers-Apache-2.0.txt','Vulkan-Headers-LICENSE.md','Vulkan-Headers-MIT.txt','XPLM-SDK-license.txt')
+$licenseFiles = @('AMD-API-Headers-MIT.txt','AMD-SDK-license.md','AMD-SDK-third-party-notices.md','LLVM-MinGW-LICENSE.TXT','Vulkan-Headers-Apache-2.0.txt','Vulkan-Headers-LICENSE.md','Vulkan-Headers-MIT.txt','XPLM-SDK-license.txt','xplane-fsr3-MIT.txt')
 foreach($name in $licenseFiles){ Add-Payload (Join-Path $app ('licenses\'+$name)) ('licenses\'+$name) 'Upstream license/notice text, preserved intact' }
 foreach($name in @('COPYING','COPYING.MinGW-w64.txt','COPYING.MinGW-w64-runtime.txt','COPYING.winpthreads.txt','COPYING.winstorecompat.txt')){
   $outputName = if($name -eq 'COPYING'){'MinGW-COPYING.txt'}else{'MinGW-'+$name}
@@ -109,6 +109,9 @@ AMD runtime binaries have separate binary redistribution terms in
 licenses/AMD-SDK-license.md and licenses/AMD-SDK-third-party-notices.md.
 All upstream notices in this folder are included intact. Vulkan, XPLM,
 LLVM-MinGW and NSIS retain their respective licenses. No endorsement is claimed.
+The experimental native renderer motion adapts MIT code from
+JonathanOrr/xplane-fsr3 (commit fa51577c9bc2c3477e64dfdd358796aebb9ca45b);
+its notice is in licenses/xplane-fsr3-MIT.txt.
 '@
 Write-Text (Join-Path $generated 'THIRD-PARTY-NOTICES.txt') $notice
 Add-Payload (Join-Path $generated 'THIRD-PARTY-NOTICES.txt') 'licenses\THIRD-PARTY-NOTICES.txt' 'Original MIT index of upstream notices'
@@ -140,7 +143,7 @@ Write-Text (Join-Path $generated 'InstallFiles.nsh') ($install -join "`n")
 Write-Text (Join-Path $generated 'UninstallFiles.nsh') ($uninstall -join "`n")
 [string[]]$iconArguments = @()
 if($IconPath){$iconArguments += ('/DAPP_ICON='+(Resolve-Path -LiteralPath $IconPath).Path)}
-if($fgDevelopment){$iconArguments += @('/DFG_DEVELOPMENT=1','/DCHANNEL_LABEL=Beta')}else{$iconArguments += '/DCHANNEL_LABEL=Release'}
+if($fgDevelopment){$iconArguments += @('/DFG_DEVELOPMENT=1','/DCHANNEL_LABEL=Beta')}else{$iconArguments += '/DCHANNEL_LABEL=Release Candidate'}
 if($fgAvailable){$iconArguments += '/DFG_AVAILABLE=1'}
 if($NeuralRenderingDevelopment){$iconArguments += '/DNR_DEVELOPMENT=1'}
 & $Nsis '/V3' ('/DPACKAGE='+$package) ('/DGENERATED='+$generated) ('/DPACKAGE_VERSION='+$PackageVersion) ('/DWINDOWS_VERSION='+$WindowsVersion) @iconArguments $SetupScript

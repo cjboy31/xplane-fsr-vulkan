@@ -210,7 +210,7 @@ struct EnvironmentScope {
               L"VK_INSTANCE_LAYERS", L"VK_LOADER_LAYERS_ENABLE", L"VK_LOADER_DEBUG",
               L"DISABLE_VULKAN_OBS_CAPTURE", L"DISABLE_XPFSR24", L"XPFSR24_AUTOMATIC", L"XP_RENDERER_REQUEST", L"XP_RENDERER_SESSION_PID", L"XP_RENDERER_SESSION_CHOICE", L"XP_RENDERER_OWNER", L"XPFSR24_FG_GUARD", L"XPFSR24_FG_CONTROL", L"XPFSR24_MODE",
               L"XPFSR24_NR",L"XPFSR24_NR_ROOT",L"XPFSR24_NR_STATUS",L"XPFSR24_NR_CONTROL",L"XPFSR24_NR_ALLOW_FG",
-              L"XPFSR24_SESSION", L"XPFSR24_PROVIDER", L"XPFSR24_FG", L"XPFSR24_FG_PRESENTER",L"XPFSR24_FG_SYNCHRONIZED", L"XPFSR24_RUNTIME",
+              L"XPFSR24_SESSION", L"XPFSR24_PROVIDER", L"XPFSR24_FG", L"XPFSR24_FG_PRESENTER",L"XPFSR24_FG_SYNCHRONIZED", L"XPFSR24_FG_PACING", L"XPFSR24_FG_CAP", L"XPFSR24_MOTION", L"XPFSR24_CPU_SCHEDULING", L"XPFSR24_ANTI_LAG", L"XPFSR24_LOD_BIAS", L"XPFSR24_FG_GPU", L"XPFSR24_RUNTIME",
               L"XPFSR24_LOG", L"XPFSR24_STATUS", L"XPFSR24_CONTROL",L"XPFSR24_SETTINGS"}) {
             wchar_t value[32768]{};
             GetEnvironmentVariableW(name, value, 32768);
@@ -580,10 +580,6 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, LPWSTR, int show) {
     if(launchSavedProfile)PostMessageW(hwnd,WM_COMMAND,20,0);
     MSG message{};
     while (GetMessageW(&message, nullptr, 0, 0) > 0) {
-        if (intro::dialog && message.message == WM_KEYDOWN && message.wParam == VK_ESCAPE) {
-            intro::close();
-            continue;
-        }
         auto active = GetActiveWindow();
         if (!active || !IsDialogMessageW(active, &message)) {
             TranslateMessage(&message);

@@ -1,5 +1,31 @@
 # Changes
 
+## 2.0.0-beta.windows.1
+
+- **Live frame counter:** turn on Show frame counter under Frame generation, or use Show / hide frame counter in the FSR plugin menu. It shows real (raw) simulator FPS and extra generated FPS separately. The choice saves automatically and changes without a restart.
+- **Frame-generation memory fix (private test):** limit the number of source images waiting for frame generation to finish. This prevents a long session from holding more and more video memory, and lets pending images clear even after a low-memory fallback. Live retesting is still required before promotion.
+- **Hover help:** point at any ? in the panel to read a short guide in place. Click to pin it; click again or press Esc to close. Help no longer takes you to a separate page.
+- **Frame pacing:** new choice under Frame generation: Smooth (AMD default), Recover after heavy scenes (AMD tuning set B) or Power saver. Applies after restart. The session log explains when AMD's driver-assisted pacing (RX 9000 + Adrenalin 26.10.1+) can take over.
+- **Frame rate cap:** new choice under Frame generation. Auto keeps real frames just under half your refresh rate (AMD's recommendation for smooth frame generation); you can also pick a fixed rate or Off. Applies after restart.
+- **Pacing check:** the session log now says whether AMD's driver-assisted pacing can engage on your PC and, if not, exactly why (GPU, driver, VSync, fullscreen).
+- **Easier install:** setup finds X-Plane 12 automatically and uses plain step-by-step wording.
+- **Clearer channels:** Release Candidates (tested and verified) and Betas (still being tested). Your saved channel is kept.
+- **Project renamed** to `xplane12-fsr-framegen`. Web links to the old name still open. The 0.7.x updater cannot follow the rename, so install 2.0 manually once; from 2.0 on, the updater accepts both names.
+- Repository clean-up: retired feature-video tooling and old per-version install notes removed; developer notes moved to `docs/developer/`.
+- Includes the 0.7.10 scene-copy and background file-worker performance corrections.
+- **Two-GPU frame generation (experimental, in Test):** a new *Frame generation GPU* choice. With *Second GPU*, your main card renders X-Plane and a second card (with the monitor plugged into it) makes the extra frames and shows them. If the second card cannot run AMD's frame generation, it shows the real frames and Diagnostics says why.
+- **Texture detail (in Test, off by default):** a new choice under Image processing. AMD recommends one step sharper textures for its newer FSR than for the simple FSR X-Plane uses; *AMD recommended* applies that, *Sharper* half of it. Only ground, runway and building textures change. Applies after restart.
+- **Smoother panel:** when you change tabs, the rows now slide in from top to bottom. Turning off animations in Windows turns this off too.
+- **Anti-Lag 2 (experimental, Off by default):** a new choice under Frame generation for AMD Radeon cards whose driver offers it for Vulkan. It can make the controls feel quicker. Diagnostics says whether your driver supports it.
+- **No freeze while FSR gets ready:** FSR now prepares itself on a background thread when a flight loads or the window size changes. X-Plane's own picture shows for that moment instead of the sim pausing, and the panel says *FSR GETTING READY* with the seconds so far.
+- **CPU scheduling helper (experimental, Off by default):** a new choice under Frame generation. On Intel processors with P-cores and E-cores it keeps X-Plane on the P-cores; on two-chiplet Ryzen X3D processors it keeps X-Plane on the chiplet with the extra cache. It also stops Windows power throttling for X-Plane. Only X-Plane is affected, and it is undone when X-Plane closes. Diagnostics shows what it did.
+- **Driver pacing in Diagnostics:** the pacing check from the session log now also appears in Diagnostics, with each reason it cannot be used on your PC.
+- **Performance per frame:** Diagnostics now shows how long this mod adds to each frame (its own work, waits, the present call) next to X-Plane's frame and GPU time, so you can see whether the CPU or the GPU is the limit.
+- **Motion source (experimental, in Test):** a new choice under Image processing. Native reads the motion X-Plane works out for its own reflections, so your aircraft can trail less when you turn or zoom. It works with MSAA, frame generation and the cockpit screen fix, and feeds all of them. If it cannot run on a frame, the normal Camera motion is used and Diagnostics says why. Camera stays the default.
+- Developer: shared motion contract v1, the same motion format and rules as Native AA (`src/motion_contract.*`, pinned in both repositories). Also an opt-in motion-quality capture and `tools/motion_quality.py`, which gives a measured gain per region.
+- **Fixes from the first live test:** history no longer resets on every frame in forward flight (the reset rule grew with speed); Esc now closes a pinned help card instead of opening X-Plane's menu; uninstalling keeps your saved choices so installing again into the same folder restores them. The log now shows how long the *synchronized* frame-generation methods wait each frame.
+- Not yet verified in live flights; this is why it is a Beta.
+
 ## 0.7.10
 
 - Skip image copies from passes that do not feed the final scene, reducing repeated graphics-memory setup and associated CPU spikes.
