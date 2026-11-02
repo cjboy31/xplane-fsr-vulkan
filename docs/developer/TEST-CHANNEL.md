@@ -93,6 +93,8 @@ access to this repository), because drafts are private.
 | 17 | Load a flight with FSR 4, then change the window size (or Apply graphics with a new output and restart) | No multi-second freeze as FSR starts; the picture switches from X-Plane's to FSR after a moment. The panel status shows *FSR GETTING READY ... (N s)* meanwhile. The log has `FSR context preparation: N ms on a worker thread`; report N for the first start after a driver update and for a second start |
 | 18 | **Anti-Lag 2: On (experimental)**, restart; fly 2 minutes with FG Off, then FG On (SDK paced); repeat with Anti-Lag 2 Off | Diagnostics > *Anti-Lag 2* says On, or names why not. With PresentMon, report average latency and FPS for all four runs; the log has `AMD Anti-Lag 2: average input wait` lines. No new stutter |
 | 19 | Switch panel tabs a few times; then turn off *Windows Settings > Accessibility > Visual effects > Animation effects* and switch again | Rows slide in top to bottom in well under half a second and every button works during it; with animations off they appear at once |
+| 20 | **Texture detail**: X-Plane default vs AMD recommended, FSR 4 Quality, same parked view of runway markings and a city, restart between | Runway and building textures visibly sharper with AMD recommended; sky, clouds, water, cockpit screens and bloom look the same. Log lines `Texture detail: sampler ... bias A -> B`: report the A values (X-Plane's own bias) and the count of kept samplers |
+| 21 | Everything above on **X-Plane 12.4.4 final** | Note any check that behaves differently from 12.4.3, plus the log's `Motion source`, `FSR context preparation` and device-creation lines |
 
 5. Collect `Output/FSR-Logs` (Diagnostics > Open log folder) and X-Plane's `Log.txt`.
 

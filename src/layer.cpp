@@ -38,6 +38,7 @@
 #include "native_motion/shader_classify.cpp"
 #include "motion_contract.hpp"
 #include "cpu_scheduling.hpp"
+#include "texture_bias.hpp"
 #include <algorithm>
 #include <array>
 #include <bcrypt.h>
@@ -305,6 +306,9 @@ struct Device {
     struct PreparedContext { std::unique_ptr<xpfsr::Context> context; uint64_t ms{}; };
     // v2 opt-in AMD Anti-Lag 2: null unless the driver enabled VK_AMD_anti_lag.
     PFN_vkAntiLagUpdateAMD antiLagUpdate{};
+    // v2 opt-in texture LOD bias (see texture_bias.hpp): 0 = X-Plane's own.
+    float lodExtra{}, lodLimit{2.f};
+    std::atomic<uint64_t> lodBiased{0}, lodSkipped{0};
     uint64_t antiLagFrame{1}, antiLagWaits{}, antiLagWaitTicks{};
     std::map<std::array<uint32_t, 6>, std::future<PreparedContext>> pendingContexts;
     std::unique_ptr<xpfsr::Runtime> runtime;
@@ -2621,6 +2625,15 @@ static VKAPI_ATTR VkResult VKAPI_CALL L_CreateDevice(VkPhysicalDevice physical,
                  state->antiLagUpdate ? "" : antiLagReason);
         log("AMD Anti-Lag 2: %s", state->antiLagUpdate ? "on (VK_AMD_anti_lag, input and present markers)" : antiLagReason);
     }
+    {
+        const auto choice = app::environment(L"XPFSR24_LOD_BIAS");
+        state->lodExtra = xpfsr::lod::parse(choice.c_str());
+        VkPhysicalDeviceProperties limits{};
+        reinterpret_cast<PFN_vkGetPhysicalDeviceProperties>(instance->next(instance->handle, "vkGetPhysicalDeviceProperties"))(physical, &limits);
+        state->lodLimit = limits.limits.maxSamplerLodBias;
+        if (state->lodExtra < 0)
+            log("Texture detail: %.1f extra mip bias on anisotropic texture samplers (device limit %.1f)", state->lodExtra, state->lodLimit);
+    }
     state->mode = selectedMode();
     setupMotionCapture(*state);
     cpusched::apply();
@@ -2810,6 +2823,25 @@ static VKAPI_ATTR void VKAPI_CALL L_GetDeviceQueue(VkDevice device, uint32_t fam
     d->fn<PFN_vkGetDeviceQueue>("vkGetDeviceQueue")(device, family, index, queue);
     if (*queue && d->setLoaderData)
         d->setLoaderData(device, *queue);
+}
+// v2 opt-in texture detail: shift material-texture samplers one level (or half)
+// sharper, as AMD recommends for temporal upscaling. Everything else is untouched.
+static VKAPI_ATTR VkResult VKAPI_CALL L_CreateSampler(VkDevice device, const VkSamplerCreateInfo *c,
+                                                      const VkAllocationCallbacks *a, VkSampler *out) {
+    auto d = deviceFor(device);
+    auto create = d->fn<PFN_vkCreateSampler>("vkCreateSampler");
+    if (sdkNesting || d->lodExtra >= 0 || !c || !xpfsr::lod::eligible(*c)) {
+        if (!sdkNesting && d->lodExtra < 0 && c) ++d->lodSkipped;
+        return create(device, c, a, out);
+    }
+    auto copy = *c;
+    copy.mipLodBias = xpfsr::lod::biased(c->mipLodBias, d->lodExtra, d->lodLimit);
+    const auto count = ++d->lodBiased;
+    if (count <= 4 || count % 500 == 0)
+        log("Texture detail: sampler %llu bias %.2f -> %.2f (aniso %.0f, max LOD %.1f); %llu other samplers kept",
+            (unsigned long long)count, c->mipLodBias, copy.mipLodBias, c->maxAnisotropy, c->maxLod,
+            (unsigned long long)d->lodSkipped.load());
+    return create(device, &copy, a, out);
 }
 static VKAPI_ATTR VkResult VKAPI_CALL L_CreateImage(VkDevice device, const VkImageCreateInfo *c,
                                                     const VkAllocationCallbacks *a, VkImage *out) {
@@ -4525,6 +4557,7 @@ XP_GetDeviceProcAddr(VkDevice device, const char *name) {
     HOOK("vkGetDeviceProcAddr", XP_GetDeviceProcAddr);
     HOOK("vkDestroyDevice", L_DestroyDevice);
     HOOK("vkCreateImage", L_CreateImage);
+    HOOK("vkCreateSampler", L_CreateSampler);
     HOOK("vkDestroyImage", L_DestroyImage);
     HOOK("vkCreateImageView", L_CreateImageView);
     HOOK("vkDestroyImageView", L_DestroyImageView);

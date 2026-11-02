@@ -76,6 +76,19 @@ Native AA's TAA and warping in frame generation at once. Full plan:
 | P2 | Feature | **D** Native motion with MSAA and frame generation | **In Test**: MSAA SSR variant, FG and the cockpit fix; native images copied into the frame's own images |
 | P2 | Feature | **E** Per-object motion: traffic, propellers, control surfaces, gear; reactive masks for clouds and glass | **Groundwork in Test**: `XPFSR24_MOTION_SURVEY=1` interface survey; design in [PER-OBJECT-MOTION](docs/developer/PER-OBJECT-MOTION.md). Needs live survey data before building |
 
+### Laminar's updates and the rest of the PC
+
+Research: [LAMINAR-AND-HARDWARE](docs/developer/LAMINAR-AND-HARDWARE.md) (12.4.4 SDK Update, 12.5, tile scenery engine; what hardware can and cannot do for the sim).
+
+| P | Type | Item | Notes |
+| --- | --- | --- | --- |
+| P1 | Bug | Verify on X-Plane 12.4.4 final (Oct 29): SSR classifier (native motion), FSR pass replacement, cockpit-screen restore, FG, Zink 25.3.4, sparse-residency device creation on AMD Linux | TEST-CHANNEL check 21. 12.4.4 changed lighting, texture residency, FSR LOD bias and panel drawing |
+| P2 | Feature | **Texture detail**: AMD's temporal-upscaler mip bias (`log2(render/display) - 1`) on top of X-Plane's own | **In Test**: opt-in panel row; only anisotropic material samplers; device-limit clamp; logs X-Plane's original values. Check 20 |
+| P2 | Optimization | Move the in-sim panel to the **Panel Graphics API** (Vulkan, batched, MSDF text) | Laminar: OpenGL plugin drawing "requires expensive bridging and is impossible to make multi-core". Needs SDK 4.4 final (RC1 now); keep the OpenGL path for older X-Plane |
+| P2 | Feature | NVIDIA low latency (`VK_NV_low_latency2`, Reflex for Vulkan), mirroring Anti-Lag 2 | FG and FSR run on NVIDIA too; opt-in, only when the driver exposes it |
+| P2 | Bug | Panel Graphics cockpit displays: confirm cockpit-screen restore finds screens drawn by X-Plane's Vulkan avionics path | Needs a 12.4.4 aircraft that uses Panel Graphics |
+| P3 | Optimization | Tile scenery engine (late 2026): re-check pass identification on its first beta | Both mods bypass on unknown passes, so the risk is fallback, not corruption |
+
 ### Optimization
 
 | P | Item | Why / evidence | Notes |

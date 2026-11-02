@@ -132,6 +132,10 @@ int wmain(int argc,wchar_t **argv){try{
      auto helper=p;helper.cpuScheduling=1;xpfsr::nr::ControlChannel helperChannel;app::prepareSessionProfile(root,helper,helperChannel);
      check(app::environment(L"XPFSR24_CPU_SCHEDULING")==L"1","CPU scheduling choice not passed to the renderer");
      app::prepareSessionProfile(root,helper,helperChannel,true);check(app::environment(L"XPFSR24_CPU_SCHEDULING").empty(),"Native comparison session kept the CPU helper");}
+    {check(app::environment(L"XPFSR24_LOD_BIAS").empty(),"Texture detail must be X-Plane's own by default");
+     auto bias=p;bias.textureBias=2;xpfsr::nr::ControlChannel biasChannel;app::prepareSessionProfile(root,bias,biasChannel);
+     check(app::environment(L"XPFSR24_LOD_BIAS")==(bias.mode?std::wstring(L"2"):std::wstring()),"Texture detail not passed to an FSR session");
+     app::prepareSessionProfile(root,bias,biasChannel,true);check(app::environment(L"XPFSR24_LOD_BIAS").empty(),"Native comparison session kept the texture bias");}
     {check(app::environment(L"XPFSR24_ANTI_LAG").empty(),"Anti-Lag 2 must be Off by default");
      auto lag=p;lag.antiLag=1;xpfsr::nr::ControlChannel lagChannel;app::prepareSessionProfile(root,lag,lagChannel);
      check(app::environment(L"XPFSR24_ANTI_LAG")==(lag.mode?std::wstring(L"1"):std::wstring()),"Anti-Lag 2 choice not passed to an FSR session");
