@@ -580,10 +580,6 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, LPWSTR, int show) {
     if(launchSavedProfile)PostMessageW(hwnd,WM_COMMAND,20,0);
     MSG message{};
     while (GetMessageW(&message, nullptr, 0, 0) > 0) {
-        if (intro::dialog && message.message == WM_KEYDOWN && message.wParam == VK_ESCAPE) {
-            intro::close();
-            continue;
-        }
         auto active = GetActiveWindow();
         if (!active || !IsDialogMessageW(active, &message)) {
             TranslateMessage(&message);

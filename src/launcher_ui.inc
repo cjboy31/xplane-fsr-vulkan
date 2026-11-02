@@ -269,7 +269,6 @@ static void runtimeBanner(launcher::RuntimeState state, const app::Telemetry &st
 #include "setup_ui.inc"
 #include "update_ui.inc"
 #include "launcher_design.inc"
-#include "intro_video.inc"
 #include "renderer_log_ui.inc"
 static void syncSharedChoices(){
     if(!controlsReady||!submittedChoicesReady)return;
@@ -407,9 +406,6 @@ static LRESULT CALLBACK procedure(HWND hwnd, UINT message, WPARAM w, LPARAM l) {
                 }
                 break;
             case 47:showNRSetup();break;
-            case 251:
-                intro::show(hwnd, false);
-                break;
             case 250:
                 platformHelp(hwnd);
                 break;
@@ -534,10 +530,7 @@ static LRESULT CALLBACK procedure(HWND hwnd, UINT message, WPARAM w, LPARAM l) {
         }
         return 0;
     case WM_TIMER:
-        if (w == 5) {
-            KillTimer(hwnd, 5);
-            intro::show(hwnd, true);
-        } else if (w == 3) {
+        if (w == 3) {
             KillTimer(hwnd, 3);
             if (autoCheckUpdates)
                 startUpdateCheck();
@@ -568,7 +561,6 @@ static LRESULT CALLBACK procedure(HWND hwnd, UINT message, WPARAM w, LPARAM l) {
         if(nrJobRunning()){MessageBoxW(hwnd,L"Wait for the NR import/check to finish.",L"NR task active",MB_OK);return 0;}
         nrFinishJob();
         if(IsWindow(rendererLogWindow))DestroyWindow(rendererLogWindow);
-        intro::close();
         updateJob->cancel = true;
         try {
             saveChoices();
