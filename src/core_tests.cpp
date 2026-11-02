@@ -6,6 +6,8 @@
 #include "startup_readiness.hpp"
 #include "frame_diagnostics.hpp"
 #include "render_safety.hpp"
+#include "frame_counter.hpp"
+#include <algorithm>
 #include <atomic>
 #include <iostream>
 #include <stdexcept>
@@ -16,11 +18,38 @@ static void expect(bool value, const char *name) {
 }
 int main() {
     try {
+        app::FrameCounter counter;
+        expect(counter.due(0),"Frame counter did not start");counter.sample(0,100,200,true);
+        expect(!counter.ready&&!counter.due(999),"Counter displayed a partial sampling interval");
+        counter.sample(2000,180,280,true);
+        expect(counter.ready&&counter.realFPS==40&&counter.generatedFPS==40,"Counter did not divide actual source/generated deltas by elapsed time");
+        counter.sample(3000,220,280,true);expect(counter.realFPS==40&&counter.generatedFPS==0,"FG selected but inactive produced fictitious extra FPS");
+        counter.sample(4000,260,1,true);expect(counter.generatedFPS==0,"Restarted generated counter underflowed");
+        counter.sample(5000,300,41,false);expect(counter.realFPS==40&&counter.generatedFPS==0,"Unavailable renderer reused stale FG rate");
+        counter.sample(11000,600,400,true);expect(!counter.ready,"Counter included a loading/stalled sampling gap");
+        counter.sample(10000,10,0,true);expect(!counter.ready,"Clock/source reset caused a bogus FPS spike");
+        counter.reset();expect(!counter.ready&&!counter.seeded&&counter.realFPS==0&&counter.generatedFPS==0,"Hidden counter retained stale values");
         xpfsr::AllocationBackoff backoff;
         expect(backoff.allowed(100),"Initial allocation blocked");backoff.failed(100);
         expect(!backoff.allowed(101)&&!backoff.allowed(3099)&&backoff.allowed(3100),"Failed allocation retried at frame rate or never recovered");
         backoff.failed(UINT64_MAX-10);expect(!backoff.allowed(UINT64_MAX-1),"Retry timestamp overflowed");backoff.recovered();expect(backoff.allowed(0),"Allocation recovery remained blocked");
         expect(!xpfsr::presenterFinished(2,1)&&xpfsr::presenterFinished(2,2)&&xpfsr::presenterFinished(0,0),"Application completion substituted for SDK ownership");
+        expect(!xpfsr::presenterDrainRequired(0,0,true,true),"Empty presenter caused an unnecessary drain");
+        expect(!xpfsr::presenterDrainRequired(2,0,false,false)&&xpfsr::presenterDrainRequired(3,0,false,false),"Asynchronous source window was unbounded or disabled overlap");
+        expect(xpfsr::presenterDrainRequired(1,0,true,false)&&xpfsr::presenterDrainRequired(1,0,false,true),"Compatibility or memory-pressure drain was skipped");
+        // Exercise a long session with 4K-sized images and delayed completion.
+        // A host fence alone must not free them; a successful SDK drain must.
+        uint64_t issued=0,completed=0,peakPending=0,drains=0;
+        for(uint64_t frame=0;frame<120000;++frame){
+            ++issued;const auto pending=issued-completed;peakPending=std::max(peakPending,pending);
+            expect(!xpfsr::presenterFinished(issued,completed),"Pending SDK source released by a host frame");
+            if(xpfsr::presenterDrainRequired(issued,completed,false,false)){
+                expect(pending==3,"Delayed SDK completion accumulated more than three source image sets");
+                completed=issued;++drains;
+            }
+        }
+        expect(peakPending==3&&drains==40000&&completed==issued,"Long-flight source ownership did not remain bounded");
+        expect(xpfsr::presenterDrainRequired(UINT64_MAX,UINT64_MAX-3,false,false)&&!xpfsr::presenterDrainRequired(1,UINT64_MAX,false,false),"Presenter-window arithmetic overflowed");
         expect(!xpfsr::coldPresent(10,130)&&xpfsr::coldPresent(10,131)&&!xpfsr::coldPresent(UINT64_MAX,1),"Cold resource age overflowed or evicted active images");
         xpfsr::FrameDiagnostics resetLog;
         uint64_t detailed{}, resetCount{}, suppressedCount{};

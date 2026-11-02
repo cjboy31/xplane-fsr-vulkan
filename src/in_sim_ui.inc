@@ -6,6 +6,7 @@
 #include "session_logs.hpp"
 #include "in_sim_binding.hpp"
 #include "session_export.hpp"
+#include "frame_counter.hpp"
 #include <shellapi.h>
 #include <XPLMDisplay.h>
 #include <XPLMGraphics.h>
@@ -537,3 +538,60 @@ static void setupShow() noexcept{try{
     setupPresence.setVisible(true);setupLastPoll=0;setupPoll();XPLMBringWindowToFront(setupWindow);
 }catch(const std::exception&e){std::string text="XPFSR24: setup panel: ";text+=e.what();text+='\n';XPLMDebugString(text.c_str());}catch(...){}}
 static void setupStop(){setupHide();if(setupWindow)XPLMDestroyWindow(setupWindow);setupWindow=nullptr;setupNR.close();setupPresence.close();if(setupGraphicsJob)CloseHandle(setupGraphicsJob);setupGraphicsJob=nullptr;if(setupImportJob)CloseHandle(setupImportJob);setupImportJob=nullptr;if(setupLogJob)CloseHandle(setupLogJob);setupLogJob=nullptr;if(setupRepairJob)CloseHandle(setupRepairJob);setupRepairJob=nullptr;setupLogToken.clear();setupConfigurationSession.close();}
+
+// A separate, input-transparent XPLM overlay. It never marks the settings panel
+// visible (which intentionally pauses FG), takes keyboard focus or reads files
+// in its draw callback. IPC is sampled at most once a second when enabled.
+static XPLMWindowID frameCounterWindow{};
+static app::FrameCounter frameCounter;
+static bool frameCounterFailed{};
+static std::string frameCounterReal="REAL (RAW)    -- FPS",frameCounterGenerated="FG EXTRA      -- FPS";
+static int frameCounterMouse(XPLMWindowID,int,int,XPLMMouseStatus,void*){return 0;}
+static void frameCounterKey(XPLMWindowID,char,XPLMKeyFlags,char,void*,int){}
+static int frameCounterWheel(XPLMWindowID,int,int,int,int,void*){return 0;}
+static void frameCounterDraw(XPLMWindowID window,void*) noexcept{try{
+    int left,top,right,bottom;XPLMGetWindowGeometry(window,&left,&top,&right,&bottom);
+    XPLMSetGraphicsState(0,0,0,0,1,0,0);
+    setup_deck::rounded(left,top,right-left,top-bottom,5,setup_deck::canvas);
+    setup_deck::solid(left,top,3,top-bottom,setup_deck::ice);
+    setup_deck::text(left+14,top-23,right-left-26,frameCounterReal,setup_deck::white);
+    setup_deck::text(left+14,top-44,right-left-26,frameCounterGenerated,setup_deck::ice);
+}catch(...){}}
+static void frameCounterStop(){
+    if(frameCounterWindow)XPLMDestroyWindow(frameCounterWindow);
+    frameCounterWindow=nullptr;frameCounter.reset();
+    frameCounterReal="REAL (RAW)    -- FPS";frameCounterGenerated="FG EXTRA      -- FPS";
+}
+static void frameCounterTick(const app::Camera &camera) noexcept{try{
+    if(!setupPanel.configured()||!setupPanel.choices.showFrameCounter){
+        if(frameCounterWindow||frameCounter.seeded)frameCounterStop();
+        frameCounterFailed=false;return;
+    }
+    if(frameCounterFailed)return;
+    if(!camera.valid){
+        if(frameCounterWindow)XPLMSetWindowIsVisible(frameCounterWindow,0);
+        frameCounter.reset();frameCounterReal="REAL (RAW)    -- FPS";frameCounterGenerated="FG EXTRA      -- FPS";return;
+    }
+    if(!frameCounterWindow){
+        int left,top,right,bottom;XPLMGetScreenBoundsGlobal(&left,&top,&right,&bottom);
+        XPLMCreateWindow_t p{};p.structSize=sizeof(p);p.right=right-20;p.left=std::max(left,p.right-280);
+        p.top=top-42;p.bottom=p.top-58;p.visible=1;p.drawWindowFunc=frameCounterDraw;
+        p.handleMouseClickFunc=frameCounterMouse;p.handleRightClickFunc=frameCounterMouse;
+        p.handleKeyFunc=frameCounterKey;p.handleCursorFunc=setupCursor;p.handleMouseWheelFunc=frameCounterWheel;
+        p.decorateAsFloatingWindow=xplm_WindowDecorationNone;p.layer=xplm_WindowLayerFloatingWindows;
+        frameCounterWindow=XPLMCreateWindowEx(&p);
+        if(!frameCounterWindow)throw std::runtime_error("Could not create the frame counter");
+        XPLMSetWindowGravity(frameCounterWindow,1,1,1,1);
+    }else if(!XPLMGetWindowIsVisible(frameCounterWindow))XPLMSetWindowIsVisible(frameCounterWindow,1);
+    const auto now=GetTickCount64();
+    if(frameCounter.due(now)){
+        app::Telemetry status{};const bool known=app::readStatus(shared,status)&&status.presents>0;
+        frameCounter.sample(now,camera.frame,status.fgGenerated,known);
+        if(frameCounter.ready){
+            char line[96]{};snprintf(line,sizeof(line),"REAL (RAW)    %.1f FPS",frameCounter.realFPS);frameCounterReal=line;
+            if(frameCounter.rendererKnown)snprintf(line,sizeof(line),"FG EXTRA      %.1f FPS",frameCounter.generatedFPS);
+            else snprintf(line,sizeof(line),"FG EXTRA      unavailable");
+            frameCounterGenerated=line;
+        }
+    }
+}catch(const std::exception&e){frameCounterStop();frameCounterFailed=true;setupPanel.notice=e.what();XPLMDebugString("XPFSR24: frame counter unavailable; turn Off/On to retry.\n");}catch(...){frameCounterStop();frameCounterFailed=true;}}

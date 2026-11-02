@@ -35,7 +35,7 @@ inline std::string valueName(const Controls &c,Field f){
     return std::to_string(value)+"%";
 }
 struct Rect {int x{},y{},w{},h{};bool contains(int a,int b)const{return a>=x&&a<x+w&&b>=y&&b<y+h;}};
-enum class Kind {Tab,Processing,Mode,FrameGen,NRField,Budget,Help,Close,Preset,Graphics,ApplyGraphics,OpenChoice,ChooseOption,CloseChoice,FGToggle,FGProvider,ImportModel,CloudPreset,Renderer,Changelog,Updates,Logs,RepairStartup,Report,FGPacing,FGCap,MotionSource,CpuScheduling,AntiLag};
+enum class Kind {Tab,Processing,Mode,FrameGen,NRField,Budget,Help,Close,Preset,Graphics,ApplyGraphics,OpenChoice,ChooseOption,CloseChoice,FGToggle,FGProvider,ImportModel,CloudPreset,Renderer,Changelog,Updates,Logs,RepairStartup,Report,FGPacing,FGCap,MotionSource,CpuScheduling,AntiLag,FrameCounter};
 inline constexpr int contentTop=162, footerHeight=82, modelSetupHeight=96, sectionHeight=32, rowHeight=46;
 inline Rect footerNotice(int width,int height){return {28,height-78,width-56,51};}
 inline Rect footerGuidance(int width,int height){return {28,height-23,width-56,17};}
@@ -227,6 +227,7 @@ public:
         }
         if(refreshFirst)refresh();auto p=choices;
         if(action.kind==Kind::Processing)p.enabled=action.delta?action.delta>0:!p.enabled;
+        if(action.kind==Kind::FrameCounter)p.showFrameCounter=action.delta?action.delta>0:!p.showFrameCounter;
         if(action.kind==Kind::Mode){p.mode=(p.mode+action.delta+5)%5;p.presetId.clear();if(!p.mode){p.frameGeneration=0;p.neuralRendering=0;p.nr[Enabled]=0;}}
         if(action.kind==Kind::FGProvider){p.lastFrameGeneration=std::clamp(p.lastFrameGeneration+action.delta,1,4);if(p.frameGeneration)p.frameGeneration=p.lastFrameGeneration;}
         if(action.kind==Kind::FrameGen||action.kind==Kind::FGToggle||action.kind==Kind::FGProvider){
@@ -279,6 +280,7 @@ public:
         if(action.kind==Kind::FGToggle)notice=sessionFG?(choices.frameGeneration?"Frame generation On. Close this panel to resume; check Diagnostics for generated frames.":"Frame generation Off. The change is live; your method stays saved."):(choices.frameGeneration?"Frame generation saved On. Restart X-Plane to load its presenter; it is not running yet.":"Frame generation saved Off. Your method stays saved.");
         if(action.kind==Kind::FGProvider)notice="Frame generation method saved. The new method applies after restarting X-Plane. The current method is retained for this flight.";
         if(action.kind==Kind::FGCap)notice=std::string("Frame rate cap saved: ")+xpfsr::pacing::capNames[std::clamp(choices.fgCap,0,xpfsr::pacing::capCount-1)]+". It limits real frames while frame generation runs, after you restart X-Plane.";
+        if(action.kind==Kind::FrameCounter)notice=choices.showFrameCounter?"Frame counter On. Real and generated FPS appear at the top right during flight. No restart needed.":"Frame counter Off. Your choice is saved. No restart needed.";
         if(action.kind==Kind::MotionSource)notice=choices.motionSource?"Motion source saved: Native (experimental). After you restart X-Plane, FSR uses X-Plane's own motion data when it can. It also works with MSAA, frame generation and the cockpit screen fix. If it cannot run, the normal motion is used and Diagnostics says why.":"Motion source saved: Camera. This is the normal motion. It applies after you restart X-Plane.";
         if(action.kind==Kind::CpuScheduling)notice=choices.cpuScheduling?"CPU scheduling helper saved. After you restart X-Plane, Diagnostics shows what it changed. It only affects X-Plane, only while FSR runs, and is undone when X-Plane closes.":"CPU scheduling saved: Windows decides. This applies after you restart X-Plane.";
         if(action.kind==Kind::AntiLag)notice=choices.antiLag?"Anti-Lag 2 saved: On (experimental). After you restart X-Plane, Diagnostics shows whether your driver supports it.":"Anti-Lag 2 saved: Off. This applies after you restart X-Plane.";
@@ -289,7 +291,7 @@ public:
     }
     int maxScroll(int height)const{
         if(!configured())return 0;
-        const int lengths[]={3*sectionHeight+14*rowHeight+68,2*sectionHeight+modelSetupHeight+Count*rowHeight,
+        const int lengths[]={3*sectionHeight+15*rowHeight+68,2*sectionHeight+modelSetupHeight+Count*rowHeight,
                              144+3*sectionHeight+62+61+48+75+75+75+48+75+75+75+75,3*sectionHeight+10*rowHeight+44};
         return std::max(0,lengths[tab]+(tab==0&&needsStartupRepair()?44:0)+8-std::max(1,height-contentTop-footerHeight));
     }
@@ -301,9 +303,10 @@ public:
         if(f>=0&&f<Count)return utf8(settings[f].label);
         switch(f){case 100:return "MSAA";case 101:return "FXAA";case 102:return "Input detail";case 103:return "Output resolution";case 104:return "Menu size";case 105:return "FSR 3 trail reduction";
             case 106:return "Cockpit screen protection";case 107:return "Protection tint";case 108:return "Cloud quality";case 200:return "FSR mode";case 201:return "Frame generation";case 202:return "Resolution preset";
-            case 203:return "Import NR model";case 204:return "Cloud presets";case 205:return "Renderer";case 206:return "FSR processing";case 207:return "NR quick setting";case 208:return "Repair startup";case 209:return "Frame pacing";case 210:return "Frame rate cap";case 211:return "Motion source";case 212:return "CPU scheduling";case 213:return "Anti-Lag 2";default:return "Setting guide";}
+            case 203:return "Import NR model";case 204:return "Cloud presets";case 205:return "Renderer";case 206:return "FSR processing";case 207:return "NR quick setting";case 208:return "Repair startup";case 209:return "Frame pacing";case 210:return "Frame rate cap";case 211:return "Motion source";case 212:return "CPU scheduling";case 213:return "Anti-Lag 2";case 214:return "Frame counter";default:return "Setting guide";}
     }
     std::string helpText(int f)const{
+        if(f==214)return "Shows two numbers at the top right during flight. Real (raw) FPS is how many frames X-Plane draws each second. FG extra FPS is how many extra frames frame generation produces. FG shows zero when it is not producing extra frames, even if its setting is On. The numbers update about once a second. They do not measure your monitor's refresh rate. Turn this off to hide it; your choice is saved. You can also toggle it from the FSR plugin menu. No restart needed.";
         if(f==300)return changelogText();
         if(!configured())return "Rendering controls are unavailable until this simulator is linked to a saved installation. No selections have been changed. Enable in-sim integration for this X-Plane folder, then restart using your usual launcher.";
         if(f>=0&&f<Count)return utf8(settings[f].help);
@@ -373,7 +376,7 @@ public:
             item({24,y+rowHeight-1,width-48,1},"",Widget::Rule);
             item({28,y+(hasTiming?3:13),controlX-40,20},label);
             if(hasTiming)item({28,y+22,controlX-40,18},timing,Widget::Muted);
-            bool toggle=kind==Kind::Processing||kind==Kind::FGToggle||
+            bool toggle=kind==Kind::Processing||kind==Kind::FGToggle||kind==Kind::FrameCounter||
                 (kind==Kind::NRField&&(field==Enabled||field==Mask||field==Grade||field==AllowFG))||
                 (kind==Kind::Graphics&&(field==1||(field>=4&&field<=7)));
             bool slider=kind==Kind::NRField&&((field>=Intensity&&field<=History)||field==Scale||field==Passes);
@@ -389,7 +392,7 @@ public:
             }
             const int help=kind==Kind::Renderer?205:kind==Kind::Processing?206:kind==Kind::NRField?field:
                 kind==Kind::Graphics?100+field:kind==Kind::CloudPreset?204:kind==Kind::Mode?200:
-                kind==Kind::FGToggle||kind==Kind::FGProvider?201:kind==Kind::FGPacing?209:kind==Kind::FGCap?210:kind==Kind::MotionSource?211:kind==Kind::CpuScheduling?212:kind==Kind::AntiLag?213:202;
+                kind==Kind::FGToggle||kind==Kind::FGProvider?201:kind==Kind::FGPacing?209:kind==Kind::FGCap?210:kind==Kind::MotionSource?211:kind==Kind::CpuScheduling?212:kind==Kind::AntiLag?213:kind==Kind::FrameCounter?214:202;
             button({helpX,y+7,32,32},"?",{Kind::Help,help});
         };
         const char *next="After restart",*nrTiming=liveNR?"Live":next;
@@ -426,6 +429,7 @@ public:
             row("Frame generation method",fgNames[std::clamp(choices.lastFrameGeneration,1,4)],Kind::FGProvider,0,"");
             row("Frame pacing",xpfsr::pacing::profileNames[std::clamp(choices.fgPacing,0,2)],Kind::FGPacing,0,"");
             row("Frame rate cap",xpfsr::pacing::capNames[std::clamp(choices.fgCap,0,xpfsr::pacing::capCount-1)],Kind::FGCap,0,"");
+            row("Show frame counter",choices.showFrameCounter?"On":"Off",Kind::FrameCounter,0,"Live");
             row("Anti-Lag 2",antiLagNames[std::clamp(choices.antiLag,0,1)],Kind::AntiLag,0,"");
             row("CPU scheduling",cpuSchedulingNames[std::clamp(choices.cpuScheduling,0,1)],Kind::CpuScheduling,0,"");
             section("03   /   NEURAL RENDERING",nrTiming);

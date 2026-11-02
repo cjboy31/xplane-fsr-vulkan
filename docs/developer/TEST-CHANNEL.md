@@ -49,6 +49,16 @@ SDK generated-image readback, layer swapchain lifecycle and live simulator
 generation are separate results. An accepted pacing profile or lifecycle pass
 does not establish generated frames, scanout quality or stutter-free flight.
 
+Source-image lifetime regression: with the ordinary (not synchronized) presenter,
+run several minutes at 4K with NR Off. `SDK-owned completed source frames` must
+stay bounded, rather than rising until the memory-reserve bypass. The layer now
+waits for SDK completion after three pending source leases, or sooner for the
+compatibility presenter / low-memory condition. A real application's fence alone
+does not permit reuse. Repeat a live FG Off/On switch after a memory fallback:
+pending source images must drain even when no new generated frame is active.
+`sync-drain-avg-ms` includes these bounded-window waits as well as synchronized
+presentation waits; it is an average per drain, not per real frame.
+
 ## Testing a build (ChatGPT or another tester)
 
 You need to be signed in to GitHub as the owner (or with a token that has

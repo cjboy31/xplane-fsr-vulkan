@@ -464,14 +464,22 @@ static VkResult presentFrame(Device &d, VkQueue queue, const VkPresentInfoKHR *i
             d.fgLimiterArmed = arm;
         }
         const bool pressureDrain=d.memoryBudget.available&&!xpfsr::nr::profileFits(d.memoryBudget.budget,d.memoryBudget.usage,0);
-        if((d.fgSynchronized||pressureDrain) && d.status.fgActive && (result==VK_SUCCESS||result==VK_SUBOPTIMAL_KHR)){
+        if(xpfsr::presenterDrainRequired(d.fgPreparedLease,d.fgCompletedLease,d.fgSynchronized,pressureDrain) &&
+           (result==VK_SUCCESS||result==VK_SUBOPTIMAL_KHR)){
             // The compatibility path deliberately gives up CPU/GPU overlap.
             // Drain SDK-managed interpolation/composition/presents before the
-            // next source can prepare on another host recording thread. Keep
+            // next source can prepare on another host recording thread. The
+            // ordinary presenter drains every three sources to bound retained
+            // 4K image sets. Drain pending work under memory pressure even if
+            // reconstruction/FG has already fallen back on this present. Keep
             // the same device guard; SDK native present traffic bypasses it.
             // No semaphore is re-used and no old swapchain image is re-presented.
             LARGE_INTEGER drainStart{},drainEnd{};QueryPerformanceCounter(&drainStart);
-            try {generation->presentation->wait();d.fgCompletedLease=std::max(d.fgCompletedLease,d.fgPreparedLease);}
+            try {
+                generation->presentation->wait();
+                d.fgCompletedLease=std::max(d.fgCompletedLease,d.fgPreparedLease);
+                retirePresenterFrames(d);
+            }
             catch(const std::exception &e){
                 d.fgFailed=true;d.status.fgActive=0;
                 snprintf(d.status.fgReason,160,"FG synchronization failed: %.120s",e.what());

@@ -207,11 +207,17 @@ static float update(float elapsed, float, int, void *) {
     shared->camera = packet;
     MemoryBarrier();
     InterlockedIncrement(&shared->cameraSequence);
+    frameCounterTick(packet);
     return -1;
 }
 static void command(void *, void *item) {
     if(reinterpret_cast<intptr_t>(item)==1){setupShow();return;}
     if(reinterpret_cast<intptr_t>(item)==2){setupShow();setupPanel.act({insim::Kind::Changelog});return;}
+    if(reinterpret_cast<intptr_t>(item)==3){
+        try{if(!setupPanel.configured())setupBind();setupPanel.act({insim::Kind::FrameCounter});}
+        catch(const std::exception&e){XPLMDebugString((std::string("XPFSR24: frame counter: ")+e.what()+"\n").c_str());}
+        return;
+    }
     try{
         if(!setupPanel.configured())setupBind();
         if(setupPanel.configured()){setupPanel.act({insim::Kind::Processing});return;}
@@ -254,6 +260,7 @@ PLUGIN_API int XPluginStart(char *name, char *signature, char *description) {
     XPLMAppendMenuItem(menu,"Open settings",reinterpret_cast<void*>(1),0);
     XPLMAppendMenuItem(menu,"View changelog",reinterpret_cast<void*>(2),0);
     XPLMAppendMenuItem(menu, "Enable / disable temporal upscaling", nullptr, 0);
+    XPLMAppendMenuItem(menu,"Show / hide frame counter",reinterpret_cast<void*>(3),0);
     XPLMDebugString("XPFSR24: alpha camera publisher loaded; Vulkan layer performs upscaling.\n");
     // Diagnose/recover the selected installation at plugin startup, even when
     // the setup window stays closed. Never let a setup failure disable camera
@@ -270,6 +277,7 @@ PLUGIN_API int XPluginEnable() {
     return 1;
 }
 PLUGIN_API void XPluginDisable() {
+    frameCounterStop();
     setupHide();
     XPLMUnregisterKeySniffer(setupEscapeSniffer, 1, nullptr);
     XPLMUnregisterFlightLoopCallback(update, nullptr);
@@ -280,6 +288,7 @@ PLUGIN_API void XPluginDisable() {
     }
 }
 PLUGIN_API void XPluginStop() {
+    frameCounterStop();
     setupStop();
     if (menu)
         XPLMDestroyMenu(menu);

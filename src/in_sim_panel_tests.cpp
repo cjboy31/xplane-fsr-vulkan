@@ -71,6 +71,11 @@ int wmain(int argc,wchar_t**argv){try{
     std::wstring name=L"Local\\XPFSRPanelTest-"+std::to_wstring(GetCurrentProcessId());xpfsr::nr::ControlChannel writer,reader;
     check(writer.create(name.c_str(),initial.nr)&&reader.open(name.c_str()),"NR IPC attach");int publications=0;
     insim::Panel panel;panel.bind(file,&writer,true,false,[&](const auto&){++publications;});
+    {const auto fg=panel.choices.frameGeneration;check(!panel.choices.showFrameCounter,"Frame counter should default Off");
+     panel.act({insim::Kind::FrameCounter,0,1});check(panel.choices.showFrameCounter&&launcher::load(file).showFrameCounter&&panel.choices.frameGeneration==fg,"Live frame-counter toggle changed FG or did not save");
+     insim::Panel restored;restored.bind(file,&writer,true,false);check(restored.choices.showFrameCounter,"Reopening lost frame counter choice");
+     check(panel.helpTitle(214)=="Frame counter"&&panel.helpText(214).find("zero")!=std::string::npos,"Counter help does not explain inactive FG");
+     panel.act({insim::Kind::FrameCounter,0,-1});check(!launcher::load(file).showFrameCounter,"Counter could not turn Off");}
     int logOpens=0;panel.logSupport([&]{++logOpens;});
     int reportOpens=0;panel.reportSupport([&]{++reportOpens;});
     for(auto size:{std::pair{640,480},std::pair{880,740}}){panel.act({insim::Kind::Tab,2});bool openLog=false;

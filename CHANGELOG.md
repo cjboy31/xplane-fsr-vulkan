@@ -2,6 +2,8 @@
 
 ## 2.0.0-beta.windows.1
 
+- **Live frame counter:** turn on Show frame counter under Frame generation, or use Show / hide frame counter in the FSR plugin menu. It shows real (raw) simulator FPS and extra generated FPS separately. The choice saves automatically and changes without a restart.
+- **Frame-generation memory fix (private test):** limit the number of source images waiting for frame generation to finish. This prevents a long session from holding more and more video memory, and lets pending images clear even after a low-memory fallback. Live retesting is still required before promotion.
 - **Hover help:** point at any ? in the panel to read a short guide in place. Click to pin it; click again or press Esc to close. Help no longer takes you to a separate page.
 - **Frame pacing:** new choice under Frame generation: Smooth (AMD default), Recover after heavy scenes (AMD tuning set B) or Power saver. Applies after restart. The session log explains when AMD's driver-assisted pacing (RX 9000 + Adrenalin 26.10.1+) can take over.
 - **Frame rate cap:** new choice under Frame generation. Auto keeps real frames just under half your refresh rate (AMD's recommendation for smooth frame generation); you can also pick a fixed rate or Off. Applies after restart.

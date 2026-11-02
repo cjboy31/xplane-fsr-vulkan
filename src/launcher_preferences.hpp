@@ -17,6 +17,7 @@ struct Preferences {
     int antiLag{0};       // v2: 0 Off (default), 1 AMD Anti-Lag 2 via VK_AMD_anti_lag when available.
     xpfsr::nr::Controls nr;
     bool keepSimUISize{true};
+    bool showFrameCounter{};
     bool enabled{true}, ghostReduction{true}, cockpitRestore{true}, alignmentTint{};
     graphics::Options manual{};
     bool manualApplied{}, manualPending{};
@@ -98,6 +99,7 @@ inline Preferences load(const graphics::fs::path &file) {
     p.fgPacing=integer(file,L"FramePacing",0,2);
     p.fgCap=integer(file,L"FrameRateCap",0,11);
     p.motionSource=integer(file,L"MotionSource",0,1);
+    p.showFrameCounter=integer(file,L"ShowFrameCounter",0,1)!=0;
     p.cpuScheduling=integer(file,L"CpuScheduling",0,1);
     p.antiLag=integer(file,L"AntiLag",0,1);
     // Older Normal releases replace their Launcher section on save. Keep NR
@@ -155,6 +157,7 @@ inline std::wstring serialized(const Preferences &p) {
     add(L"FramePacing",std::to_wstring(p.fgPacing));
     add(L"FrameRateCap",std::to_wstring(p.fgCap));
     add(L"MotionSource",std::to_wstring(p.motionSource));
+    add(L"ShowFrameCounter",std::to_wstring(p.showFrameCounter));
     add(L"CpuScheduling",std::to_wstring(p.cpuScheduling));
     add(L"AntiLag",std::to_wstring(p.antiLag));
     add(L"NeuralRendering",std::to_wstring(p.neuralRendering));

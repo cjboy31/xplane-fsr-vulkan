@@ -13,10 +13,11 @@ int wmain(int argc,wchar_t **argv){try{
     }
     require(!graphics::fs::exists(root),"Do not reuse a fixture");graphics::fs::create_directories(root);
     launcher::Preferences base;launcher::save(file,base);WritePrivateProfileStringW(L"Unrelated",L"Keep",L"yes",file.c_str());
-    auto panel=base,desktop=base;panel.nr[xpfsr::nr::Intensity]=42;panel.fgPacing=1;panel.fgCap=1;panel.motionSource=1;
+    auto panel=base,desktop=base;panel.nr[xpfsr::nr::Intensity]=42;panel.fgPacing=1;panel.fgCap=1;panel.motionSource=1;panel.showFrameCounter=true;
     launcher::transactChoices(file,base,panel);
     desktop.frameGeneration=3;launcher::Preferences published;
     launcher::transactChoices(file,base,desktop,[&](const auto&p){published=p;});
+    require(published.showFrameCounter&&launcher::load(file).showFrameCounter,"Unrelated editor lost the saved frame-counter toggle");
     require(published.nr[xpfsr::nr::Intensity]==42&&published.frameGeneration==3&&published.fgPacing==1&&published.fgCap==1&&published.motionSource==1,"Stale desktop overwrote panel pacing/NR choices or publication snapshot");
     auto old=desktop;desktop.enabled=false;launcher::transactChoices(file,old,desktop);
     require(launcher::load(file).nr[xpfsr::nr::Intensity]==42&&launcher::load(file).fgPacing==1&&launcher::load(file).fgCap==1&&launcher::load(file).motionSource==1,"Second unrelated desktop save overwrote panel pacing/NR choices");

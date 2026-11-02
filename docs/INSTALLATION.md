@@ -57,6 +57,12 @@ while flying, but must close X-Plane before installing. Downloads are verified.
 Native AA updates also refuse downgrades. Your saved image settings are kept.
 
 Open Changelog in the panel to read changes. No startup video is needed.
+To see FPS, open Rendering and scroll to Frame generation. Turn Show frame
+counter On. You can also use Plugins > FSR 3.1 / 4.1 + Frame Gen > Show / hide
+frame counter. Real (raw) FPS counts X-Plane's frames. FG extra FPS counts the
+extra frames frame generation produces. FG shows zero when it produces no
+extra frames. This does not measure your monitor's refresh rate. The choice
+saves automatically and works without restarting X-Plane.
 Select ? beside a setting for a short explanation and a starting point.
 Group headings show when changes apply. The Windows Animation effects setting controls
 the opening, tab and switch transitions. Diagnostics opens the FSR log folder.
