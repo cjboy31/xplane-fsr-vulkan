@@ -72,6 +72,7 @@ try{
   $env:XPFSR24_FG_PRESENTER=$presenter
   foreach($profile in 0..2){
    $env:XPFSR24_FG_PACING=[string]$profile
+   $env:XPFSR24_FG_CAP=if($profile -eq 1){'-1'}else{'0'}
    $env:XPFSR24_LOG=Join-Path $build ('presentation-lifecycle-'+$presenter+'-pacing-'+$profile+'.log')
    if(Test-Path -LiteralPath $env:XPFSR24_LOG){Set-Content -LiteralPath $env:XPFSR24_LOG -Value ''}
    $output=@(& (Join-Path $build 'present_test.exe') $env:XPFSR24_RUNTIME $build)
@@ -84,6 +85,9 @@ try{
    if(-not(Select-String -LiteralPath $env:XPFSR24_LOG -SimpleMatch ('FG SDK presentation proxy ready: provider='+$presenter+' '))){throw 'Fixture bypassed the requested SDK presenter'}
    $profileName=@('Smooth (AMD default)','Recover after heavy scenes','Power saver')[$profile]
    if(-not(Select-String -LiteralPath $env:XPFSR24_LOG -SimpleMatch ('FG pacing profile: '+$profileName+' (applied)'))){throw 'SDK did not accept the selected pacing profile'}
+   if(-not(Select-String -LiteralPath $env:XPFSR24_LOG -SimpleMatch 'FG base FPS cap: ')){throw 'Frame rate cap was not resolved for the FG swapchain'}
+   if($profile -eq 0 -and -not(Select-String -LiteralPath $env:XPFSR24_LOG -SimpleMatch 'FG base FPS cap: Off')){throw 'Cap Off was not honoured'}
+   if(-not(Select-String -LiteralPath $env:XPFSR24_LOG -SimpleMatch 'Driver-assisted pacing check (')){throw 'Driver-assisted pacing check was not logged'}
    Write-Output ('PASS: exact candidate layer; presenter '+$presenter+' pacing profile '+$profile+' applied; swapchain lifecycle.')
   }
  }

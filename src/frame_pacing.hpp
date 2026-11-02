@@ -87,6 +87,7 @@ struct DisplayState {
     bool presenterIs4OrLater{};        // FG swapchain 4.0.0+, not the 3.1.7 compatibility presenter.
     bool driverKnown{true};            // false: the driver version string could not be read.
     bool variableRefreshKnown{true};   // false: Windows does not report VRR to the layer.
+    int driverPatch{1};                // third part of 26.10.1; the minimum is 26.10.1.
 };
 
 // Plain-language reasons why driver-assisted pacing will not be used. An
@@ -98,7 +99,7 @@ inline std::vector<std::string> driverPacingBlockers(const DisplayState &s) {
         out.push_back("needs an AMD Radeon RX 9000-series (RDNA 4) or newer GPU");
     if (!s.driverKnown)
         out.push_back("could not read the driver version; Adrenalin 26.10.1 or newer is needed");
-    else if (s.driverMajor < 26 || (s.driverMajor == 26 && s.driverMinor < 10))
+    else if (s.driverMajor < 26 || (s.driverMajor == 26 && (s.driverMinor < 10 || (s.driverMinor == 10 && s.driverPatch < 1))))
         out.push_back("needs AMD Software: Adrenalin 26.10.1 or newer");
     if (!s.presenterIs4OrLater)
         out.push_back("the compatibility presenter (3.1.7) is selected");
@@ -115,7 +116,7 @@ inline std::vector<std::string> driverPacingBlockers(const DisplayState &s) {
 
 // Reads "26.10.1" style versions from a Vulkan driverInfo string. Returns
 // false when no plausible Adrenalin-style version (year >= 20) is present.
-inline bool parseDriverVersion(const std::string &info, int &major, int &minor) {
+inline bool parseDriverVersion(const std::string &info, int &major, int &minor, int &patch) {
     for (std::size_t i = 0; i + 3 < info.size(); ++i) {
         if (!std::isdigit(static_cast<unsigned char>(info[i])) || (i && std::isdigit(static_cast<unsigned char>(info[i - 1]))))
             continue;
@@ -128,10 +129,19 @@ inline bool parseDriverVersion(const std::string &info, int &major, int &minor) 
         while (j < info.size() && std::isdigit(static_cast<unsigned char>(info[j])) && digits < 3) { b = b * 10 + (info[j] - '0'); ++j; ++digits; }
         if (!digits || b > 12)
             continue;
-        major = a; minor = b;
+        int c = 0;
+        if (j + 1 < info.size() && info[j] == '.' && std::isdigit(static_cast<unsigned char>(info[j + 1]))) {
+            ++j; digits = 0;
+            while (j < info.size() && std::isdigit(static_cast<unsigned char>(info[j])) && digits < 4) { c = c * 10 + (info[j] - '0'); ++j; ++digits; }
+        }
+        major = a; minor = b; patch = c;
         return true;
     }
     return false;
+}
+inline bool parseDriverVersion(const std::string &info, int &major, int &minor) {
+    int patch = 0;
+    return parseDriverVersion(info, major, minor, patch);
 }
 
 // AMD lists driver-assisted pacing for RX 9000 (RDNA 4) and newer. The

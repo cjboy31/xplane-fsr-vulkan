@@ -304,6 +304,9 @@ struct Device {
     std::string fgPresenter = requestedFGPresenter();
     bool fgSynchronized = synchronizedFGPresentation();
     // v2 base frame-rate cap for real frames while FG is active (app present thread only).
+    // Guarded by fgLimiterLock, never by d.lock: the present thread computes
+    // its delay under this small lock, releases it, then sleeps.
+    std::mutex fgLimiterLock;
     xpfsr::pacing::FrameLimiter fgLimiter;
     std::atomic<bool> fgLimiterArmed{false};
     uint64_t fgLimiterWaits{}, fgLimiterWaitNs{};

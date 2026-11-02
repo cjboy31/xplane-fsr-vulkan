@@ -32,6 +32,10 @@ int main() {
     check(driverPacingBlockers(vsync).size() == 1, "VSync blocks driver pacing");
     auto old = ok; old.driverMajor = 26; old.driverMinor = 9;
     check(driverPacingBlockers(old).size() == 1, "Old driver blocks driver pacing");
+    auto patch0 = ok; patch0.driverPatch = 0;
+    check(driverPacingBlockers(patch0).size() == 1, "26.10.0 is below the documented 26.10.1 minimum");
+    auto newer = ok; newer.driverMinor = 11; newer.driverPatch = 0;
+    check(driverPacingBlockers(newer).empty(), "26.11.0 meets the minimum");
     DisplayState none{};
     check(driverPacingBlockers(none).size() == 5, "Every unmet requirement is explained");
     auto unknown = ok; unknown.driverKnown = false; unknown.variableRefreshKnown = false;
@@ -41,6 +45,9 @@ int main() {
     check(parseDriverVersion("26.10.1 (AMD proprietary shader compiler)", major, minor) && major == 26 && minor == 10,
           "Adrenalin version parsed");
     check(parseDriverVersion("Driver 25.3.1", major, minor) && major == 25 && minor == 3, "Prefixed version parsed");
+    int patch = -1;
+    check(parseDriverVersion("26.10.1 (LLPC)", major, minor, patch) && patch == 1, "Patch parsed");
+    check(parseDriverVersion("26.10", major, minor, patch) && patch == 0, "Missing patch reads as 0");
     check(!parseDriverVersion("Mesa 24.2.0", major, minor) || major == 24, "Any year.month form is read as-is");
     check(!parseDriverVersion("version 1.4.303", major, minor), "Vulkan API versions are not driver versions");
     check(looksLikeRdna4OrLater(0x1002, "AMD Radeon AI PRO R9700") && looksLikeRdna4OrLater(0x1002, "AMD Radeon RX 9070 XT") &&

@@ -49,10 +49,32 @@ static VKAPI_ATTR VkResult VKAPI_CALL L_QueueWaitIdle(VkQueue queue) {
     if(result==VK_SUCCESS&&completedLease){std::lock_guard<std::recursive_mutex> lock(d->lock);d->fgCompletedLease=std::max(d->fgCompletedLease,completedLease);retirePresenterFrames(*d);}
     return result;
 }
-// v2: refresh rate and size of the monitor X-Plane is on (foreground window,
-// else the primary monitor). Returns false when Windows reports nothing usable.
+// v2: X-Plane's own main window: the largest visible, unowned top-level window
+// of this process. Unlike the foreground window it is right even when X-Plane
+// is in the background. Returns nullptr when none is found.
+static HWND simulatorWindow() {
+    struct Search { DWORD pid; HWND best; LONGLONG area; } search{GetCurrentProcessId(), nullptr, 0};
+    EnumWindows([](HWND window, LPARAM context) -> BOOL {
+        auto &s = *reinterpret_cast<Search *>(context);
+        DWORD owner = 0;
+        GetWindowThreadProcessId(window, &owner);
+        if (owner != s.pid || !IsWindowVisible(window) || GetWindow(window, GW_OWNER))
+            return TRUE;
+        RECT r{};
+        if (!GetWindowRect(window, &r))
+            return TRUE;
+        const LONGLONG area = LONGLONG(r.right - r.left) * LONGLONG(r.bottom - r.top);
+        if (area > s.area) { s.area = area; s.best = window; }
+        return TRUE;
+    }, reinterpret_cast<LPARAM>(&search));
+    return search.best;
+}
+// v2: refresh rate and size of the monitor X-Plane's window is on (primary
+// monitor if no window is found). Returns false when Windows reports nothing usable.
 static bool displayMode(double &refreshHz, uint32_t &width, uint32_t &height) {
-    HMONITOR monitor = MonitorFromWindow(GetForegroundWindow(), MONITOR_DEFAULTTOPRIMARY);
+    HWND window = simulatorWindow();
+    HMONITOR monitor = window ? MonitorFromWindow(window, MONITOR_DEFAULTTOPRIMARY)
+                              : MonitorFromPoint(POINT{0, 0}, MONITOR_DEFAULTTOPRIMARY);
     MONITORINFOEXW info{};
     info.cbSize = sizeof(info);
     if (!monitor || !GetMonitorInfoW(monitor, &info))
@@ -77,21 +99,28 @@ static void reportPacingSetup(Device &d, const VkSwapchainCreateInfoKHR &info) {
     if (GetEnvironmentVariableW(L"XPFSR24_FG_CAP", capValue, 8))
         capSetting = _wtoi(capValue);
     const int cap = xpfsr::pacing::resolveBaseCap(capSetting, refresh);
-    d.fgLimiter.setFps(cap);
-    d.fgLimiterArmed = false;
+    {
+        std::lock_guard<std::mutex> limiterGuard(d.fgLimiterLock);
+        d.fgLimiterArmed = false;
+        d.fgLimiter.setFps(cap);
+    }
     if (capSetting && !cap)
         log("FG base FPS cap: Auto requested but the refresh rate is unknown; cap Off.");
     else
         log("FG base FPS cap: %s (display %.0f Hz).", cap ? (std::to_string(cap) + " FPS").c_str() : "Off", refresh);
 
     xpfsr::pacing::DisplayState state;
-    VkPhysicalDeviceDriverProperties driver{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES};
-    VkPhysicalDeviceProperties2 properties{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2, &driver};
+    VkPhysicalDeviceDriverProperties driver{};
+    driver.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES;
+    VkPhysicalDeviceProperties2 properties{};
+    properties.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
+    properties.pNext = &driver;
     if (auto get2 = d.inst<PFN_vkGetPhysicalDeviceProperties2>("vkGetPhysicalDeviceProperties2"))
         get2(d.physical, &properties);
     state.amdRdna4OrLater = xpfsr::pacing::looksLikeRdna4OrLater(properties.properties.vendorID,
                                                                  properties.properties.deviceName);
-    state.driverKnown = xpfsr::pacing::parseDriverVersion(driver.driverInfo, state.driverMajor, state.driverMinor);
+    state.driverKnown = xpfsr::pacing::parseDriverVersion(driver.driverInfo, state.driverMajor, state.driverMinor,
+                                                          state.driverPatch);
     state.presenterIs4OrLater = d.fgPresenter.empty() || d.fgPresenter.rfind("4.", 0) == 0;
     state.fullscreenCoversDisplay = haveMode && info.imageExtent.width == monitorWidth &&
                                     info.imageExtent.height == monitorHeight;
@@ -119,8 +148,13 @@ static void preciseWait(int64_t nanoseconds) {
     QueryPerformanceFrequency(&frequency);
     QueryPerformanceCounter(&start);
     const int64_t target = start.QuadPart + nanoseconds * frequency.QuadPart / 1000000000LL;
-    static thread_local HANDLE timer = CreateWaitableTimerExW(
-        nullptr, nullptr, CREATE_WAITABLE_TIMER_HIGH_RESOLUTION, TIMER_ALL_ACCESS);
+    struct Timer {
+        HANDLE handle = CreateWaitableTimerExW(nullptr, nullptr, CREATE_WAITABLE_TIMER_HIGH_RESOLUTION,
+                                               TIMER_ALL_ACCESS);
+        ~Timer() { if (handle) CloseHandle(handle); }
+    };
+    static thread_local Timer owned;  // Closed when the present thread exits.
+    HANDLE timer = owned.handle;
     const int64_t coarse = nanoseconds - 1000000;  // leave ~1 ms to spin
     if (coarse > 0) {
         LARGE_INTEGER due{};
@@ -327,15 +361,23 @@ static VkResult presentFrame(Device &d, VkQueue queue, const VkPresentInfoKHR *i
     // AMD requires Present (including its generation callback), PrepareV2 and
     // context destruction to be externally serialized. Keep the device guard
     // across the SDK call, not just the bookkeeping before/after it.
-    if (d.fgLimiterArmed && d.fgLimiter.enabled()) {
-        // Real frames only: SDK presenter traffic returned above. Waiting here,
-        // before the device guard, never blocks the SDK's own threads.
-        LARGE_INTEGER counter{}, frequency{};
-        QueryPerformanceCounter(&counter);
-        QueryPerformanceFrequency(&frequency);
-        const int64_t nowNs = int64_t(double(counter.QuadPart) * 1e9 / double(frequency.QuadPart));
-        const int64_t wait = d.fgLimiter.delay(nowNs);
-        if (wait > 0 && wait <= 2 * d.fgLimiter.period()) {
+    if (d.fgLimiterArmed) {
+        // Real frames only: SDK presenter traffic returned above. The delay is
+        // computed under the limiter's own lock, which is released before the
+        // sleep; neither d.lock nor the SDK's threads ever wait on it.
+        int64_t wait = 0, period = 0;
+        {
+            std::lock_guard<std::mutex> limiterGuard(d.fgLimiterLock);
+            if (d.fgLimiterArmed && d.fgLimiter.enabled()) {
+                LARGE_INTEGER counter{}, frequency{};
+                QueryPerformanceCounter(&counter);
+                QueryPerformanceFrequency(&frequency);
+                const int64_t nowNs = int64_t(double(counter.QuadPart) * 1e9 / double(frequency.QuadPart));
+                wait = d.fgLimiter.delay(nowNs);
+                period = d.fgLimiter.period();
+            }
+        }
+        if (wait > 0 && wait <= 2 * period) {
             preciseWait(wait);
             ++d.fgLimiterWaits;
             d.fgLimiterWaitNs += uint64_t(wait);
@@ -411,6 +453,7 @@ static VkResult presentFrame(Device &d, VkQueue queue, const VkPresentInfoKHR *i
         present.pSwapchains = &proxy;
         result = generation->presentation->functions.pOutQueuePresentKHR(queue, &present);
         {
+            std::lock_guard<std::mutex> limiterGuard(d.fgLimiterLock);
             const bool arm = d.status.fgActive && d.fgLimiter.enabled();
             if (!arm && d.fgLimiterArmed)
                 d.fgLimiter.reset();
