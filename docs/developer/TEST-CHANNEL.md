@@ -71,10 +71,11 @@ access to this repository), because drafts are private.
 | 5 | 2-minute pan over a busy airport, then fly away | No device lost / crash; note min/avg FPS and any stutter |
 | 6 | Updater: switch Release Candidates ↔ Betas | Saved choice survives a restart; no test build is offered |
 | 7 | Uninstall, then reinstall | Saved image settings are kept; X-Plane starts normally without the mod after uninstall |
-| 8 | **Motion source: Native (experimental)** with MSAA, frame generation and the cockpit screen fix Off; restart | Status reads `EXPERIMENTAL native renderer motion (SSR)`. The log has `Native renderer motion captured` and `Motion source now native renderer`. No crash or black frames |
+| 8 | **Motion source: Native (experimental)**, MSAA Off, frame generation Off; restart | Status reads `EXPERIMENTAL native renderer motion (SSR)`. The log has `Native renderer motion captured` and `Motion source now native renderer`. No crash or black frames |
 | 9 | Same flight, Camera vs Native: 30 s slow turn with the external view, then the cockpit view while turning | Note which trails less around the airframe and cockpit edges. Note any new smearing of scenery |
-| 10 | Native selected but frame generation On | FSR still works. Status says **Camera-derived motion used**; the log names `frame generation is on` |
+| 10 | Native selected, then each of: frame generation On; 4x MSAA On (Apply graphics); cockpit screen fix On. Restart between | Each still logs `Motion source now native renderer`. FG shows generated frames with no new warping or black frames. If the log shows `Native renderer motion unavailable`, report the reason it gives |
 | 11 | Motion-quality capture: set `XPFSR24_MOTION_CAPTURE` to an empty folder, pan steadily, once with Camera and once with Native | `python tools/motion_quality.py <folder>` prints a gain for each region. Report both outputs. Clear the variable afterwards |
+| 12 | Motion survey (stage E groundwork): set `XPFSR24_MOTION_SURVEY=1`, fly 1 minute (cockpit + external, near traffic, props turning), then clear it | The log has `Motion survey:` lines and a `Motion survey summary:` line. Attach those lines |
 
 5. Collect `Output/FSR-Logs` (Diagnostics > Open log folder) and X-Plane's `Log.txt`.
 
@@ -84,7 +85,7 @@ access to this repository), because drafts are private.
 Build: test-<version>.<n>   Commit: <sha>
 System: GPU + driver, CPU, RAM, Windows version, monitor resolution + refresh, VRR on/off
 X-Plane: version, aircraft, airport, weather
-Results: 1 PASS/FAIL ... 11 PASS/FAIL (one line each, with numbers where asked)
+Results: 1 PASS/FAIL ... 12 PASS/FAIL (one line each, with numbers where asked)
 Motion quality: Camera gains (sky/aircraft/near/far) vs Native gains
 Problems: what you saw, when, and how to repeat it
 Logs: attached / link

@@ -134,7 +134,7 @@ int wmain(int argc,wchar_t**argv){try{
     {const int fgBefore=panel.choices.frameGeneration;check(panel.choices.motionSource==0,"Motion source must default to Camera");
      panel.act({insim::Kind::MotionSource,0,1});check(panel.choices.motionSource==1&&panel.choices.frameGeneration==fgBefore&&launcher::load(file).motionSource==1,"Native motion choice not saved or changed FG");
      panel.act({insim::Kind::MotionSource,0,9});check(panel.choices.motionSource==1,"Motion source not clamped");
-     check(panel.helpTitle(211)=="Motion source"&&panel.helpText(211).find("experimental")!=std::string::npos&&panel.helpText(211).find("MSAA")!=std::string::npos,"Motion source help missing");
+     check(panel.helpTitle(211)=="Motion source"&&panel.helpText(211).find("experimental")!=std::string::npos&&panel.helpText(211).find("frame generation")!=std::string::npos,"Motion source help missing");
      panel.act({insim::Kind::MotionSource,0,-1});check(panel.choices.motionSource==0&&launcher::load(file).motionSource==0,"Motion source could not return to Camera");}
     insim::Panel fgReopened;fgReopened.bind(file,&writer,true,false);check(fgReopened.choices.lastFrameGeneration==2,"Reopening lost the last FG provider");fgReopened.act({insim::Kind::FGToggle,0,1});check(fgReopened.choices.frameGeneration==2,"FG On did not restore the remembered provider");
     panel.act({insim::Kind::Tab,1});widgets=panel.view(640,480);bool importVisible=false;int firstTabY=0;

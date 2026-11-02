@@ -3,7 +3,11 @@
 #version 450
 #extension GL_EXT_samplerless_texture_functions : require
 layout(local_size_x=8,local_size_y=8) in;
-#if INPUT_ARRAY
+#if INPUT_MS
+layout(set=0,binding=3) uniform texture2DMS gbuffer_pos;
+layout(set=0,binding=4) uniform utexture2DMS gbuffer_vel;
+#define FETCH(t,p) texelFetch(t,p,0)
+#elif INPUT_ARRAY
 layout(set=0,binding=3) uniform texture2DArray gbuffer_pos;
 layout(set=0,binding=4) uniform utexture2DArray gbuffer_vel;
 #define FETCH(t,p) texelFetch(t,ivec3(p,0),0)

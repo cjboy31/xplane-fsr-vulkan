@@ -113,6 +113,7 @@ void setupNativeMotion(Device &d) {
     pipeline(nativeMotion2D, sizeof(nativeMotion2D), d.nativeMotion2D);
     pipeline(nativeMotionArray, sizeof(nativeMotionArray), d.nativeMotionArray);
     pipeline(nativeMotionHistory, sizeof(nativeMotionHistory), d.nativeMotionHistoryPipeline);
+    pipeline(nativeMotionMsaa, sizeof(nativeMotionMsaa), d.nativeMotionMsaa);
     VkBufferCreateInfo b{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
     b.size = 80;
     b.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
@@ -135,20 +136,12 @@ void captureNativeMotion(Device &d, VkCommandBuffer cb, Command &command) {
     auto role = d.nativeMotionPipelines.find(command.pipeline);
     if (!d.nativeMotionRequested || role == d.nativeMotionPipelines.end())
         return;
-    if (role->second == ShaderRole::SsrSceneMsaa) {
-        d.nativeMotionBlocker = "MSAA is on";
+    // v2 stage D: MSAA, frame generation and the cockpit fix are allowed. The
+    // FSR boundary copies the result into the frame's own images, so every
+    // consumer keeps its existing lifetime and layout handling.
+    const bool msaa = role->second == ShaderRole::SsrSceneMsaa;
+    if (role->second != ShaderRole::SsrScene2D && role->second != ShaderRole::SsrSceneArray && !msaa)
         return;
-    }
-    if (role->second != ShaderRole::SsrScene2D && role->second != ShaderRole::SsrSceneArray)
-        return;
-    if (!d.fgRequested.empty()) {
-        d.nativeMotionBlocker = "frame generation is on";
-        return;
-    }
-    if (d.cockpitRequested) {
-        d.nativeMotionBlocker = "cockpit screen fix is on";
-        return;
-    }
     // Initial experiment is deliberately constrained to one application graphics
     // queue and one-time primary command buffers. No cross-buffer resource guess.
     if (d.mode == Mode::Observe || d.groundCameraActive() || command.secondary ||
@@ -156,15 +149,22 @@ void captureNativeMotion(Device &d, VkCommandBuffer cb, Command &command) {
         command.sets.size() > 1 || command.pushed.size() > 1 ||
         command.family != d.graphicsFamily || d.graphicsFamily == UINT32_MAX ||
         !d.camera.valid || !d.camera.reverseZ ||
-        !d.enabled || d.runtimeFailed || (command.nativeMotion && command.nativeMotion->captured))
+        !d.enabled || d.runtimeFailed || (command.nativeMotion && command.nativeMotion->captured)) {
+        if (!(command.nativeMotion && command.nativeMotion->captured))
+            d.nativeMotionBlocker = command.secondary || !command.oneTime
+                                        ? "X-Plane's SSR pass is in a reused or secondary command buffer"
+                                        : "SSR pass state is not supported";
         return;
+    }
     const Bindings *bindings = nullptr;
     if (command.pushed.count(0))
         bindings = &command.pushed.at(0);
     else if (command.sets.count(0) && d.descriptors.count(command.sets.at(0)))
         bindings = &d.descriptors.at(command.sets.at(0));
-    if (!bindings)
+    if (!bindings) {
+        d.nativeMotionBlocker = "SSR descriptors were not tracked";
         return;
+    }
     auto pos = bindings->find({3, 0}), flags = bindings->find({4, 0}), gb = bindings->find({11, 0}),
          ssr = bindings->find({12, 0});
     if (pos == bindings->end() || flags == bindings->end() || gb == bindings->end() ||
@@ -189,7 +189,8 @@ void captureNativeMotion(Device &d, VkCommandBuffer cb, Command &command) {
         auto &r = v.create.subresourceRange;
         auto type = role->second == ShaderRole::SsrSceneArray ? VK_IMAGE_VIEW_TYPE_2D_ARRAY
                                                               : VK_IMAGE_VIEW_TYPE_2D;
-        return c.samples == VK_SAMPLE_COUNT_1_BIT && c.arrayLayers == 1 &&
+        return (msaa ? c.samples != VK_SAMPLE_COUNT_1_BIT : c.samples == VK_SAMPLE_COUNT_1_BIT) &&
+               c.arrayLayers == 1 &&
                c.imageType == VK_IMAGE_TYPE_2D && c.extent.width == width &&
                c.extent.height == height && (c.usage & VK_IMAGE_USAGE_SAMPLED_BIT) &&
                v.create.viewType == type && r.baseArrayLayer == 0 && r.layerCount == 1 &&
@@ -206,8 +207,10 @@ void captureNativeMotion(Device &d, VkCommandBuffer cb, Command &command) {
         flags->second.image.imageLayout == VK_IMAGE_LAYOUT_UNDEFINED ||
         depth == command.depths.end() || !depth->second.fullArea || !depth->second.cameraCoherent ||
         depth->second.epoch != d.camera.frame ||
-        !command.capturedDepths.count(pv->second.create.image))
+        !command.capturedDepths.count(pv->second.create.image)) {
+        d.nativeMotionBlocker = "SSR inputs do not match this frame's scene depth";
         return;
+    }
     bool started = false;
     try {
         setupNativeMotion(d);
@@ -291,7 +294,8 @@ void captureNativeMotion(Device &d, VkCommandBuffer cb, Command &command) {
                0};
         d.fn<PFN_vkCmdBindPipeline>("vkCmdBindPipeline")(
             cb, VK_PIPELINE_BIND_POINT_COMPUTE,
-            role->second == ShaderRole::SsrScene2D ? d.nativeMotion2D : d.nativeMotionArray);
+            msaa ? d.nativeMotionMsaa
+            : role->second == ShaderRole::SsrScene2D ? d.nativeMotion2D : d.nativeMotionArray);
         d.fn<PFN_vkCmdBindDescriptorSets>("vkCmdBindDescriptorSets")(
             cb, VK_PIPELINE_BIND_POINT_COMPUTE, d.nativeMotionPipelineLayout, 0, 1, &n.set, 0,
             nullptr);

@@ -58,8 +58,8 @@ Native AA's TAA and warping in frame generation at once. Full plan:
 | P1 | Feature | **A** One shared motion contract and producer for FSR, FG and Native AA TAA | **In Test**: contract v1 pinned in both repos; FSR packing, native shader and AA TAA share the GLSL helpers |
 | P1 | Feature | **B** Native SSR motion capture as *Motion source: Native (experimental)* | **In Test** (FSR): strict SPIR-V check (MIT-derived), per-frame fallback to camera-derived with the reason logged |
 | P1 | Optimization | **C** Vector-quality tool: warp the previous frame, measure error by sky / aircraft / near / far | **In Test**: `XPFSR24_MOTION_CAPTURE` + `tools/motion_quality.py`; numbers needed from a live Camera vs Native capture |
-| P2 | Feature | **D** Native motion with MSAA and frame generation | Removes stage B's limits |
-| P2 | Feature | **E** Per-object motion: traffic, propellers, control surfaces, gear; reactive masks for clouds and glass | Measure main-thread cost first |
+| P2 | Feature | **D** Native motion with MSAA and frame generation | **In Test**: MSAA SSR variant, FG and the cockpit fix; native images copied into the frame's own images |
+| P2 | Feature | **E** Per-object motion: traffic, propellers, control surfaces, gear; reactive masks for clouds and glass | **Groundwork in Test**: `XPFSR24_MOTION_SURVEY=1` interface survey; design in [PER-OBJECT-MOTION](docs/developer/PER-OBJECT-MOTION.md). Needs live survey data before building |
 
 ### Optimization
 

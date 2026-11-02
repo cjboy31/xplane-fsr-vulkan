@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Portable checks for the native-motion SPIR-V interface classifier. Uses the
 // original stand-in shaders (src/native_motion_fixture.comp), never simulator
-// shaders. Usage: classify_tests FIXTURE_2D.spv FIXTURE_ARRAY.spv
+// shaders. Usage: classify_tests FIXTURE_2D.spv FIXTURE_ARRAY.spv [FIXTURE_MSAA.spv]
 #include "shader_classify.h"
 #include <cstdio>
 #include <fstream>
@@ -47,9 +47,16 @@ static unsigned rejectChangedOffsets(const std::vector<uint32_t> &code) {
 }
 
 int main(int argc, char **argv) {
-    if (argc != 3) {
-        std::printf("usage: classify_tests FIXTURE_2D.spv FIXTURE_ARRAY.spv\n");
+    if (argc != 3 && argc != 4) {
+        std::printf("usage: classify_tests FIXTURE_2D.spv FIXTURE_ARRAY.spv [FIXTURE_MSAA.spv]\n");
         return 2;
+    }
+    if (argc == 4) {
+        // Stage D: the MSAA interface now gets the full layout checks.
+        const auto msaa = load(argv[3]);
+        expect(!msaa.empty() && classifyShader(msaa.data(), msaa.size()) == ShaderRole::SsrSceneMsaa,
+               "MSAA SSR interface");
+        expect(!msaa.empty() && rejectChangedOffsets(msaa) > 0, "MSAA offset mutations exercised");
     }
     const auto flat = load(argv[1]), array = load(argv[2]);
     expect(!flat.empty() && !array.empty(), "fixtures load");
@@ -68,6 +75,13 @@ int main(int argc, char **argv) {
     expect(classifyShader(badMagic.data(), badMagic.size()) == ShaderRole::None,
            "bad magic rejected");
     expect(classifyShader(nullptr, 0) == ShaderRole::None, "empty module rejected");
+    // Stage E survey: interface summary of the stand-in (names only).
+    bool hint = false;
+    const auto summary = describeInterface(flat.data(), flat.size(), &hint);
+    expect(summary.find("model=compute") == 0 && summary.find("u_reproj:128") != std::string::npos &&
+               summary.find("gbuffer_pos@0.3") != std::string::npos && hint,
+           "interface summary lists resources, members and the motion hint");
+    expect(describeInterface(badMagic.data(), badMagic.size()).empty(), "malformed module has no summary");
     if (failures)
         return 1;
     std::printf("PASS: native-motion SSR interface classifier (fails closed on changes)\n");

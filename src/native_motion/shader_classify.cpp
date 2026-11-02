@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: MIT
 // Adapted from JonathanOrr/xplane-fsr3 fa51577c9bc2c3477e64dfdd358796aebb9ca45b.
-// Copyright (c) 2026 JonathanOrr; licenses/xplane-fsr3-MIT.txt.
+// Copyright (c) 2026 JonathanOrr. MIT notice: licenses/xplane-fsr3-MIT.txt (FSR mod),
+// third_party/xplane-fsr3/LICENSE.txt (Native AA).
 #include "shader_classify.h"
 
+#include <algorithm>
 #include <cstring>
 #include <iterator>
 #include <string>
@@ -303,14 +305,14 @@ ShaderRole role(const Module &m, const char **reason) {
     if (pos && vel && gb && ssr) {
         if (!pos->image || pos->image->dim != Dim2D)
             return ShaderRole::None;
-        // The MSAA variant: recognised by its bindings only, since none of its data is read.
-        if (pos->image->ms)
-            return at(pos, 3) && at(vel, 4) && at(gb, 11) && at(ssr, 12) ? ShaderRole::SsrSceneMsaa
-                                                                         : ShaderRole::None;
+        // v2: the MSAA variant is read too (stage D), so it gets the same strict
+        // layout checks as the single-sample shader. Arrayed MSAA is not supported.
         const char *why = nullptr;
         if (!at(pos, 3) || !at(vel, 4) || !at(gb, 11) || !at(ssr, 12))
             why = "ssr_bindings";
-        else if (!vel->image || vel->image->dim != Dim2D || vel->image->ms ||
+        else if (pos->image->ms && pos->image->arrayed)
+            why = "ssr_msaa_array";
+        else if (!vel->image || vel->image->dim != Dim2D || vel->image->ms != pos->image->ms ||
                  vel->image->arrayed != pos->image->arrayed || !m.scalar(pos->image->scalar, 22) ||
                  !m.scalar(vel->image->scalar, 21))
             why = "ssr_images";
@@ -323,6 +325,8 @@ ShaderRole role(const Module &m, const char **reason) {
             *reason = why;
         if (why)
             return ShaderRole::None;
+        if (pos->image->ms)
+            return ShaderRole::SsrSceneMsaa;
         return pos->image->arrayed ? ShaderRole::SsrSceneArray : ShaderRole::SsrScene2D;
     }
     return ShaderRole::None;
@@ -357,4 +361,70 @@ ShaderRole classifyShader(const uint32_t *words, size_t count, const char **reas
         return ShaderRole::None;
     }
     return role(m, reason);
+}
+
+std::string describeInterface(const uint32_t *words, size_t count, bool *motionHint) {
+    if (motionHint)
+        *motionHint = false;
+    if (!words || count < 5 || words[0] != kMagic)
+        return {};
+    Module m;
+    if (!parse(words, count, m))
+        return {};
+    const char *models[] = {"vertex", "tess-control", "tess-eval", "geometry", "fragment", "compute"};
+    std::string out = "model=";
+    bool push = false;
+    for (size_t i = 5; i < count;) {
+        const uint32_t n = words[i] >> 16, op = words[i] & 0xFFFF;
+        if (n == 0 || i + n > count)
+            break;
+        if (op == OpEntryPoint && n > 1)
+            out += words[i + 1] < 6 ? models[words[i + 1]] : "other";
+        if (op == OpVariable && n >= 4 && words[i + 3] == 9) // PushConstant storage
+            push = true;
+        i += n;
+    }
+    auto hint = [&](const std::string &name) {
+        std::string lower(name);
+        for (auto &c : lower)
+            c = char(c >= 'A' && c <= 'Z' ? c - 'A' + 'a' : c);
+        for (const char *key : {"prev", "last", "old", "reproj", "veloc", "motion"})
+            if (lower.find(key) != std::string::npos) {
+                if (motionHint)
+                    *motionHint = true;
+                return;
+            }
+    };
+    out += push ? " push=yes" : " push=no";
+    std::vector<std::pair<std::string, const Resource *>> sorted;
+    for (const auto &[name, r] : m.resources)
+        sorted.emplace_back(name, &r);
+    std::sort(sorted.begin(), sorted.end(), [](const auto &a, const auto &b) {
+        return a.second->set != b.second->set ? a.second->set < b.second->set
+                                              : a.second->binding < b.second->binding;
+    });
+    for (const auto &[name, r] : sorted) {
+        hint(name);
+        out += " " + name + "@" + std::to_string(r->set) + "." + std::to_string(r->binding);
+        if (r->image)
+            continue;
+        std::vector<std::pair<int64_t, std::string>> fields;
+        for (const auto &[key, member] : m.members)
+            if (uint32_t(key >> 32) == r->block && !member.name.empty())
+                fields.emplace_back(member.offset, member.name);
+        std::sort(fields.begin(), fields.end());
+        if (fields.empty())
+            continue;
+        out += "{";
+        for (size_t i = 0; i < fields.size(); ++i) {
+            hint(fields[i].second);
+            out += (i ? "," : "") + fields[i].second + ":" + std::to_string(fields[i].first);
+        }
+        out += "}";
+        if (out.size() > 1800)
+            break;
+    }
+    if (out.size() > 2000)
+        out.resize(2000);
+    return out;
 }

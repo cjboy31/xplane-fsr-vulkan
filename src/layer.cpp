@@ -306,6 +306,11 @@ struct Device {
     bool nativeHistorySubmitted{};
     uint64_t nativeMotionCaptures{}, nativeMotionUsed{}, nativeMotionFallbacks{};
     const char *nativeMotionBlocker{}; // last known reason native capture was skipped
+    // Stage E survey (XPFSR24_MOTION_SURVEY=1): log shader interfaces whose names
+    // suggest previous-frame transforms. Names only; nothing is changed.
+    bool motionSurvey{};
+    std::set<size_t> surveyed;
+    uint64_t surveyModules{}, surveyHinted{};
     // Motion-quality capture (tester tool; see motion_capture.inc).
     std::wstring motionCaptureDirectory;
     uint64_t motionCaptureAfter{900};
@@ -318,7 +323,7 @@ struct Device {
     std::map<std::vector<uint8_t>, ShaderRole> nativeMotionIdentifiers;
     VkDescriptorSetLayout nativeMotionLayout{};
     VkPipelineLayout nativeMotionPipelineLayout{};
-    VkPipeline nativeMotion2D{}, nativeMotionArray{}, nativeMotionHistoryPipeline{};
+    VkPipeline nativeMotion2D{}, nativeMotionArray{}, nativeMotionHistoryPipeline{}, nativeMotionMsaa{};
     VkBuffer nativeMotionHistory{};
     VkDeviceMemory nativeMotionHistoryMemory{};
     VkSampler sampler{};
@@ -1906,24 +1911,6 @@ bool replace(Device &d, VkCommandBuffer cb, Command &command) {
         barrier(d, cb, inView->second.create.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
                 input->second.image.imageLayout, inputRange);
         transition(d, cb, f.color, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-        barrier(d, cb, captured->image, depthLayout, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-                depthRange);
-        for (auto *target : {&f.depth, &f.motion, &f.reactive})
-            transition(d, cb, *target, VK_IMAGE_LAYOUT_GENERAL);
-        auto bindPipeline = d.fn<PFN_vkCmdBindPipeline>("vkCmdBindPipeline");
-        auto bindSets = d.fn<PFN_vkCmdBindDescriptorSets>("vkCmdBindDescriptorSets");
-        bindPipeline(cb, VK_PIPELINE_BIND_POINT_COMPUTE,
-                     d.images.at(depth.image).create.samples == VK_SAMPLE_COUNT_1_BIT
-                         ? d.packPipeline
-                         : d.packMsaaPipeline);
-        bindSets(cb, VK_PIPELINE_BIND_POINT_COMPUTE, d.packPipelineLayout, 0, 1, &f.set, 0,
-                 nullptr);
-        d.fn<PFN_vkCmdDispatch>("vkCmdDispatch")(cb, (rw + 7) / 8, (rh + 7) / 8, 1);
-        for (auto *target : {&f.depth, &f.motion, &f.reactive})
-            transition(d, cb, *target, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-        barrier(d, cb, captured->image, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, depthLayout,
-                depthRange);
-        transition(d, cb, f.output, VK_IMAGE_LAYOUT_GENERAL);
         // Shared motion contract v1: both sources write the same formats and
         // convention. Native renderer motion is used only when this command
         // buffer captured X-Plane's SSR inputs for this exact scene depth.
@@ -1944,20 +1931,58 @@ bool replace(Device &d, VkCommandBuffer cb, Command &command) {
         }
         const auto frameSource =
             native ? xpmotion::Source::NativeSsr : xpmotion::Source::CameraDerived;
+        auto bindPipeline = d.fn<PFN_vkCmdBindPipeline>("vkCmdBindPipeline");
+        auto bindSets = d.fn<PFN_vkCmdBindDescriptorSets>("vkCmdBindDescriptorSets");
+        if (native) {
+            // Stage D: copy the native images into this frame's own images, so
+            // FSR, NR, frame generation (whose presenter can outlive this command
+            // buffer), the cockpit fix, the depth probe and the capture all read
+            // one set with the existing lifetime protections. Same formats/sizes.
+            OwnedImage *from[] = {&native->depth, &native->motion, &native->reactive};
+            OwnedImage *to[] = {&f.depth, &f.motion, &f.reactive};
+            for (int i = 0; i < 3; ++i) {
+                transition(d, cb, *from[i], VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+                transition(d, cb, *to[i], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+                VkImageCopy region{};
+                region.srcSubresource = region.dstSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+                region.extent = {rw, rh, 1};
+                d.fn<PFN_vkCmdCopyImage>("vkCmdCopyImage")(
+                    cb, from[i]->value.handle, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                    to[i]->value.handle, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+                transition(d, cb, *to[i], VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+                transition(d, cb, *from[i], VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+            }
+        } else {
+            barrier(d, cb, captured->image, depthLayout, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                    depthRange);
+            for (auto *target : {&f.depth, &f.motion, &f.reactive})
+                transition(d, cb, *target, VK_IMAGE_LAYOUT_GENERAL);
+            bindPipeline(cb, VK_PIPELINE_BIND_POINT_COMPUTE,
+                         d.images.at(depth.image).create.samples == VK_SAMPLE_COUNT_1_BIT
+                             ? d.packPipeline
+                             : d.packMsaaPipeline);
+            bindSets(cb, VK_PIPELINE_BIND_POINT_COMPUTE, d.packPipelineLayout, 0, 1, &f.set, 0,
+                     nullptr);
+            d.fn<PFN_vkCmdDispatch>("vkCmdDispatch")(cb, (rw + 7) / 8, (rh + 7) / 8, 1);
+            for (auto *target : {&f.depth, &f.motion, &f.reactive})
+                transition(d, cb, *target, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+            barrier(d, cb, captured->image, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, depthLayout,
+                    depthRange);
+        }
+        transition(d, cb, f.output, VK_IMAGE_LAYOUT_GENERAL);
         xpfsr::Frame frame{};
         frame.commands = cb;
         frame.color = f.color.value;
-        frame.depth = native ? native->depth.value : f.depth.value;
-        frame.motion = native ? native->motion.value : f.motion.value;
-        frame.reactive = native ? native->reactive.value : f.reactive.value;
+        frame.depth = f.depth.value;
+        frame.motion = f.motion.value;
+        frame.reactive = f.reactive.value;
         if (d.reduceGhosting)
-            frame.composition = frame.reactive;
+            frame.composition = f.reactive.value;
         pollMotionCaptures(d);
         if (!d.motionCaptureDirectory.empty() && !d.motionCaptureDone) {
             try {
-                recordMotionCapture(d, cb, command, f.color, native ? native->depth : f.depth,
-                                    native ? native->motion : f.motion,
-                                    native ? native->reactive : f.reactive, rw, rh, depth.jitterX,
+                recordMotionCapture(d, cb, command, f.color, f.depth, f.motion, f.reactive, rw, rh,
+                                    depth.jitterX,
                                     depth.jitterY,
                                     d.camera.reset || !d.pathReady ||
                                         frameSource != d.motionSource,
@@ -2175,10 +2200,7 @@ bool replace(Device &d, VkCommandBuffer cb, Command &command) {
                                ? "Native AA recorded; EXPERIMENTAL native renderer motion (SSR)"
                                : "Temporal upscaling recorded; EXPERIMENTAL native renderer motion (SSR)"
                   : d.nativeMotionRequested
-                      ? d.nativeMotionBlocker
-                            ? "Camera-derived motion used: native motion needs MSAA, frame "
-                              "generation and the cockpit screen fix Off"
-                            : "Camera-derived motion used: native renderer motion not available"
+                      ? "Camera-derived motion used: native renderer motion not available"
                   : d.mode == Mode::NativeAA
                       ? "Native AA recorded; experimental camera-derived motion"
                       : "Temporal upscaling recorded; experimental camera-derived motion");
@@ -2513,6 +2535,9 @@ static VKAPI_ATTR VkResult VKAPI_CALL L_CreateDevice(VkPhysicalDevice physical,
     state->neural.features(neuralSupported);
     state->mode = selectedMode();
     setupMotionCapture(*state);
+    state->motionSurvey = app::environment(L"XPFSR24_MOTION_SURVEY") == L"1";
+    if (state->motionSurvey)
+        log("Motion survey on: logging shader interfaces with motion-related names (names only)");
     {
         auto motion = app::environment(L"XPFSR24_MOTION");
         std::string token(motion.begin(), motion.end());
@@ -2638,7 +2663,8 @@ static VKAPI_ATTR void VKAPI_CALL L_DestroyDevice(VkDevice device,
     d->runtime.reset();
     log("Quality preview: native function lookup misses=%llu",
         (unsigned long long)d->dispatchLookups.load());
-    for (auto p : {d->nativeMotion2D, d->nativeMotionArray, d->nativeMotionHistoryPipeline})
+    for (auto p : {d->nativeMotion2D, d->nativeMotionArray, d->nativeMotionHistoryPipeline,
+                   d->nativeMotionMsaa})
         if (p)
             d->fn<PFN_vkDestroyPipeline>("vkDestroyPipeline")(device, p, nullptr);
     if (d->nativeMotionPipelineLayout)
@@ -2651,6 +2677,10 @@ static VKAPI_ATTR void VKAPI_CALL L_DestroyDevice(VkDevice device,
         d->fn<PFN_vkDestroyBuffer>("vkDestroyBuffer")(device, d->nativeMotionHistory, nullptr);
     if (d->nativeMotionHistoryMemory)
         d->fn<PFN_vkFreeMemory>("vkFreeMemory")(device, d->nativeMotionHistoryMemory, nullptr);
+    if (d->motionSurvey)
+        log("Motion survey summary: modules=%llu motion-named=%llu unique-logged=%zu",
+            (unsigned long long)d->surveyModules, (unsigned long long)d->surveyHinted,
+            d->surveyed.size());
     if (d->nativeMotionCaptures || d->nativeMotionRequested)
         log("Native renderer motion summary: captures=%llu used=%llu camera-fallbacks=%llu",
             (unsigned long long)d->nativeMotionCaptures, (unsigned long long)d->nativeMotionUsed,
@@ -2772,8 +2802,20 @@ static VKAPI_ATTR VkResult VKAPI_CALL L_CreateShaderModule(VkDevice device,
         const ShaderRole role = d->nativeMotionRequested
                                     ? classifyShader(c->pCode, c->codeSize / 4)
                                     : ShaderRole::None;
+        bool hinted = false;
+        const std::string survey =
+            d->motionSurvey ? describeInterface(c->pCode, c->codeSize / 4, &hinted) : std::string();
         std::lock_guard<std::recursive_mutex> l(d->lock);
         d->shaders[*out] = fsr;
+        if (d->motionSurvey && !survey.empty()) {
+            ++d->surveyModules;
+            if (hinted) {
+                ++d->surveyHinted;
+                if (d->surveyed.insert(std::hash<std::string>{}(survey)).second &&
+                    d->surveyed.size() <= 300)
+                    log("Motion survey: %s", survey.c_str());
+            }
+        }
         if (d->nativeMotionRequested) {
             d->nativeMotionShaders[*out] = role;
             if (role == ShaderRole::SsrScene2D || role == ShaderRole::SsrSceneArray ||

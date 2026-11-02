@@ -19,12 +19,15 @@ an FSR session. It applies after a restart.
 
 When native motion cannot run on a frame, FSR keeps working with camera-derived
 motion. The status line says **Camera-derived motion used**, and the session
-log gives the reason. Common reasons:
+log gives the reason. The reasons are:
 
-- MSAA is on
-- frame generation is on
-- the cockpit screen fix is on
+- X-Plane's SSR pass is in a reused or secondary command buffer
+- the SSR descriptors were not tracked
+- the SSR inputs do not match this frame's scene depth
 - there is no matching SSR pass in this command buffer
+
+Since stage D, native motion also runs with MSAA, frame generation and the
+cockpit screen fix.
 
 Switching source resets history once (reset bit 64 in the `reset-sources` log
 field). That follows the shared motion contract's continuity rule.
@@ -53,20 +56,29 @@ field). That follows the shared motion contract's continuity rule.
    it writes depth, motion and reactive data in the shared motion contract v1
    formats. A one-thread pass then updates the projection history. After that,
    X-Plane's compute state is restored.
-3. **Use at the FSR boundary.** FSR, NR and the debug capture read the native
-   images only if all of these hold: the capture belongs to this command
-   buffer, this camera frame, this exact scene depth image and generation, and
-   the same size. Otherwise FSR uses the camera-derived images. The camera
-   packing pass still runs every frame. That costs one small dispatch, but it
-   keeps the depth probe and the fallback ready.
+3. **Use at the FSR boundary.** The native result is used only if all of these
+   hold: the capture belongs to this command buffer, this camera frame, this
+   exact scene depth image and generation, and the same size. When it is used,
+   the native images are copied into the frame's own depth, motion and reactive
+   images, and the camera packing pass is skipped. Every consumer then reads one
+   set of images with its existing lifetime protection: FSR, NR, frame
+   generation (whose presenter can outlive the command buffer), the cockpit
+   screen fix, the depth probe and the capture. When the native result is not
+   used, the camera packing pass runs as before.
+4. **MSAA (stage D).** The classifier now applies the full layout checks to
+   X-Plane's MSAA SSR shader too (2D only; arrayed MSAA is rejected). A
+   multisample shader variant takes the nearest covered sample (reversed Z),
+   together with that sample's aircraft flag. This is the same rule as the
+   camera path's MSAA depth resolve.
 
 Uniform-buffer descriptors are tracked only while native motion is selected. The
 camera path's CPU work is unchanged.
 
 ## Limits (unchanged from the experiment)
 
-- MSAA, frame generation, VR and the cockpit screen fix are off for native
-  motion. That is stage D of the plan.
+- VR is not covered. MSAA, frame generation and the cockpit screen fix were
+  enabled in stage D. They have not been tested live yet; fixture coverage for
+  MSAA is classification only.
 - Capture needs one-time primary command buffers on the graphics queue. The SSR
   pass must be in the same buffer as the FSR boundary.
 - The aircraft flag covers the own aircraft as one rigid body. Traffic,

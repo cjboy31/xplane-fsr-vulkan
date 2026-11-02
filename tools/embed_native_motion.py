@@ -2,7 +2,7 @@
 import pathlib, struct, sys
 target = pathlib.Path(sys.argv[1])
 text = '#pragma once\n#include <cstdint>\n'
-for symbol, filename in zip(('nativeMotion2D', 'nativeMotionArray', 'nativeMotionHistory'), sys.argv[2:]):
+for symbol, filename in zip(('nativeMotion2D', 'nativeMotionArray', 'nativeMotionHistory', 'nativeMotionMsaa'), sys.argv[2:]):
     data = pathlib.Path(filename).read_bytes()
     words = struct.unpack(f'<{len(data)//4}I', data)
     text += f'static const uint32_t {symbol}[]={{\n'

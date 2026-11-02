@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Scene SSR reconstruction adapted from JonathanOrr/xplane-fsr3 inputs.comp.
-// Copyright (c) 2026 JonathanOrr; see licenses/xplane-fsr3-MIT.txt.
+// Copyright (c) 2026 JonathanOrr. MIT notice: licenses/xplane-fsr3-MIT.txt (FSR mod),
+// third_party/xplane-fsr3/LICENSE.txt (Native AA).
 #version 450
 #extension GL_EXT_samplerless_texture_functions : require
 #extension GL_GOOGLE_include_directive : require
@@ -11,16 +12,45 @@ layout(local_size_x=1) in;
 #else
 layout(local_size_x=8,local_size_y=8) in;
 #endif
-#if INPUT_ARRAY
-layout(set=0,binding=0) uniform texture2DArray gbuffer_pos;
-layout(set=0,binding=1) uniform utexture2DArray gbuffer_vel;
+// Binding plan. The FSR mod copies X-Plane's SSR inputs into its own set 0.
+// Native AA (XPLANE_SET=1) binds X-Plane's own SSR descriptor set unchanged as
+// set 0 (the bindings its SSR shader uses) and puts its outputs in set 1, so
+// it needs no descriptor-content tracking. This file is shared by both mods.
+#if XPLANE_SET
+#define B_POS 3
+#define B_VEL 4
+#define B_GB 11
+#define B_SSR 12
+#define OUT_SET 1
+#define B_DEPTH 0
+#define B_MOTION 1
+#define B_REACTIVE 2
+#define B_HISTORY 3
+#else
+#define B_POS 0
+#define B_VEL 1
+#define B_GB 2
+#define B_SSR 3
+#define OUT_SET 0
+#define B_DEPTH 4
+#define B_MOTION 5
+#define B_REACTIVE 6
+#define B_HISTORY 7
+#endif
+#if INPUT_MS
+// v2 stage D: X-Plane's MSAA scene SSR inputs. Original sample selection below.
+layout(set=0,binding=B_POS) uniform texture2DMS gbuffer_pos;
+layout(set=0,binding=B_VEL) uniform utexture2DMS gbuffer_vel;
+#elif INPUT_ARRAY
+layout(set=0,binding=B_POS) uniform texture2DArray gbuffer_pos;
+layout(set=0,binding=B_VEL) uniform utexture2DArray gbuffer_vel;
 #define FETCH(t,p) texelFetch(t,ivec3(p,0),0)
 #else
-layout(set=0,binding=0) uniform texture2D gbuffer_pos;
-layout(set=0,binding=1) uniform utexture2D gbuffer_vel;
+layout(set=0,binding=B_POS) uniform texture2D gbuffer_pos;
+layout(set=0,binding=B_VEL) uniform utexture2D gbuffer_vel;
 #define FETCH(t,p) texelFetch(t,p,0)
 #endif
-layout(set=0,binding=2,std140) uniform GBufferData {
+layout(set=0,binding=B_GB,std140) uniform GBufferData {
     layout(offset=0) vec4 u_viewport_size;
     layout(offset=16) vec4 u_gbuffer_size;
     layout(offset=32) vec4 u_proj_coefficients[2];
@@ -28,15 +58,15 @@ layout(set=0,binding=2,std140) uniform GBufferData {
     layout(offset=96) vec2 u_sample_offset;
     layout(offset=112) mat4 u_head_to_eye[2];
 } g;
-layout(set=0,binding=3,std140) uniform SsrData {
+layout(set=0,binding=B_SSR,std140) uniform SsrData {
     layout(offset=0) mat4 u_proj[2];
     layout(offset=128) mat4 u_reproj[2];
     layout(offset=256) mat4 u_local_reproj[2];
 } s;
-layout(set=0,binding=4,r32f) writeonly uniform image2D depthOut;
-layout(set=0,binding=5,rg16f) writeonly uniform image2D motionOut;
-layout(set=0,binding=6,r8) writeonly uniform image2D reactiveOut;
-layout(set=0,binding=7,std430) buffer History { mat4 projection; uvec4 info; } h;
+layout(set=OUT_SET,binding=B_DEPTH,r32f) writeonly uniform image2D depthOut;
+layout(set=OUT_SET,binding=B_MOTION,rg16f) writeonly uniform image2D motionOut;
+layout(set=OUT_SET,binding=B_REACTIVE,r8) writeonly uniform image2D reactiveOut;
+layout(set=OUT_SET,binding=B_HISTORY,std430) buffer History { mat4 projection; uvec4 info; } h;
 layout(push_constant) uniform Push {
     ivec2 size;
     vec2 jitter;
@@ -55,8 +85,20 @@ void main() {
 #else
     ivec2 p=ivec2(gl_GlobalInvocationID.xy);
     if(any(greaterThanEqual(p,pc.size))) return;
+#if INPUT_MS
+    // Nearest covered geometry across samples (reversed Z: larger is closer),
+    // never an average of unrelated surfaces; its own aircraft flag goes with it.
+    // Same rule as the camera path's MSAA depth resolve.
+    float d=-1.0;uint flags=0u; // stays -1 (invalid) when no sample is valid
+    for(int i=0;i<textureSamples(gbuffer_pos);++i){
+        float z=texelFetch(gbuffer_pos,p,i).x;
+        if(isnan(z)||isinf(z)||z<0.0||z>1.0)continue;
+        if(z>=d){d=z;flags=texelFetch(gbuffer_vel,p,i).x;}
+    }
+#else
     float d=FETCH(gbuffer_pos,p).x;
     uint flags=FETCH(gbuffer_vel,p).x;
+#endif
     bool bad=isnan(d)||isinf(d)||d<0.0||d>1.0;
     bool sky=d==0.0;
     bool local=(flags&4u)!=0u && !sky;

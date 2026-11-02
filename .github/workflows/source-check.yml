@@ -26,9 +26,10 @@ jobs:
           sudo apt-get update -qq && sudo apt-get install -y -qq glslang-tools
           glslangValidator -V --target-env vulkan1.2 -S comp -DINPUT_ARRAY=0 src/native_motion_fixture.comp -o nmf0.spv
           glslangValidator -V --target-env vulkan1.2 -S comp -DINPUT_ARRAY=1 src/native_motion_fixture.comp -o nmf1.spv
-          for v in "" "-DINPUT_ARRAY=1" "-DHISTORY_UPDATE=1"; do glslangValidator -V --target-env vulkan1.2 -S comp $v src/native_motion.comp -o /dev/null; done
+          glslangValidator -V --target-env vulkan1.2 -S comp -DINPUT_MS=1 src/native_motion_fixture.comp -o nmfms.spv
+          for v in "" "-DINPUT_ARRAY=1" "-DHISTORY_UPDATE=1" "-DINPUT_MS=1"; do glslangValidator -V --target-env vulkan1.2 -S comp $v src/native_motion.comp -o /dev/null; done
           glslangValidator -V --target-env vulkan1.2 -S comp src/temporal.comp -o /dev/null
-          g++ -std=c++17 -Wall -Wextra -Werror src/native_motion/classify_tests.cpp src/native_motion/shader_classify.cpp -o classify-tests && ./classify-tests nmf0.spv nmf1.spv
+          g++ -std=c++17 -Wall -Wextra -Werror src/native_motion/classify_tests.cpp src/native_motion/shader_classify.cpp -o classify-tests && ./classify-tests nmf0.spv nmf1.spv nmfms.spv
   windows-regressions:
     needs: source-policy
     runs-on: windows-2025
