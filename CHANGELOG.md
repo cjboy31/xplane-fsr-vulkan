@@ -13,7 +13,7 @@
 - Includes the 0.7.10 scene-copy and background file-worker performance corrections.
 - **Smoother panel:** when you change tabs, the rows now slide in from top to bottom. Turning off animations in Windows turns this off too.
 - **Anti-Lag 2 (experimental, Off by default):** a new choice under Frame generation for AMD Radeon cards whose driver offers it for Vulkan. It can make the controls feel quicker. Diagnostics says whether your driver supports it.
-- **No freeze while FSR gets ready:** FSR now prepares itself on a background thread when a flight loads or the window size changes. X-Plane's own picture shows for that moment instead of the sim pausing.
+- **No freeze while FSR gets ready:** FSR now prepares itself on a background thread when a flight loads or the window size changes. X-Plane's own picture shows for that moment instead of the sim pausing, and the panel says *FSR GETTING READY* with the seconds so far.
 - **CPU scheduling helper (experimental, Off by default):** a new choice under Frame generation. On Intel processors with P-cores and E-cores it keeps X-Plane on the P-cores; on two-chiplet Ryzen X3D processors it keeps X-Plane on the chiplet with the extra cache. It also stops Windows power throttling for X-Plane. Only X-Plane is affected, and it is undone when X-Plane closes. Diagnostics shows what it did.
 - **Driver pacing in Diagnostics:** the pacing check from the session log now also appears in Diagnostics, with each reason it cannot be used on your PC.
 - **Performance per frame:** Diagnostics now shows how long this mod adds to each frame (its own work, waits, the present call) next to X-Plane's frame and GPU time, so you can see whether the CPU or the GPU is the limit.

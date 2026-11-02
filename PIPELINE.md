@@ -70,7 +70,7 @@ Native AA's TAA and warping in frame generation at once. Full plan:
 | P2 | CPU frame time much higher than GPU time (now tracked under *Sim performance and multithreading*) | Owner report; see [CPU-PERFORMANCE](docs/developer/CPU-PERFORMANCE.md) | Compare bypass / FSR / NR / FG in one scene first |
 | P2 | Zink audit: run the layer with `--zink` and `--no_zink` and confirm no false bypass | Laminar plans Zink as the only plugin GL path | Native AA already fixed a Zink push-descriptor false bypass (0.3.3) |
 | P3 | Second-GPU frame generation (Lossless Scaling style) | Lossless Scaling renders on GPU A and generates on GPU B with the monitor on GPU B; PCIe bandwidth is the limit | See [MULTI-GPU-DESIGN](docs/developer/MULTI-GPU-DESIGN.md). 4K RGBA16F at 60 FPS ≈ 3.7 GiB/s one way |
-| P3 | Warm shader cache with progress indicator | Fewer first-use stalls | Measure cold vs warm first |
+| P3 | Warm shader cache with progress indicator | Fewer first-use stalls | **In Test**: preparation already moved off the render thread (P2); the panel status now reads *FSR GETTING READY - preparing in the background (N s)* while it runs. Cold vs warm times come from the log's `FSR context preparation: N ms` (check 17: first start after a driver update vs a second start) |
 
 ### Sim performance and multithreading (exploration)
 

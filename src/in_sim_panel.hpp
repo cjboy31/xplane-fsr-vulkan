@@ -54,7 +54,7 @@ class Panel {
     std::function<void()> repairStartup;
     bool liveNR{},sessionFG{},rendererConnected{true};
     std::vector<const graphics::Preset*> displayPresets;
-    uint64_t previousRecords{},lastProgress{};bool sawStatus{};
+    uint64_t previousRecords{},lastProgress{},preparingSince{};bool sawStatus{};
 public:
     launcher::Preferences choices;
     xp_renderer::Choice rendererChoice{xp_renderer::Choice::fsr};
@@ -185,7 +185,12 @@ public:
         if(!configured()){activity="SETUP NOT LINKED - renderer not confirmed";return;}
         if(!rendererConnected)return; // Retain the specific missing/bypassed startup state.
         if(sawStatus&&s.recordings>previousRecords)lastProgress=now;previousRecords=s.recordings;sawStatus=true;telemetry=s;
+        // v2: the layer prepares FSR on a worker thread; show that it is
+        // working (with elapsed time) instead of a generic waiting message.
+        const bool preparing=strstr(std::string(s.reason,strnlen(s.reason,sizeof(s.reason))).c_str(),"getting ready")!=nullptr;
+        if(!preparing)preparingSince=0;else if(!preparingSince)preparingSince=now;
         if(!choices.enabled)activity="PROCESSING PAUSED";
+        else if(preparing)activity="FSR GETTING READY - preparing in the background ("+std::to_string((now-preparingSince)/1000)+" s). X-Plane's picture shows meanwhile.";
         else if(lastProgress&&now>=lastProgress&&now-lastProgress<3000)activity=s.active?"FSR ACTIVE - renderer confirmed":"RENDERER CONFIRMED - processing protected / waiting";
         else activity="WAITING - load a flight to check image processing";
     }

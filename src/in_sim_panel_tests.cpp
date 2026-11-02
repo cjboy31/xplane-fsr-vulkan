@@ -177,6 +177,12 @@ int wmain(int argc,wchar_t**argv){try{
         check(cloud&&clarity&&applyCloud,"Cloud controls or Apply cannot be reached in a supported viewport");}
     app::Telemetry status{};status.active=1;status.recordings=100;panel.observe(status,1000);check(panel.activity.find("FSR ACTIVE")==std::string::npos,"Static telemetry falsely confirmed activity");
     status.recordings=101;panel.observe(status,1016);check(panel.activity.find("FSR ACTIVE")!=std::string::npos,"Advancing renderer not confirmed");panel.observe(status,5000);check(panel.activity.find("WAITING")!=std::string::npos,"Stale activity stayed green");
+    // v2 warm-up indicator: worker-thread FSR preparation is shown with elapsed time.
+    {insim::Panel ready;ready.bind(file,&writer,true,true);app::Telemetry t{};t.recordings=1;
+     snprintf(t.reason,sizeof(t.reason),"FSR is getting ready (preparing on a worker thread); X-Plane's image is shown meanwhile");
+     ready.observe(t,10000);check(ready.activity.find("FSR GETTING READY")==0&&ready.activity.find("(0 s)")!=std::string::npos,"Preparation not shown");
+     ready.observe(t,13500);check(ready.activity.find("(3 s)")!=std::string::npos,"Preparation time does not advance");
+     t.reason[0]=0;t.active=1;++t.recordings;ready.observe(t,13600);++t.recordings;ready.observe(t,13620);check(ready.activity.find("FSR ACTIVE")==0,"Ready FSR not shown as active");}
     // v2 per-frame CPU timers (ABI 5) shown in Diagnostics (connected renderer).
     {insim::Panel timers;check(timers.cpuSummary().find("Waiting")==0&&timers.simSummary().find("not available")!=std::string::npos,"Timers shown before data");
      timers.bind(file,&writer,true,true);
