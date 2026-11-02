@@ -46,6 +46,19 @@ then Linux, then Mac).
 
 ## Queued
 
+**Pass of 2026-11-02:** every P1-P3 item that can be built and checked without
+the owner's PC is now In Test. The rest wait on something specific:
+
+| Waiting on | Items |
+| --- | --- |
+| A live flight on the owner's PC | P2 Zink audit (`--zink` / `--no_zink`); P2 CPU vs GPU time comparison (bypass / FSR / NR / FG, now readable in Diagnostics) |
+| Live timer numbers (TEST-CHANNEL check 14) | P2 move remaining CPU work to workers; P3 async compute (needs proof of GPU overlap room) |
+| Live survey data (check 12) | P2 E per-object motion |
+| Hardware we don't have | P2 FSR 4.1 on RX 6000 / Ryzen AI; P3 second-GPU FG; P3 XeSS (Intel Arc + Intel's runtime) |
+| AMD Linux providers | P3 Linux FSR 4 / FG parity |
+| A separate Metal project | P3 Mac MetalFX |
+| v2 passing Betas | P2 v3 one-mod merge |
+
 ### Priority: motion vectors
 
 The owner's top rendering item: better motion cuts trails in FSR, shimmer in
