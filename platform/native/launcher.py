@@ -60,7 +60,7 @@ def gui(root, saved):
         if folder:
             fields["sim"].set(folder)
 
-    ttk.Label(body, text="X-Plane 12 folder").pack(anchor="w")
+    ttk.Label(body, text="X-Plane 12 folder" + (" (found automatically)" if saved["sim"] and saved["sim"] == core.detect_simulator(SYSTEM) else "")).pack(anchor="w")
     row = ttk.Frame(body)
     row.pack(fill="x", pady=(6, 16))
     ttk.Entry(row, textvariable=fields["sim"]).pack(side="left", fill="x", expand=True)
@@ -150,6 +150,9 @@ def main():
         saved = core.load_settings(root)
         if args.sim:
             saved["sim"] = args.sim
+        elif not saved["sim"]:
+            # One-click setup: use the folder X-Plane itself recorded.
+            saved["sim"] = core.detect_simulator(SYSTEM)
         if args.mode:
             saved["mode"] = args.mode
         if args.sim or args.mode:

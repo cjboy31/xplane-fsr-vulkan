@@ -22,7 +22,9 @@ LINUX INSTALL — NO SYSTEM-WIDE INJECTION OR ADMIN RIGHTS
    together. Do not copy the .so into the simulator's plugin folder.
 3. Open a terminal in that folder and run ./Launch-FSR
    If needed: chmod +x Launch-FSR
-4. Browse to your X-Plane 12 folder, choose FSR 3.1 upscaling and launch.
+4. The launcher fills in your X-Plane 12 folder from X-Plane's own list
+   (~/.x-plane/x-plane_install_12.txt) when you have not chosen one yet. Check
+   it, or Browse to another folder. Choose FSR 3.1 upscaling and launch.
    Your folder, rendering mode and arguments save automatically. Reopening the
    launcher restores them. A failed save is shown; corrupt choices are not reset.
 5. In X-Plane Settings > Graphics:
@@ -55,7 +57,9 @@ MAC INSTALL — DIAGNOSTICS, NO FSR RENDERING
    real Mac simulator testing is pending. Intel slice execution is unverified.
 2. Extract the Mac-Universal-Probe .zip. Open a terminal in the extracted folder
    and run python3 launcher.py (or ./Launch.command after chmod +x Launch.command).
-3. CLOSE X-Plane. Browse to its installation folder and click Install probe.
+3. CLOSE X-Plane. The launcher fills in the folder from
+   ~/Library/Preferences/x-plane_install_12.txt when it can; otherwise Browse
+   to the installation folder. Click Install probe.
    This installs only Resources/plugins/XPFSRNativeProbe/64/mac.xpl and an
    ownership marker. It does not install a Metal hook or improve graphics.
 4. Launch test session. A fresh compatibility.json report appears once the probe

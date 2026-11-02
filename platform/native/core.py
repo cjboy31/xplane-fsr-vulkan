@@ -76,6 +76,35 @@ def simulator_executable(folder, system):
     return executable
 
 
+def install_list(system=None, env=None):
+    """X-Plane's own list of installations (one folder per line)."""
+    system, env = system or platform.system(), os.environ if env is None else env
+    home = Path(env.get("HOME", str(Path.home())))
+    if system == "Darwin":
+        return home / "Library/Preferences/x-plane_install_12.txt"
+    return home / ".x-plane/x-plane_install_12.txt"
+
+
+def detect_simulator(system=None, env=None):
+    """First listed X-Plane 12 folder that contains the native executable, or ''.
+    Read only: nothing is written and no other folder is searched."""
+    system = system or platform.system()
+    try:
+        lines = install_list(system, env).read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return ""
+    for line in lines:
+        folder = line.strip()
+        if not folder:
+            continue
+        try:
+            simulator_executable(folder, system)
+            return str(Path(folder).expanduser().resolve())
+        except (OSError, ValueError):
+            continue
+    return ""
+
+
 def launch_environment(package, session, mode, inherited=None, system="Linux"):
     env = dict(os.environ if inherited is None else inherited)
     if mode not in MODES:

@@ -32,6 +32,25 @@ class NativeTests(unittest.TestCase):
         self.assertEqual(core.load_settings(self.root)["mode"], "Diagnostic: observe only")
         self.assertFalse(list(self.root.glob(".xpfsr-*")))
 
+    def test_simulator_found_from_x_plane_install_list(self):
+        home = self.root / "home"
+        good = self.root / "X Plane 12"
+        good.mkdir()
+        executable = good / "X-Plane-x86_64"
+        executable.write_text("#!/bin/sh\n")
+        executable.chmod(0o755)
+        (home / ".x-plane").mkdir(parents=True)
+        listing = home / ".x-plane/x-plane_install_12.txt"
+        listing.write_text(f"/missing/x-plane\n\n{good}\n", encoding="utf-8")
+        env = {"HOME": str(home)}
+        self.assertEqual(core.detect_simulator("Linux", env), str(good.resolve()))
+        self.assertEqual(core.install_list("Darwin", env), home / "Library/Preferences/x-plane_install_12.txt")
+        self.assertEqual(core.detect_simulator("Darwin", env), "")  # Mac list absent
+        listing.write_text("/missing/x-plane\n", encoding="utf-8")
+        self.assertEqual(core.detect_simulator("Linux", env), "")
+        listing.unlink()
+        self.assertEqual(core.detect_simulator("Linux", env), "")
+
     def test_corrupt_settings_not_silently_reset(self):
         path = self.root / "settings.json"
         path.write_text("{broken")
