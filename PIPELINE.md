@@ -33,8 +33,8 @@ then Linux, then Mac).
 
 | Type | Item | Status |
 | --- | --- | --- |
-| QoL | Saved live frame counter: real simulator FPS and extra generated FPS, with a panel toggle and plugin-menu shortcut | In Test; live verification pending |
-| Bug | Bound source images awaiting SDK presenter completion; drain pending images even after memory fallback | In Test; fixes a measured 95-frame / 18.6 GiB retention in the ordinary presenter; live retest pending |
+| QoL | Saved live frame counter: real simulator FPS and extra generated FPS, with a panel toggle and plugin-menu shortcut | In Test; Windows live On/Off, FG Off/On, help and restart checks passed on `6041659`; see [validation](docs/developer/FRAME-COUNTER-VALIDATION.md) |
+| Bug | Bound source images awaiting SDK presenter completion; drain pending images even after memory fallback | In Test; corrects measured 95-frame / 18,596 MiB retention in the ordinary presenter. A 20-minute Windows session on `6041659` kept sampled SDK-owned source images bounded; full promotion checklist remains open |
 | QoL | Hover help cards: point at **?** to read help in place; click pins it; Esc closes | In Beta |
 | QoL | Windows installer finds X-Plane 12 automatically (`x-plane_install_12.txt`) and uses plain step-by-step wording | In Beta |
 | QoL | Channels renamed **Release Candidates** / **Betas**; saved choice kept | In Beta |

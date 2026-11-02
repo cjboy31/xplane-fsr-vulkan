@@ -95,6 +95,7 @@ access to this repository), because drafts are private.
 | 19 | Switch panel tabs a few times; then turn off *Windows Settings > Accessibility > Visual effects > Animation effects* and switch again | Rows slide in top to bottom in well under half a second and every button works during it; with animations off they appear at once |
 | 20 | **Texture detail**: X-Plane default vs AMD recommended, FSR 4 Quality, same parked view of runway markings and a city, restart between | Runway and building textures visibly sharper with AMD recommended; sky, clouds, water, cockpit screens and bloom look the same. Log lines `Texture detail: sampler ... bias A -> B`: report the A values (X-Plane's own bias) and the count of kept samplers |
 | 21 | Everything above on **X-Plane 12.4.4 final** | Note any check that behaves differently from 12.4.3, plus the log's `Motion source`, `FSR context preparation` and device-creation lines |
+| 22 | Rendering > **Show frame counter** On/Off, then the **Show / hide frame counter** plugin-menu shortcut; FG Off/On with settings closed; restart | Overlay hides and returns without restarting. Real (raw) FPS continues while FG is Off; FG extra reads 0 until generation resumes. Visible counter does not pause FG. Saved counter choice returns after restarting. Compare both rates with current-session counters, not an assumed 2x multiplier. See [Windows validation](FRAME-COUNTER-VALIDATION.md) |
 
 5. Collect `Output/FSR-Logs` (Diagnostics > Open log folder) and X-Plane's `Log.txt`.
 
