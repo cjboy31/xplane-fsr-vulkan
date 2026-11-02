@@ -142,6 +142,10 @@ int wmain(int argc,wchar_t**argv){try{
      panel.act({insim::Kind::CpuScheduling,0,5});check(panel.choices.cpuScheduling==1,"CPU scheduling not clamped");
      check(panel.helpTitle(212)=="CPU scheduling"&&panel.helpText(212).find("P-cores")!=std::string::npos&&panel.helpText(212).find("X3D")!=std::string::npos,"CPU scheduling help missing");
      check(panel.cpuSchedulingSummary().find("restart")!=std::string::npos||panel.cpuSchedulingSummary().find("after the renderer")!=std::string::npos,"CPU scheduling summary before a session");
+     check(panel.choices.antiLag==0,"Anti-Lag 2 must default to Off");
+     panel.act({insim::Kind::AntiLag,0,1});check(panel.choices.antiLag==1&&launcher::load(file).antiLag==1,"Anti-Lag 2 not saved");
+     check(panel.helpTitle(213)=="Anti-Lag 2"&&panel.helpText(213).find("AMD")!=std::string::npos,"Anti-Lag 2 help missing");
+     panel.act({insim::Kind::AntiLag,0,-1});check(panel.choices.antiLag==0&&launcher::load(file).antiLag==0,"Anti-Lag 2 could not turn Off");
      panel.act({insim::Kind::CpuScheduling,0,-1});check(panel.choices.cpuScheduling==0&&launcher::load(file).cpuScheduling==0,"CPU scheduling could not return to Windows decides");}
     insim::Panel fgReopened;fgReopened.bind(file,&writer,true,false);check(fgReopened.choices.lastFrameGeneration==2,"Reopening lost the last FG provider");fgReopened.act({insim::Kind::FGToggle,0,1});check(fgReopened.choices.frameGeneration==2,"FG On did not restore the remembered provider");
     panel.act({insim::Kind::Tab,1});widgets=panel.view(640,480);bool importVisible=false;int firstTabY=0;
@@ -182,6 +186,9 @@ int wmain(int argc,wchar_t**argv){try{
      check(timers.pacingSummary().find("after frame generation")!=std::string::npos,"Pacing shown before a check");
      snprintf(t.pacingCheck,sizeof(t.pacingCheck),"0turn VSync off");timers.observe(t,1032);check(timers.pacingSummary()=="Not available: turn VSync off.","Pacing blockers not shown");
      snprintf(t.pacingCheck,sizeof(t.pacingCheck),"1");timers.observe(t,1048);check(timers.pacingSummary().find("driver decides")!=std::string::npos,"Met pacing claimed active or hidden");
+     snprintf(t.antiLag,sizeof(t.antiLag),"2your graphics driver does not offer Anti-Lag 2 for Vulkan");timers.observe(t,1064);
+     check(timers.antiLagSummary()=="Not available: your graphics driver does not offer Anti-Lag 2 for Vulkan.","Anti-Lag 2 reason not shown");
+     snprintf(t.antiLag,sizeof(t.antiLag),"1");timers.observe(t,1080);check(timers.antiLagSummary().find("On.")==0,"Anti-Lag 2 On not shown");
      timers.simFrameMs=25;timers.simGpuMs=12;check(timers.simSummary().find("40 FPS")!=std::string::npos&&timers.simSummary().find("CPU is the limit")!=std::string::npos,"X-Plane timing summary wrong");}
     insim::Panel fgLive;bool liveFG=false;
     fgLive.bind(file,&writer,true,true,[&](const auto&p){liveFG=p.frameGeneration!=0;});

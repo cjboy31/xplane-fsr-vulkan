@@ -132,6 +132,10 @@ int wmain(int argc,wchar_t **argv){try{
      auto helper=p;helper.cpuScheduling=1;xpfsr::nr::ControlChannel helperChannel;app::prepareSessionProfile(root,helper,helperChannel);
      check(app::environment(L"XPFSR24_CPU_SCHEDULING")==L"1","CPU scheduling choice not passed to the renderer");
      app::prepareSessionProfile(root,helper,helperChannel,true);check(app::environment(L"XPFSR24_CPU_SCHEDULING").empty(),"Native comparison session kept the CPU helper");}
+    {check(app::environment(L"XPFSR24_ANTI_LAG").empty(),"Anti-Lag 2 must be Off by default");
+     auto lag=p;lag.antiLag=1;xpfsr::nr::ControlChannel lagChannel;app::prepareSessionProfile(root,lag,lagChannel);
+     check(app::environment(L"XPFSR24_ANTI_LAG")==(lag.mode?std::wstring(L"1"):std::wstring()),"Anti-Lag 2 choice not passed to an FSR session");
+     app::prepareSessionProfile(root,lag,lagChannel,true);check(app::environment(L"XPFSR24_ANTI_LAG").empty(),"Native comparison session kept Anti-Lag 2");}
     auto registry=L"Software\\XPFSR24\\Tests\\Activation-"+std::to_wstring(GetCurrentProcessId())+L"-"+std::to_wstring(GetTickCount64());
     struct Cleanup{std::wstring key;~Cleanup(){RegDeleteTreeW(HKEY_CURRENT_USER,key.c_str());}}cleanup{registry};
     const auto layers=registry+L"\\Layers",owner=registry+L"\\Owner";

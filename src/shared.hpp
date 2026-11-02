@@ -38,6 +38,8 @@ struct Telemetry {
     char pacingCheck[240]{};
     // v2: opt-in CPU scheduling helper ('0' off; '1' then what it did).
     char cpuScheduling[200]{};
+    // v2: opt-in AMD Anti-Lag 2 ('0' off, '1' on, '2' unavailable + reason).
+    char antiLag[120]{};
 };
 struct Shared {
     uint32_t tag{}, version{};

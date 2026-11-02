@@ -81,6 +81,7 @@ access to this repository), because drafts are private.
 | 15 | Diagnostics > **Driver pacing** with frame generation On | Shows the same reasons as the log's `Driver-assisted pacing check` line, or "Requirements look met". Turning VSync on and restarting adds "turn VSync off" |
 | 16 | **CPU scheduling: Helper (experimental)**, restart, same 2-minute flight as check 14; then Windows decides, restart, repeat | Diagnostics > *CPU scheduling* names your processor type and what changed (or "left to Windows"). Report average FPS and 1% lows for both runs and the CPU model. X-Plane closes normally; the log ends with `restored Windows defaults` |
 | 17 | Load a flight with FSR 4, then change the window size (or Apply graphics with a new output and restart) | No multi-second freeze as FSR starts; the picture switches from X-Plane's to FSR after a moment. The log has `FSR context preparation: N ms on a worker thread`; report N |
+| 18 | **Anti-Lag 2: On (experimental)**, restart; fly 2 minutes with FG Off, then FG On (SDK paced); repeat with Anti-Lag 2 Off | Diagnostics > *Anti-Lag 2* says On, or names why not. With PresentMon, report average latency and FPS for all four runs; the log has `AMD Anti-Lag 2: average input wait` lines. No new stutter |
 
 5. Collect `Output/FSR-Logs` (Diagnostics > Open log folder) and X-Plane's `Log.txt`.
 

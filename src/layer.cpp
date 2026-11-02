@@ -303,6 +303,9 @@ struct Device {
     // creation only; the backend has no queue). X-Plane's own image is shown
     // until one is ready, instead of stalling the render thread.
     struct PreparedContext { std::unique_ptr<xpfsr::Context> context; uint64_t ms{}; };
+    // v2 opt-in AMD Anti-Lag 2: null unless the driver enabled VK_AMD_anti_lag.
+    PFN_vkAntiLagUpdateAMD antiLagUpdate{};
+    uint64_t antiLagFrame{1}, antiLagWaits{}, antiLagWaitTicks{};
     std::map<std::array<uint32_t, 6>, std::future<PreparedContext>> pendingContexts;
     std::unique_ptr<xpfsr::Runtime> runtime;
     std::vector<std::unique_ptr<DepthProbe>> probes;
@@ -2429,6 +2432,10 @@ static VKAPI_ATTR VkResult VKAPI_CALL L_CreateDevice(VkPhysicalDevice physical,
         VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TIMELINE_SEMAPHORE_FEATURES};
     bool foundTimeline = false;
     bool foundFloats = false, foundCoop = false, foundFp8 = false;
+    const bool antiLagWanted = app::environment(L"XPFSR24_ANTI_LAG") == L"1";
+    bool antiLagEnabled = false;
+    const char *antiLagReason = "";
+    VkPhysicalDeviceAntiLagFeaturesAMD requestLag{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ANTI_LAG_FEATURES_AMD};
     xpfsr::nr::Features neuralFeatures;
     bool neuralSupported = neuralSessionCapable() && cloned && coop.cooperativeMatrix &&
         fp8.shaderFloat8 && fp8.shaderFloat8CooperativeMatrix && neuralFeatures.query(physical,getFeatures);
@@ -2519,7 +2526,33 @@ static VKAPI_ATTR VkResult VKAPI_CALL L_CreateDevice(VkPhysicalDevice physical,
             requestFp8.shaderFloat8CooperativeMatrix = fp8.shaderFloat8CooperativeMatrix;
             append(requestFp8);
         }
-    }
+        // v2 opt-in AMD Anti-Lag 2 (VK_AMD_anti_lag): only when the driver
+        // exposes the extension and feature; otherwise the reason is shown.
+        if (antiLagWanted) {
+            VkPhysicalDeviceFeatures2 lagSupport{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2};
+            VkPhysicalDeviceAntiLagFeaturesAMD lag{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ANTI_LAG_FEATURES_AMD};
+            lagSupport.pNext = &lag;
+            bool listed = false;
+            for (auto &p : available) listed |= !strcmp(p.extensionName, VK_AMD_ANTI_LAG_EXTENSION_NAME);
+            if (listed) getFeatures(physical, &lagSupport);
+            bool inChain = false;
+            for (auto *node = first; node; node = node->pNext)
+                if (node->sType == VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ANTI_LAG_FEATURES_AMD) {
+                    reinterpret_cast<VkPhysicalDeviceAntiLagFeaturesAMD *>(node)->antiLag |= lag.antiLag;
+                    inChain = true;
+                }
+            if (!listed)
+                antiLagReason = "your graphics driver does not offer Anti-Lag 2 for Vulkan";
+            else if (!lag.antiLag)
+                antiLagReason = "the driver lists Anti-Lag 2 but turned it off for this GPU";
+            else if (add(VK_AMD_ANTI_LAG_EXTENSION_NAME)) {
+                requestLag.antiLag = VK_TRUE;
+                if (!inChain) append(requestLag);
+                antiLagEnabled = true;
+            }
+        }
+    } else if (antiLagWanted)
+        antiLagReason = "another Vulkan setting prevented the mod from adding it";
     VkDeviceCreateInfo modified = *ci;
     if (cloned) {
         modified.pNext = first;
@@ -2580,6 +2613,14 @@ static VKAPI_ATTR VkResult VKAPI_CALL L_CreateDevice(VkPhysicalDevice physical,
     try { state->files.start(); }
     catch (const std::exception &e) { log("Background status/control files unavailable: %s; shared controls retained", e.what()); }
     state->neural.features(neuralSupported);
+    if (antiLagEnabled)
+        state->antiLagUpdate = reinterpret_cast<PFN_vkAntiLagUpdateAMD>(next(*out, "vkAntiLagUpdateAMD"));
+    if (antiLagWanted) {
+        if (antiLagEnabled && !state->antiLagUpdate) antiLagReason = "the driver did not provide its Anti-Lag 2 function";
+        snprintf(state->status.antiLag, sizeof(state->status.antiLag), "%c%s", state->antiLagUpdate ? '1' : '2',
+                 state->antiLagUpdate ? "" : antiLagReason);
+        log("AMD Anti-Lag 2: %s", state->antiLagUpdate ? "on (VK_AMD_anti_lag, input and present markers)" : antiLagReason);
+    }
     state->mode = selectedMode();
     setupMotionCapture(*state);
     cpusched::apply();
@@ -4418,8 +4459,36 @@ static VKAPI_ATTR VkResult VKAPI_CALL L_QueueSubmit2(VkQueue queue, uint32_t cou
     }
     return result;
 }
+// AMD Anti-Lag 2 markers around each real (not SDK presenter) frame: present
+// stage just before it is handed over, input stage right after, which is
+// where X-Plane starts its next frame and reads input. The input call may
+// wait briefly; that wait is the latency reduction. maxFPS stays 0 (the
+// mod's own cap and the SDK pacer keep control of frame timing).
+static void antiLagMark(Device &d, VkAntiLagStageAMD stage) {
+    VkAntiLagPresentationInfoAMD frame{VK_STRUCTURE_TYPE_ANTI_LAG_PRESENTATION_INFO_AMD};
+    frame.stage = stage;
+    frame.frameIndex = d.antiLagFrame;
+    VkAntiLagDataAMD data{VK_STRUCTURE_TYPE_ANTI_LAG_DATA_AMD};
+    data.mode = VK_ANTI_LAG_MODE_ON_AMD;
+    data.maxFPS = 0;
+    data.pPresentationInfo = &frame;
+    d.antiLagUpdate(d.handle, &data);
+}
 static VKAPI_ATTR VkResult VKAPI_CALL L_QueuePresentKHR(VkQueue queue, const VkPresentInfoKHR *c) {
-    return presentFrame(*deviceFor(queue), queue, c);
+    auto &d = *deviceFor(queue);
+    const bool real = d.antiLagUpdate && !sdkNesting && !(!d.fgRequested.empty() && d.fgQueues[0] && queue != d.fgQueues[0]);
+    if (real) antiLagMark(d, VK_ANTI_LAG_STAGE_PRESENT_AMD);
+    const auto result = presentFrame(d, queue, c);
+    if (real) {
+        ++d.antiLagFrame;
+        const auto start = qpcNow();
+        antiLagMark(d, VK_ANTI_LAG_STAGE_INPUT_AMD);
+        d.antiLagWaitTicks += qpcNow() - start;
+        if (++d.antiLagWaits % 1200 == 0)
+            log("AMD Anti-Lag 2: average input wait %.2f ms over %llu frames",
+                qpcToNs(int64_t(d.antiLagWaitTicks)) / 1e6 / double(d.antiLagWaits), (unsigned long long)d.antiLagWaits);
+    }
+    return result;
 }
 
 extern "C" __declspec(dllexport) VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL

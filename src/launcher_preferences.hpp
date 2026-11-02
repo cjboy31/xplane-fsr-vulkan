@@ -14,6 +14,7 @@ struct Preferences {
     int fgCap{0};    // v2: index into xpfsr::pacing::capSettings (0 Off, 1 Auto, then fixed FPS).
     int motionSource{0}; // v2: 0 camera-derived (default), 1 native renderer SSR (experimental).
     int cpuScheduling{0}; // v2: 0 Windows decides (default), 1 opt-in CPU scheduling helper.
+    int antiLag{0};       // v2: 0 Off (default), 1 AMD Anti-Lag 2 via VK_AMD_anti_lag when available.
     xpfsr::nr::Controls nr;
     bool keepSimUISize{true};
     bool enabled{true}, ghostReduction{true}, cockpitRestore{true}, alignmentTint{};
@@ -98,6 +99,7 @@ inline Preferences load(const graphics::fs::path &file) {
     p.fgCap=integer(file,L"FrameRateCap",0,11);
     p.motionSource=integer(file,L"MotionSource",0,1);
     p.cpuScheduling=integer(file,L"CpuScheduling",0,1);
+    p.antiLag=integer(file,L"AntiLag",0,1);
     // Older Normal releases replace their Launcher section on save. Keep NR
     // independently, migrating the unreleased prototype's keys on first save.
     const bool separateNR=readSetting(file,L"NeuralRendering",L"Schema")==L"1";
@@ -154,6 +156,7 @@ inline std::wstring serialized(const Preferences &p) {
     add(L"FrameRateCap",std::to_wstring(p.fgCap));
     add(L"MotionSource",std::to_wstring(p.motionSource));
     add(L"CpuScheduling",std::to_wstring(p.cpuScheduling));
+    add(L"AntiLag",std::to_wstring(p.antiLag));
     add(L"NeuralRendering",std::to_wstring(p.neuralRendering));
     add(L"KeepSimUISize",std::to_wstring(p.keepSimUISize));
     for(int i=0;i<xpfsr::nr::Count;++i)add(xpfsr::nr::settings[i].key,std::to_wstring(i==xpfsr::nr::Enabled?int(p.neuralRendering!=0):p.nr.value[i]));

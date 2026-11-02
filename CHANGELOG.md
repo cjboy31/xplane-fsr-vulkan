@@ -11,6 +11,7 @@
 - **Project renamed** to `xplane12-fsr-framegen`. Web links to the old name still open. The 0.7.x updater cannot follow the rename, so install 2.0 manually once; from 2.0 on, the updater accepts both names.
 - Repository clean-up: retired feature-video tooling and old per-version install notes removed; developer notes moved to `docs/developer/`.
 - Includes the 0.7.10 scene-copy and background file-worker performance corrections.
+- **Anti-Lag 2 (experimental, Off by default):** a new choice under Frame generation for AMD Radeon cards whose driver offers it for Vulkan. It can make the controls feel quicker. Diagnostics says whether your driver supports it.
 - **No freeze while FSR gets ready:** FSR now prepares itself on a background thread when a flight loads or the window size changes. X-Plane's own picture shows for that moment instead of the sim pausing.
 - **CPU scheduling helper (experimental, Off by default):** a new choice under Frame generation. On Intel processors with P-cores and E-cores it keeps X-Plane on the P-cores; on two-chiplet Ryzen X3D processors it keeps X-Plane on the chiplet with the extra cache. It also stops Windows power throttling for X-Plane. Only X-Plane is affected, and it is undone when X-Plane closes. Diagnostics shows what it did.
 - **Driver pacing in Diagnostics:** the pacing check from the session log now also appears in Diagnostics, with each reason it cannot be used on your PC.
