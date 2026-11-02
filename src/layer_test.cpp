@@ -6,6 +6,7 @@
 #include "shared.hpp"
 #include "ground_camera.hpp"
 #include "nr_controls.hpp"
+#include "test_layer_identity.hpp"
 #include <fstream>
 static std::vector<uint32_t> loadSpv(const wchar_t *path) {
     FILE *f = _wfopen(path, L"rb");
@@ -76,6 +77,7 @@ int wmain(int argc, wchar_t **argv) {
             SetEnvironmentVariableW(L"XPFSR24_COCKPIT_RESTORE", L"0");
         Vulkan vk;
         vk.open();
+        fixture::verifyLayerIdentity();
         GpuImage finalColor(vk), auxColor(vk), auxDepth(vk), sceneColor(vk), color(vk), output(vk),
             depth(vk), msaaColor(vk);
         finalColor.create(OW, OH, VK_FORMAT_R16G16B16A16_SFLOAT);
@@ -426,7 +428,14 @@ int wmain(int argc, wchar_t **argv) {
                 nullptr, 0, nullptr, 1, &b);
             image.value.layout = target;
         };
-        for (uint64_t frame = 1; frame <= (nrOrder?3000:18); ++frame) {
+        // Exercise the production startup gate instead of disabling it for tests.
+        // Forty coherent samples over four seconds precede the numbered cases.
+        uint64_t warmupRecordings = 0;
+        const uint64_t warmupStart = GetTickCount64();
+        for (uint64_t sourceFrame = 1; sourceFrame <= 40+(nrOrder?3000:18); ++sourceFrame) {
+            const bool warming = sourceFrame <= 40;
+            const uint64_t frame = warming ? 0 : sourceFrame - 40;
+            if (warming) Sleep(100);
             InterlockedExchange(&shared->enabled, !nrOrder&&(frame == 9 || frame == 10) ? 0 : 1);
             app::Camera camera{};
             camera.valid = 1;
@@ -434,7 +443,7 @@ int wmain(int argc, wchar_t **argv) {
             camera.bodyValid = 1;
             for (int i = 0; i < 16; ++i)
                 camera.bodyReprojection[i] = (i % 5) == 0;
-            camera.frame = frame;
+            camera.frame = sourceFrame;
             camera.width = OW;
             camera.height = OH;
             camera.nearPlane = .1f;
@@ -721,6 +730,18 @@ int wmain(int argc, wchar_t **argv) {
                         std::abs(rgb[2] - .6f) < .05f,
                     "Layer output readback differs");
             app::Telemetry status{};
+            if(warming){
+                require(app::readStatus(shared,status),"Startup telemetry unavailable");
+                if(GetTickCount64()-warmupStart<3000)
+                    require(!status.active && status.recordings==0,"Reconstruction ran before scene stabilization");
+                warmupRecordings=status.recordings;
+                if(sourceFrame==40){
+                    require(observe || status.active,"Scene did not activate after coherent startup samples");
+                    std::cout<<"PASS: startup stabilization, baseline recordings="<<warmupRecordings<<'\n';
+                    phaseStart=GetTickCount64();
+                }
+                continue;
+            }
             uint64_t expected = observe ? 0 : frame <= 8 ? frame : frame <= 10 ? 8 : frame - 2;
             if(nrOrder)expected=frame;
             if (!observe && groundCamera && frame >= 12)
@@ -729,7 +750,7 @@ int wmain(int argc, wchar_t **argv) {
                 expected -= std::min<uint64_t>(frame - 11, 3);
             if (!observe && staleCamera && frame >= 12)
                 --expected;
-            require(app::readStatus(shared, status) && status.recordings == expected,
+            require(app::readStatus(shared, status) && status.recordings == expected+warmupRecordings,
                     "Layer replacement/toggle count differs");
             if (staleCamera && frame == 12 && !observe)
                 require(!status.active && strstr(status.reason, "camera frame mismatch"),

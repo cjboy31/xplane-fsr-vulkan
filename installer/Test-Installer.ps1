@@ -192,8 +192,9 @@ if($keepsChoices){
   if((Get-FileHash -LiteralPath $settings).Hash -ne $settingsHash){throw 'Uninstall changed saved choices'}
   $code = Run-Setup ('/S /TEST=1 /XPLANE="'+$simulator+'" /D='+$installed)
   if($code -ne 0){throw "Reinstall into the kept folder failed: $code"}
-  $reinstalledBlock = (Get-Content -LiteralPath $settings -Raw) -split '\[Launcher\]',2 | Select-Object -Last 1
-  if($reinstalledBlock.Trim() -ne $updatedChoiceBlock.Trim()){throw 'Reinstall lost saved launcher choices'}
+  # Compare with the final pre-uninstall file, including the Updates/FeatureVideo
+  # sections added after the earlier recognized-update comparison.
+  if((Get-FileHash -LiteralPath $settings).Hash -ne $settingsHash){throw 'Reinstall lost saved choices'}
   foreach($file in $manifest.files){if((Get-FileHash -LiteralPath (Join-Path $installed $file.path)).Hash.ToLowerInvariant() -ne $file.sha256){throw "Reinstall hash mismatch: $($file.path)"}}
   $process = Start-Process -FilePath $uninstallCopy -ArgumentList ('/S _?='+$installed) -WindowStyle Hidden -PassThru -Wait
   if($process.ExitCode -ne 0){throw "Second uninstall failed: $($process.ExitCode)"}
