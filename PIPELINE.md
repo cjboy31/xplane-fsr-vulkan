@@ -52,10 +52,25 @@ then Linux, then Mac).
 | --- | --- | --- | --- |
 | P2 | Show the driver-pacing check in the panel, not only the session log | The v2 log line already names each blocker | Needs a status field from the layer to the panel |
 | P2 | AMD Anti-Lag 2 through `VK_AMD_anti_lag` when the driver exposes it | Lower input latency with FG; Mesa/RADV now implement it natively on Linux | Must not fight the SDK pacer; measure with PresentMon on Windows |
-| P2 | CPU frame time much higher than GPU time | Owner report; see [CPU-PERFORMANCE](docs/developer/CPU-PERFORMANCE.md) | Compare bypass / FSR / NR / FG in one scene first |
+| P2 | CPU frame time much higher than GPU time (now tracked under *Sim performance and multithreading*) | Owner report; see [CPU-PERFORMANCE](docs/developer/CPU-PERFORMANCE.md) | Compare bypass / FSR / NR / FG in one scene first |
 | P2 | Zink audit: run the layer with `--zink` and `--no_zink` and confirm no false bypass | Laminar plans Zink as the only plugin GL path | Native AA already fixed a Zink push-descriptor false bypass (0.3.3) |
 | P3 | Second-GPU frame generation (Lossless Scaling style) | Lossless Scaling renders on GPU A and generates on GPU B with the monitor on GPU B; PCIe bandwidth is the limit | See [MULTI-GPU-DESIGN](docs/developer/MULTI-GPU-DESIGN.md). 4K RGBA16F at 60 FPS ≈ 3.7 GiB/s one way |
 | P3 | Warm shader cache with progress indicator | Fewer first-use stalls | Measure cold vs warm first |
+
+### Sim performance and multithreading (exploration)
+
+X-Plane 12.4 already spreads scenery traversal and avionics across cores, but its
+main thread still records all rendering into one command buffer, and that is the
+buffer our layer works inside. Plan and validation rules:
+[SIM-PERFORMANCE](docs/developer/SIM-PERFORMANCE.md).
+
+| P | Item | Why | Notes |
+| --- | --- | --- | --- |
+| P1 | Per-frame timers for the layer's own CPU work on X-Plane's render thread, shown in Diagnostics next to X-Plane's frame time | Measure before optimizing; answers the "CPU time much higher than GPU time" report | Separates capture, record, submit and waits |
+| P2 | Move remaining mod CPU work off X-Plane's render thread (workers, pre-built descriptors) | Every ms we add there is sim frame time | Only where the P1 timers show it matters |
+| P2 | Opt-in CPU scheduling helper (Windows): keep X-Plane off E-cores on Intel hybrid and on the V-cache CCD of dual-CCD X3D; no power throttling | Steadier main-thread frame time on those CPUs | Off by default, restored at exit, measured per CPU type; little effect expected on single-CCD CPUs |
+| P2 | Pipeline/shader warm-up on a worker thread with a validated cache | Removes first-use hitches | Reject caches after driver changes |
+| P3 | FSR / NR (then FG) on an async compute queue | Overlap our GPU work with X-Plane's shadow and scene passes | After P1 shows GPU overlap room; SDK async FG is fixture-only so far |
 
 ### Feature
 
