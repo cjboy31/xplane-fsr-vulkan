@@ -394,10 +394,15 @@ static void draw(XPLMWindowID h){
     const auto items=setupPanel.view(width,height);
     tipFrame=-1;
     for(const auto& item:items){
-        const auto &r=item.rect;const int x=left+r.x,y=top-r.y;
-        const bool hover=item.button&&r.contains(mx-left,top-my);
+        const auto &r=item.rect;
         const bool content=r.y>=insim::contentTop&&r.y<height-insim::footerHeight;
-        auto shade=[&](Ink c){return content?mix(canvas,c,.52f+.48f*entering):c;};
+        // v2 section reveal: rows arrive top to bottom (up to 160 ms apart),
+        // each fading in and rising 6 px. Off when Windows animations are off.
+        const float reveal=!content||!motion?1.f:
+            ease((float(now-pageChanged)-std::min(160.f,float(r.y-insim::contentTop)*.3f))/200.f);
+        const int x=left+r.x,y=top-r.y-(content?int(6*(1-reveal)):0);
+        const bool hover=item.button&&r.contains(mx-left,top-my);
+        auto shade=[&](Ink c){return content?mix(canvas,c,.52f+.48f*std::min(entering,reveal)):c;};
         const auto kind=item.action.kind;
         const int baseline=y-(r.h/2+5);
         if(item.widget==insim::Widget::Rule){solid(x,y,r.w,1,rule);continue;}

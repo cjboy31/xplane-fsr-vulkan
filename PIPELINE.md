@@ -104,7 +104,7 @@ buffer our layer works inside. Plan and validation rules:
 | P1 | Linux one-click installer that finds X-Plane via `~/.x-plane/x-plane_install_12.txt` | **In Test** on `experimental/native-platforms` (e95e3ab): launcher fills the folder when none is saved and labels it "found automatically" |
 | P1 | Mac installer that clearly says "diagnostics only" and finds X-Plane via `~/Library/Preferences/x-plane_install_12.txt` | **In Test** on the same branch: same detection; the Mac screen and guide still say diagnostics only |
 | P2 | Remove the retired intro-video code from the desktop updater | **In Test**: player, policy, its tests, the legacy launcher's "Watch feature video" button and timer removed (the shipped `plugin_updater.cpp` never used them). Installer still retires old guide videos for upgraders. Windows CI runs the launcher tests |
-| P2 | More panel motion: animated section reveal | Status lamp pulse shipped; keep `SPI_GETCLIENTAREAANIMATION` respected |
+| P2 | More panel motion: animated section reveal | **In Test**: on a tab change rows fade in top to bottom (≤160 ms stagger, 6 px rise); off when Windows animations are off; hit areas unchanged |
 
 ### Bugs
 
