@@ -61,6 +61,10 @@ presentation waits; it is an average per drain, not per real frame.
 
 ## Testing a build (ChatGPT or another tester)
 
+**Start with [TESTER-PROMPTS](TESTER-PROMPTS.md):** it lists the open test
+prompts (newest first) for the current `test` branch. Each draft test release
+also carries a copy in its notes.
+
 You need to be signed in to GitHub as the owner (or with a token that has
 access to this repository), because drafts are private.
 

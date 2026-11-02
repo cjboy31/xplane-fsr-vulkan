@@ -37,6 +37,13 @@ try {
     }
     $sumFile = Join-Path $work 'SHA256SUMS.txt'
     Set-Content -LiteralPath $sumFile -Value $sums -Encoding ascii
+    # Open tester prompts travel with every draft so the tester finds them in the build.
+    $promptsPath = Join-Path $PSScriptRoot 'docs/developer/TESTER-PROMPTS.md'
+    $prompts = if (Test-Path -LiteralPath $promptsPath) {
+        $text = Get-Content -LiteralPath $promptsPath -Raw
+        $open = [regex]::Match($text, '(?ms)^## Open\s*(.*?)(?=^## Done|\z)')
+        if ($open.Success) { $open.Groups[1].Value.Trim() } else { '' }
+    } else { '' }
     $body = @"
 PRIVATE TEST BUILD - not for public use. Draft release; the updater never offers it.
 
@@ -46,7 +53,12 @@ Version under test: $Version (test $next)
 What changed:
 $Notes
 
-Tester: follow docs/developer/TEST-CHANNEL.md and reply with the report template.
+Tester: start with docs/developer/TESTER-PROMPTS.md (open prompts copied below), follow
+docs/developer/TEST-CHANNEL.md and reply with the report template.
+
+## Open tester prompts
+
+$prompts
 "@
     $notesFile = Join-Path $work 'NOTES.md'
     Set-Content -LiteralPath $notesFile -Value $body -Encoding utf8

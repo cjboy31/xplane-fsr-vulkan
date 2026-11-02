@@ -110,6 +110,10 @@ The owner replaced the feature-video workflow: new versions use a viewable in-si
   tagged `test-<version>.<n>` via `Publish-TestBuild.ps1`. Claude prepares
   changes; ChatGPT live-tests drafts on the owner's PC with the checklist in
   docs/developer/TEST-CHANNEL.md and reports PROMOTE TO BETAS or NEEDS FIX.
+- Every change that needs a live check gets a prompt in
+  docs/developer/TESTER-PROMPTS.md (newest first, with the minimum commit).
+  The tester starts there; Publish-TestBuild.ps1 copies the open prompts into
+  each draft. Move a prompt to *Done* (date + verdict) when its report arrives.
 - PIPELINE.md is the shared work queue: type (Feature / QoL / Optimization /
   Bug) and priority (P0 regression, P1 extends the last update, P2 researched,
   P3 exploratory). Add incoming ideas and bugs there; keep "Shipped" honest.
