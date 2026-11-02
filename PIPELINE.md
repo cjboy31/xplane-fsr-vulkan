@@ -46,6 +46,21 @@ then Linux, then Mac).
 
 ## Queued
 
+### Priority: motion vectors
+
+The owner's top rendering item: better motion cuts trails in FSR, shimmer in
+Native AA's TAA and warping in frame generation at once. Full plan:
+[MOTION-VECTORS-PLAN](docs/developer/MOTION-VECTORS-PLAN.md). Original code only
+(*Motion Vectors V2* is GPL-3.0).
+
+| P | Type | Item | Notes |
+| --- | --- | --- | --- |
+| P1 | Feature | **A** One shared motion contract and producer for FSR, FG and Native AA TAA | Same jitter, units and reset rules for every consumer |
+| P1 | Feature | **B** Revive native SSR motion capture (`experimental/native-motion-vectors`) on v2 as *Motion source: Native (experimental)* | Strict SPIR-V check (MIT-derived); clean fallback to camera-derived |
+| P1 | Optimization | **C** Vector-quality tool: warp the previous frame, measure error by sky / terrain / aircraft / cockpit | Gives every stage a number |
+| P2 | Feature | **D** Native motion with MSAA and frame generation | Removes stage B's limits |
+| P2 | Feature | **E** Per-object motion: traffic, propellers, control surfaces, gear; reactive masks for clouds and glass | Measure main-thread cost first |
+
 ### Optimization
 
 | P | Item | Why / evidence | Notes |
@@ -77,7 +92,7 @@ buffer our layer works inside. Plan and validation rules:
 | P | Item | Why / evidence | Notes |
 | --- | --- | --- | --- |
 | P2 | FSR 4.1 on more AMD hardware | SDK 2.4.0 adds FSR 4.1 on RX 6000 (RDNA 2) and Ryzen AI Max / AI 9 APUs | README and hardware guide already state it; needs a real RX 6000 test |
-| P2 | Real per-object motion vectors shared with Native AA | X-Plane has no velocity buffer; patching sim shaders at compile time is the only way to get object motion | Must be original code (the community *Motion Vectors V2* project is GPL-3.0). One vector producer, both mods consume |
+| P2 | **v3: one mod** for FSR, Native AA, frame generation and neural rendering, with Native AA + FG as a new combination | One panel, installer, updater and layer; see [V3-MERGE](docs/developer/V3-MERGE.md) | Starts after v2 passes Betas; five steps, each through Test → Betas → RC. Native AA never needs AMD files |
 | P3 | Intel XeSS upscaling as an extra choice on Intel Arc | XeSS upscaling supports Vulkan; XeSS frame generation and XeLL are DX12-only, so they can't run in X-Plane | User would supply Intel's runtime, like the NR model |
 | P3 | Linux: FSR 4 / FG parity with Windows | Linux preview only has FSR 3.1 upscaling | Needs Linux AMD providers and real flights |
 | P3 | Mac: MetalFX backend | X-Plane uses Metal on Mac, so a Vulkan layer never sees its frames | A new Metal integration; the current Mac download is diagnostics only |
