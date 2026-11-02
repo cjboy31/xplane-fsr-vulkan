@@ -183,10 +183,24 @@ if($process.ExitCode -ne 0){throw "Uninstall failed: $($process.ExitCode)"}
 foreach($file in $manifest.files){if(Test-Path -LiteralPath (Join-Path $installed $file.path)){throw "Installed payload remains: $($file.path)"}}
 foreach($file in (@('logs\keep.txt','plugin-backups\keep.txt','user-file.txt')+$nrUserFiles)){if(-not(Test-Path -LiteralPath (Join-Path $installed $file))){throw "User file deleted: $file"}}
 $remaining = @(Get-ChildItem -LiteralPath $installed -File -Recurse | ForEach-Object {[IO.Path]::GetRelativePath($installed,$_.FullName)} | Sort-Object)
-if(@(Compare-Object ((@('logs\keep.txt','plugin-backups\keep.txt','user-file.txt')+$nrUserFiles) | Sort-Object) $remaining).Count){throw ('Unexpected files after uninstall: '+($remaining -join ', '))}
+$keepsChoices=[version](($manifest.packageVersion -split '-')[0]) -ge [version]'2.0.0'
+$expectedRemaining=@('logs\keep.txt','plugin-backups\keep.txt','user-file.txt')+$nrUserFiles
+if($keepsChoices){$expectedRemaining+=@('settings.ini','XPFSR24-Installation.ini')}
+if(@(Compare-Object ($expectedRemaining | Sort-Object) $remaining).Count){throw ('Unexpected files after uninstall: '+($remaining -join ', '))}
+if($keepsChoices){
+  # v2: uninstall keeps saved choices; reinstalling into the same folder restores them.
+  if((Get-FileHash -LiteralPath $settings).Hash -ne $settingsHash){throw 'Uninstall changed saved choices'}
+  $code = Run-Setup ('/S /TEST=1 /XPLANE="'+$simulator+'" /D='+$installed)
+  if($code -ne 0){throw "Reinstall into the kept folder failed: $code"}
+  $reinstalledBlock = (Get-Content -LiteralPath $settings -Raw) -split '\[Launcher\]',2 | Select-Object -Last 1
+  if($reinstalledBlock.Trim() -ne $updatedChoiceBlock.Trim()){throw 'Reinstall lost saved launcher choices'}
+  foreach($file in $manifest.files){if((Get-FileHash -LiteralPath (Join-Path $installed $file.path)).Hash.ToLowerInvariant() -ne $file.sha256){throw "Reinstall hash mismatch: $($file.path)"}}
+  $process = Start-Process -FilePath $uninstallCopy -ArgumentList ('/S _?='+$installed) -WindowStyle Hidden -PassThru -Wait
+  if($process.ExitCode -ne 0){throw "Second uninstall failed: $($process.ExitCode)"}
+}
 if($cameraBefore -and (Get-FileHash -LiteralPath $camera).Hash -ne $cameraBefore){throw 'Simulator camera plugin changed'}
 if($prefsBefore -and (Get-FileHash -LiteralPath $prefs).Hash -ne $prefsBefore){throw 'Simulator preferences changed'}
-$result = [ordered]@{status='PASS';testedAt=(Get-Date -Format o);archiveSha256=(Get-FileHash -LiteralPath $archive).Hash.ToLowerInvariant();archiveBytes=(Get-Item -LiteralPath $archive).Length;payloadHashesVerified=$manifest.files.Count;rarIntegrity='PASS';roundTripExtraction='PASS';invalidSimulatorRejected='PASS';unrelatedFolderRejected='PASS';silentInstall='PASS';recognizedUpdate='PASS';savedChoicesPreservedOnUpdate='PASS';userFilesPreservedOnUninstall='PASS';simulatorCameraUnchanged='PASS';simulatorPreferencesUnchanged='PASS';testMode='Per-user registry and shortcuts skipped; all test files confined to workspace';testFolder=$testRoot}
+$result = [ordered]@{status='PASS';testedAt=(Get-Date -Format o);archiveSha256=(Get-FileHash -LiteralPath $archive).Hash.ToLowerInvariant();archiveBytes=(Get-Item -LiteralPath $archive).Length;payloadHashesVerified=$manifest.files.Count;rarIntegrity='PASS';roundTripExtraction='PASS';invalidSimulatorRejected='PASS';unrelatedFolderRejected='PASS';silentInstall='PASS';recognizedUpdate='PASS';savedChoicesPreservedOnUpdate='PASS';userFilesPreservedOnUninstall='PASS';savedChoicesKeptOnUninstall=$(if($keepsChoices){'PASS'}else{'n/a'});simulatorCameraUnchanged='PASS';simulatorPreferencesUnchanged='PASS';testMode='Per-user registry and shortcuts skipped; all test files confined to workspace';testFolder=$testRoot}
 $result.setupSha256=(Get-FileHash -LiteralPath $setup).Hash.ToLowerInvariant()
 $result.simulatorFixture='Workspace-only inert files; no live simulator installation used'
 $result.setupBytes=(Get-Item -LiteralPath $setup).Length

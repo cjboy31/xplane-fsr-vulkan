@@ -13,6 +13,7 @@
 - Includes the 0.7.10 scene-copy and background file-worker performance corrections.
 - **Motion source (experimental, in Test):** a new choice under Image processing. Native reads the motion X-Plane works out for its own reflections, so your aircraft can trail less when you turn or zoom. It works with MSAA, frame generation and the cockpit screen fix, and feeds all of them. If it cannot run on a frame, the normal Camera motion is used and Diagnostics says why. Camera stays the default.
 - Developer: shared motion contract v1, the same motion format and rules as Native AA (`src/motion_contract.*`, pinned in both repositories). Also an opt-in motion-quality capture and `tools/motion_quality.py`, which gives a measured gain per region.
+- **Fixes from the first live test:** history no longer resets on every frame in forward flight (the reset rule grew with speed); Esc now closes a pinned help card instead of opening X-Plane's menu; uninstalling keeps your saved choices so installing again into the same folder restores them. The log now shows how long the *synchronized* frame-generation methods wait each frame.
 - Not yet verified in live flights; this is why it is a Beta.
 
 ## 0.7.10

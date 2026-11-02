@@ -498,6 +498,20 @@ static int setupMouse(XPLMWindowID h,int x,int y,XPLMMouseStatus mouse,void*) no
     if(mouse==xplm_MouseUp)setupDragField=-1;
     return 1;
 }catch(const std::exception&e){setupDragField=-1;setupPanel.notice=e.what();return 1;}catch(...){setupDragField=-1;return 1;}}
+// v2 fix (live test): the panel never takes keyboard focus, so Esc went to
+// X-Plane's menu and left a pinned help card open. A sniffer consumes Esc only
+// while one of our own transient states is open (dropdown or pinned card), and
+// the matching key-up. Every other key, and Esc otherwise, reaches X-Plane.
+static bool setupEscapeConsumed{};
+static int setupEscapeSniffer(char key,XPLMKeyFlags flags,char virtualKey,void*) noexcept{
+    const bool escape=static_cast<unsigned char>(virtualKey)==XPLM_VK_ESCAPE||key==27;
+    if(!escape)return 1;
+    if(flags&xplm_UpFlag){const bool consumed=setupEscapeConsumed;setupEscapeConsumed=false;return consumed?0:1;}
+    if(!(flags&xplm_DownFlag)||!setupVisible())return 1;
+    if(setupPanel.dropdownOpen){setupPanel.dropdownOpen=false;setupEscapeConsumed=true;return 0;}
+    if(setupPanel.pinnedHelp>=0){setupPanel.pinnedHelp=-1;setupEscapeConsumed=true;return 0;}
+    return 1;
+}
 static void setupKey(XPLMWindowID,char key,XPLMKeyFlags flags,char,void*,int losing) noexcept{if(!losing&&(flags&xplm_DownFlag)&&key==27){if(setupPanel.dropdownOpen)setupPanel.dropdownOpen=false;else if(setupPanel.pinnedHelp>=0)setupPanel.pinnedHelp=-1;else if(setupPanel.helpField>=0)setupPanel.helpField=-1;else setupHide();}}
 static XPLMCursorStatus setupCursor(XPLMWindowID,int,int,void*){return xplm_CursorDefault;}
 static int setupRightMouse(XPLMWindowID h,int x,int y,XPLMMouseStatus,void*) noexcept{int l,t,r,b;XPLMGetWindowGeometry(h,&l,&t,&r,&b);return x>=l&&x<r&&y>=b&&y<=t;}

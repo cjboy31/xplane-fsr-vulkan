@@ -111,6 +111,10 @@ buffer our layer works inside. Plan and validation rules:
 | P | Item | Notes |
 | --- | --- | --- |
 | P0 | 0.5.4-0.7.10 updaters can't find updates after the rename | They reject GitHub's API redirect and check the old name. v2 updater fixed (follows the redirect, accepts both names). Existing users need one manual v2 install; say so in README, release notes and the Discord post. Optional: a 0.7.11 hotfix cannot help, since those users can't reach it either. |
+| P0 | Airborne camera reset on every frame (live test 2026-11-02: 709/709 climb frames reset=1; ground 0) | **Fixed in Test**: the plugin's fixed clip-space bound (100) grows with step / near plane, so forward flight crossed it every frame. Now only unusable matrices reset; real cuts stay physical (`cameraCut`). Regression test in `core_tests`. Live recheck: airborne reset count should fall to near 0 |
+| P0 | Esc did not close a pinned help card and opened X-Plane's menu | **Fixed in Test**: key sniffer consumes Esc (and its key-up) only while a dropdown or pinned card is open; all other keys pass through. Same fix in Native AA |
+| P0 | Uninstall deleted saved choices (`settings.ini`), against the checklist | **Fixed in Test**: uninstall keeps `settings.ini` and the folder marker; reinstalling into the same folder restores choices (installer test extended) |
+| P1 | FG costs ~40% of the real frame rate on the owner's PC (40 → 24 FPS) | The owner's method is *FSR FG 4.0.2 synchronized*, which drains every present on the CPU by design. The log now reports `sync-drains` and their average/max time. Next live step: same flight with *FSR FG 4.0.2* (SDK paced) to separate drain cost from interpolation cost; the panel help now explains the trade-off |
 
 Other live bugs: Live bugs are tracked in [GitHub issues](https://github.com/cjboy31/xplane12-fsr-framegen/issues?q=label%3A%22pipeline%3A+bug%22).
 

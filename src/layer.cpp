@@ -346,6 +346,9 @@ struct Device {
     xpfsr::pacing::FrameLimiter fgLimiter;
     std::atomic<bool> fgLimiterArmed{false};
     uint64_t fgLimiterWaits{}, fgLimiterWaitNs{};
+    // Synchronized compatibility FG drains every present on the CPU; measure it
+    // so its cost to the real frame rate is visible in the session log.
+    uint64_t fgDrains{}, fgDrainNs{}, fgDrainMaxNs{};
     bool fgFailed{}, fgLiveEnabled = true, panelOpen{},fgResumeReset{};
     app::PanelPresenceChannel panelPresence;
     uint32_t fgQueueBase = UINT32_MAX;

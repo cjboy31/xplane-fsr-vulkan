@@ -116,10 +116,7 @@ static float update(float elapsed, float, int, void *) {
             else
                 for (int i = 0; i < 16; ++i)
                     reproj[i] = (i % 5) == 0;
-            double difference = 0;
-            for (int i = 0; i < 16; ++i)
-                difference = std::max(difference, std::abs(reproj[i] - ((i % 5) == 0)));
-            if (difference > 100)
+            if (app::reprojectionUnusable(reproj))
                 packet.reset = 1;
             for (int i = 0; i < 16; ++i) {
                 packet.reprojection[i] = float(reproj[i]);
@@ -269,10 +266,12 @@ PLUGIN_API int XPluginEnable() {
     loadScreens = true;
     previousScreenValid = false;
     XPLMRegisterFlightLoopCallback(update, -1, nullptr);
+    XPLMRegisterKeySniffer(setupEscapeSniffer, 1, nullptr);
     return 1;
 }
 PLUGIN_API void XPluginDisable() {
     setupHide();
+    XPLMUnregisterKeySniffer(setupEscapeSniffer, 1, nullptr);
     XPLMUnregisterFlightLoopCallback(update, nullptr);
     if (shared) {
         InterlockedIncrement(&shared->cameraSequence);

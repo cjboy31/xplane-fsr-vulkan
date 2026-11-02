@@ -395,6 +395,7 @@ Section "Application"
   WriteINIStr "$INSTDIR\XPFSR24-Installation.ini" "Installation" "Version" "${PACKAGE_VERSION}"
   WriteINIStr "$INSTDIR\XPFSR24-Installation.ini" "Installation" "TestMode" "$TestMode"
   WriteINIStr "$INSTDIR\XPFSR24-Installation.ini" "Installation" "DesktopShortcut" "$DesktopWanted"
+  DeleteINIStr "$INSTDIR\XPFSR24-Installation.ini" "Installation" "Uninstalled"
   ${If} $ImportSettings != ""
   ${AndIfNot} ${FileExists} "$INSTDIR\settings.ini"
     ClearErrors
@@ -509,8 +510,14 @@ Section "Uninstall"
     DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\XPFSR24CommunityAlpha"
   ${EndIf}
   !include "${GENERATED}\UninstallFiles.nsh"
-  Delete "$INSTDIR\settings.ini"
-  Delete "$INSTDIR\XPFSR24-Installation.ini"
+  ; v2: keep the user's saved image choices (settings.ini) and this folder's
+  ; product marker, so installing again into the same folder restores them.
+  ; Deleting the folder removes them for good.
+  WriteINIStr "$INSTDIR\XPFSR24-Installation.ini" "Installation" "Uninstalled" "1"
   Delete "$INSTDIR\Uninstall.exe"
   RMDir "$INSTDIR"
+  IfSilent uninstallDone
+    IfFileExists "$INSTDIR\settings.ini" 0 uninstallDone
+      MessageBox MB_OK|MB_ICONINFORMATION "The mod was removed. Your saved image choices were kept in $INSTDIR. Install again into this folder to use them, or delete the folder to remove them."
+  uninstallDone:
 SectionEnd

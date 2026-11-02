@@ -466,12 +466,18 @@ static VkResult presentFrame(Device &d, VkQueue queue, const VkPresentInfoKHR *i
             // next source can prepare on another host recording thread. Keep
             // the same device guard; SDK native present traffic bypasses it.
             // No semaphore is re-used and no old swapchain image is re-presented.
+            LARGE_INTEGER drainStart{},drainEnd{};QueryPerformanceCounter(&drainStart);
             try {generation->presentation->wait();d.fgCompletedLease=std::max(d.fgCompletedLease,d.fgPreparedLease);}
             catch(const std::exception &e){
                 d.fgFailed=true;d.status.fgActive=0;
                 snprintf(d.status.fgReason,160,"FG synchronization failed: %.120s",e.what());
                 log("FG compatibility synchronization failed: %s",e.what());
                 return VK_ERROR_DEVICE_LOST;
+            }
+            QueryPerformanceCounter(&drainEnd);
+            if(clockFrequency.QuadPart>0){
+                const auto ns=uint64_t(double(drainEnd.QuadPart-drainStart.QuadPart)*1e9/double(clockFrequency.QuadPart));
+                ++d.fgDrains;d.fgDrainNs+=ns;d.fgDrainMaxNs=std::max(d.fgDrainMaxNs,ns);
             }
         }
     } else
@@ -526,11 +532,15 @@ static VkResult presentFrame(Device &d, VkQueue queue, const VkPresentInfoKHR *i
         }
         if (d.status.presents < 5 || d.status.presents % 500 == 0)
             log("Presentation counters: rendered=%llu FG-prepared=%llu generated=%llu "
-                "SDK-presents=%llu FG-active=%u cap-waits=%llu cap-wait-ms=%.1f",
+                "SDK-presents=%llu FG-active=%u cap-waits=%llu cap-wait-ms=%.1f "
+                "sync-drains=%llu sync-drain-avg-ms=%.2f sync-drain-max-ms=%.2f",
                 (unsigned long long)d.status.presents, (unsigned long long)d.status.fgPrepared,
                 (unsigned long long)d.status.fgGenerated,
                 (unsigned long long)d.status.displayedPresents, d.status.fgActive,
-                (unsigned long long)d.fgLimiterWaits, double(d.fgLimiterWaitNs) / 1e6);
+                (unsigned long long)d.fgLimiterWaits, double(d.fgLimiterWaitNs) / 1e6,
+                (unsigned long long)d.fgDrains,
+                d.fgDrains ? double(d.fgDrainNs) / 1e6 / double(d.fgDrains) : 0.0,
+                double(d.fgDrainMaxNs) / 1e6);
         if (!d.enabled) {
             d.status.active = 0;
             d.publish("Disabled; native simulator upscaling active");

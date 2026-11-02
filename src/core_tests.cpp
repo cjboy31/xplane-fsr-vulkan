@@ -99,6 +99,30 @@ int main() {
         after = before;
         after.verticalFov += .2f;
         expect(app::cameraCut(before, after), "Abrupt zoom retained history");
+        {
+            // Airborne regression: 3.6 m forward per frame with a 2 cm near plane gave a
+            // clip-space delta of ~180 (> the old bound of 100) on every frame.
+            const double n = .02, f = 1.7320508;
+            double proj[16] = {f / 1.7777778, 0, 0, 0, 0, f, 0, 0, 0, 0, 0, -1, 0, 0, n, 0};
+            double v0[16] = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1}, v1[16];
+            memcpy(v1, v0, sizeof(v1));
+            v1[14] = 3.6;
+            double vp0[16], vp1[16], inv1[16], rep[16];
+            app::multiply(vp0, proj, v0);
+            app::multiply(vp1, proj, v1);
+            expect(app::inverse(inv1, vp1), "Flight projection inversion failed");
+            app::multiply(rep, vp0, inv1);
+            double delta = 0;
+            for (int i = 0; i < 16; ++i)
+                delta = std::max(delta, std::abs(rep[i] - ((i % 5) == 0)));
+            expect(delta > 100 && !app::reprojectionUnusable(rep),
+                   "Forward flight reprojection treated as a camera cut");
+            after = before;
+            after.position[2] = -3.6f;
+            expect(!app::cameraCut(before, after), "Forward flight step reset history");
+            rep[5] = std::numeric_limits<double>::quiet_NaN();
+            expect(app::reprojectionUnusable(rep), "Non-finite reprojection accepted");
+        }
         double v[16] = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, -53000, 2200, -41000, 1};
         double vp[16], inv[16], identity[16];
         app::multiply(vp, p, v);
