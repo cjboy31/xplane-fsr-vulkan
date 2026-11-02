@@ -432,9 +432,12 @@ int wmain(int argc, wchar_t **argv) {
         // Forty coherent samples over four seconds precede the numbered cases.
         uint64_t warmupRecordings = 0;
         const uint64_t warmupStart = GetTickCount64();
-        for (uint64_t sourceFrame = 1; sourceFrame <= 40+(nrOrder?3000:18); ++sourceFrame) {
-            const bool warming = sourceFrame <= 40;
-            const uint64_t frame = warming ? 0 : sourceFrame - 40;
+        // The FSR context is prepared on a worker thread (v2), so warm-up lasts
+        // until it is ready (bounded); every later count is unchanged.
+        uint64_t warmupFrames = 40;
+        for (uint64_t sourceFrame = 1; sourceFrame <= warmupFrames+(nrOrder?3000:18); ++sourceFrame) {
+            const bool warming = sourceFrame <= warmupFrames;
+            const uint64_t frame = warming ? 0 : sourceFrame - warmupFrames;
             if (warming) Sleep(100);
             InterlockedExchange(&shared->enabled, !nrOrder&&(frame == 9 || frame == 10) ? 0 : 1);
             app::Camera camera{};
@@ -735,7 +738,10 @@ int wmain(int argc, wchar_t **argv) {
                 if(GetTickCount64()-warmupStart<3000)
                     require(!status.active && status.recordings==0,"Reconstruction ran before scene stabilization");
                 warmupRecordings=status.recordings;
-                if(sourceFrame==40){
+                if(sourceFrame==warmupFrames&&!observe&&!status.active&&strstr(status.reason,"getting ready")&&warmupFrames<240){
+                    ++warmupFrames;continue;
+                }
+                if(sourceFrame==warmupFrames){
                     require(observe || status.active,"Scene did not activate after coherent startup samples");
                     std::cout<<"PASS: startup stabilization, baseline recordings="<<warmupRecordings<<'\n';
                     phaseStart=GetTickCount64();

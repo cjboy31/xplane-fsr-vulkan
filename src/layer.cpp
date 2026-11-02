@@ -15,6 +15,7 @@
 #include "frame_diagnostics.hpp"
 #include <chrono>
 #include "nr_features.hpp"
+#include <future>
 #include <thread>
 #include <condition_variable>
 #include <optional>
@@ -298,6 +299,11 @@ struct Device {
     std::map<VkImage, Depth> depths;
     std::map<VkImage, VkImageLayout> layouts;
     std::map<std::array<uint32_t, 6>, std::unique_ptr<xpfsr::Context>> contexts;
+    // v2: FSR contexts being prepared on a worker thread (pipeline and resource
+    // creation only; the backend has no queue). X-Plane's own image is shown
+    // until one is ready, instead of stalling the render thread.
+    struct PreparedContext { std::unique_ptr<xpfsr::Context> context; uint64_t ms{}; };
+    std::map<std::array<uint32_t, 6>, std::future<PreparedContext>> pendingContexts;
     std::unique_ptr<xpfsr::Runtime> runtime;
     std::vector<std::unique_ptr<DepthProbe>> probes;
     uint64_t imageGeneration{};
@@ -1860,26 +1866,44 @@ bool replace(Device &d, VkCommandBuffer cb, Command &command) {
             }
         }
         if(d.allocationPaused)d.camera.reset=1;d.allocationPaused=false;d.allocationBackoff.recovered();
-        auto &context = d.contexts[configKey];
-        if (!context) {
-            const auto contextStart=GetTickCount64();
-            if (d.contexts.size() > 2)
-                throw std::runtime_error("Resize limit reached; restart the simulator");
-            xpfsr::Config config{rw, rh, ow, oh};
-            config.invertedDepth = d.camera.reverseZ;
-            config.infiniteDepth = d.camera.infiniteZ;
-            VkDeviceContext backend{d.handle, applicationPhysical(d), d.next};
-            wchar_t requested[32]{};
-            GetEnvironmentVariableW(L"XPFSR24_PROVIDER", requested, 32);
-            std::string version = !wcscmp(requested, L"4.1.2") ? "4.1.2" : "3.1.6";
-            config.providerId = xpfsr::providerVersion(d.runtime->api, backend, version);
-            context = std::make_unique<xpfsr::Context>(d.runtime->api);
-            context->create(config, backend);
-            log("FSR context preparation: %llums (%ux%u -> %ux%u)",(unsigned long long)(GetTickCount64()-contextStart),rw,rh,ow,oh);
+        if (!d.contexts.count(configKey)) {
+            auto pending = d.pendingContexts.find(configKey);
+            if (pending == d.pendingContexts.end()) {
+                if (d.contexts.size() + d.pendingContexts.size() >= 3)
+                    throw std::runtime_error("Resize limit reached; restart the simulator");
+                xpfsr::Config config{rw, rh, ow, oh};
+                config.invertedDepth = d.camera.reverseZ;
+                config.infiniteDepth = d.camera.infiniteZ;
+                VkDeviceContext backend{d.handle, applicationPhysical(d), d.next};
+                wchar_t requested[32]{};
+                GetEnvironmentVariableW(L"XPFSR24_PROVIDER", requested, 32);
+                std::string version = !wcscmp(requested, L"4.1.2") ? "4.1.2" : "3.1.6";
+                config.providerId = xpfsr::providerVersion(d.runtime->api, backend, version);
+                const auto api = d.runtime->api;
+                pending = d.pendingContexts.emplace(configKey, std::async(std::launch::async, [api, config, backend] {
+                    const auto start = GetTickCount64();
+                    Device::PreparedContext prepared{std::make_unique<xpfsr::Context>(api)};
+                    prepared.context->create(config, backend);
+                    prepared.ms = GetTickCount64() - start;
+                    return prepared;
+                })).first;
+                log("FSR context preparation started on a worker thread (%ux%u -> %ux%u); X-Plane's image is shown until it is ready",
+                    rw, rh, ow, oh);
+            }
+            if (pending->second.wait_for(std::chrono::seconds(0)) != std::future_status::ready) {
+                d.bypass("FSR is getting ready (preparing on a worker thread); X-Plane's image is shown meanwhile");
+                return false;
+            }
+            auto prepared = pending->second.get();  // rethrows a creation failure on this thread
+            d.pendingContexts.erase(pending);
+            d.contexts[configKey] = std::move(prepared.context);
+            log("FSR context preparation: %llums on a worker thread (%ux%u -> %ux%u)", (unsigned long long)prepared.ms, rw, rh, ow, oh);
+            auto &context = d.contexts[configKey];
             auto name = context->provider();
             strncpy(d.status.provider, name.c_str(), sizeof(d.status.provider) - 1);
             log("FSR provider: %s (%ux%u -> %ux%u)", name.c_str(), rw, rh, ow, oh);
         }
+        auto &context = d.contexts.at(configKey);
         if (newFrame) {
             retireFrame(d,command.resources);
             command.resources=d.idleFrames.take(reuseKey);
@@ -2676,6 +2700,7 @@ static VKAPI_ATTR void VKAPI_CALL L_DestroyDevice(VkDevice device,
         retired.clear(); // No routing lock across SDK waits/destruction.
     }
     d->fn<PFN_vkDeviceWaitIdle>("vkDeviceWaitIdle")(device);
+    d->pendingContexts.clear(); // waits for any worker-thread FSR context creation
     d->commands.clear(); // also releases native motion frames
     d->motionCaptures.clear();
     d->presenterFrames.clear();
